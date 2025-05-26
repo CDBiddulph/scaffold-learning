@@ -107,6 +107,44 @@ class MockLLMInterface(LLMInterface):
     def get_model_info(self) -> str:
         return self.model
 
+class HumanLLMInterface(LLMInterface):
+    """Interface that allows humans to act as the LLM"""
+    
+    def __init__(self, model: str = "human"):
+        self.model = model
+    
+    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
+        """Get response from human user via CLI"""
+        print("\n" + "="*80)
+        print("HUMAN LLM MODE - You are acting as the LLM")
+        print("="*80)
+        
+        if system_prompt:
+            print(f"\nSYSTEM PROMPT:\n{system_prompt}")
+            print("-" * 40)
+        
+        print(f"\nUSER PROMPT:\n{prompt}")
+        print("-" * 40)
+        print("\nPlease provide your response (end with an empty line):")
+        
+        lines = []
+        while True:
+            try:
+                line = input()
+                if line == "":
+                    break
+                lines.append(line)
+            except (EOFError, KeyboardInterrupt):
+                print("\nInterrupted. Using partial response.")
+                break
+        
+        response = "\n".join(lines)
+        print("\n" + "="*80)
+        return response
+    
+    def get_model_info(self) -> str:
+        return self.model
+
 class LLMFactory:
     """Factory for creating LLM interfaces"""
     
@@ -120,5 +158,7 @@ class LLMFactory:
             return AnthropicInterface(model=model, api_key=api_key)
         elif llm_type.lower() == "mock":
             return MockLLMInterface(model=model or "mock-model")
+        elif llm_type.lower() == "human":
+            return HumanLLMInterface(model=model or "human")
         else:
             raise ValueError(f"Unsupported LLM type: {llm_type}") 

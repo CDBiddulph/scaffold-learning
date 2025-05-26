@@ -53,12 +53,12 @@ def main() -> None:
     parser.add_argument("-o", "--output", required=True, help="Output directory for the generated script")
     
     # Coder LLM configuration
-    parser.add_argument("--coder-type", default="openai", help="Type of coder LLM (openai, anthropic, mock)")
+    parser.add_argument("--coder-type", default="openai", help="Type of coder LLM (openai, anthropic, mock, human)")
     parser.add_argument("--coder-model", help="Specific model for coder LLM")
     parser.add_argument("--coder-api-key", help="API key for coder LLM")
     
     # Executor LLM configuration
-    parser.add_argument("--executor-type", default="openai", help="Type of executor LLM (openai, anthropic, mock)")
+    parser.add_argument("--executor-type", default="openai", help="Type of executor LLM (openai, anthropic, mock, human)")
     parser.add_argument("--executor-model", help="Specific model for executor LLM")
     parser.add_argument("--executor-api-key", help="API key for executor LLM")
     
