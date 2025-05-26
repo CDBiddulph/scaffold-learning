@@ -40,6 +40,13 @@ def generate_executor_library_code(executor_config: Dict[str, Any]) -> str:
 
 
 def main() -> None:
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+    logger = logging.getLogger(__name__)
+    
     parser = argparse.ArgumentParser(description="Generate Python scripts using a coder LLM")
     parser.add_argument("coder_prompt", help="Prompt describing what the generated script should do")
     parser.add_argument("-o", "--output", required=True, help="Output directory for the generated script")
@@ -76,17 +83,16 @@ def main() -> None:
             api_key=args.executor_api_key
         )
         
-        # Print configuration summary
-        print("\nConfiguration Summary:")
-        print(f"Output Directory: {args.output}")
-        print("\nCoder LLM Configuration:")
-        print(f"  Type: {args.coder_type}")
-        print(f"  Model: {coder_llm.get_model_info()}")
-        print("\nExecutor LLM Configuration:")
-        print(f"  Type: {args.executor_type}")
-        print(f"  Model: {executor_llm.get_model_info()}")
-        print("\nGenerating script based on prompt:", args.coder_prompt)
-        print("-" * 80)
+        # Log configuration summary
+        logger.info("Configuration Summary:")
+        logger.info(f"Output Directory: {args.output}")
+        logger.info("Coder LLM Configuration:")
+        logger.info(f"  Type: {args.coder_type}")
+        logger.info(f"  Model: {coder_llm.get_model_info()}")
+        logger.info("Executor LLM Configuration:")
+        logger.info(f"  Type: {args.executor_type}")
+        logger.info(f"  Model: {executor_llm.get_model_info()}")
+        logger.info(f"Generating script based on prompt: {args.coder_prompt}")
         
         # Prepare executor configuration
         executor_config = {
@@ -125,16 +131,16 @@ def main() -> None:
         interfaces_path = os.path.join(args.output, "llm_interfaces.py")
         shutil.copy2("llm_interfaces.py", interfaces_path)
         
-        print(f"Generated script saved to: {scaffold_file}")
-        print(f"Main script saved to: {main_file}")
-        print(f"Executor library saved to: {executor_lib_path}")
-        print(f"LLM interfaces copied to: {interfaces_path}")
-        print(f"\nTo run the generated script:")
+        logger.info(f"Generated script saved to: {scaffold_file}")
+        logger.info(f"Main script saved to: {main_file}")
+        logger.info(f"Executor library saved to: {executor_lib_path}")
+        logger.info(f"LLM interfaces copied to: {interfaces_path}")
+        print(f"\nGeneration complete! To run the generated script:")
         print(f"  python {main_file} 'your input string'")
         print(f"  python {main_file} 'your input string' --log-level DEBUG")
         
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error(f"Error: {e}", exc_info=True)
         sys.exit(1)
 
 
