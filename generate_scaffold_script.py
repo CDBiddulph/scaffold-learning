@@ -123,8 +123,7 @@ def main():
 
         # Copy the llm_interfaces.py file to the output directory
         interfaces_path = os.path.join(args.output, "llm_interfaces.py")
-        with open("llm_interfaces.py", 'r') as src, open(interfaces_path, 'w') as dst:
-            dst.write(src.read())
+        shutil.copy2("llm_interfaces.py", interfaces_path)
         
         print(f"Generated script saved to: {scaffold_file}")
         print(f"Main script saved to: {main_file}")
