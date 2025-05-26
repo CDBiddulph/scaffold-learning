@@ -82,6 +82,31 @@ class AnthropicInterface(LLMInterface):
     def get_model_info(self) -> str:
         return self.model
 
+class MockLLMInterface(LLMInterface):
+    """Mock interface for testing without API calls"""
+    
+    def __init__(self, model: str = "mock-model"):
+        self.model = model
+    
+    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
+        """Return appropriate mock response based on context"""
+        # If this looks like a coder prompt (contains system prompt about Python generation), 
+        # return a mock script. Otherwise, return a simple mock response.
+        if "Python code generator" in system_prompt or "process_input" in system_prompt:
+            # Load the mock script template
+            try:
+                with open("templates/mock_coder_script.py", "r") as f:
+                    return f.read()
+            except FileNotFoundError:
+                # Fallback if template file is missing
+                return "# Mock script template file not found"
+        else:
+            # For executor LLM calls, return a simple mock response
+            return f"Mock LLM response to: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+    
+    def get_model_info(self) -> str:
+        return self.model
+
 class LLMFactory:
     """Factory for creating LLM interfaces"""
     
@@ -93,5 +118,7 @@ class LLMFactory:
         elif llm_type.lower() in ["anthropic", "claude"]:
             model = model or LLMConfig.DEFAULT_ANTHROPIC_MODEL
             return AnthropicInterface(model=model, api_key=api_key)
+        elif llm_type.lower() == "mock":
+            return MockLLMInterface(model=model or "mock-model")
         else:
             raise ValueError(f"Unsupported LLM type: {llm_type}") 
