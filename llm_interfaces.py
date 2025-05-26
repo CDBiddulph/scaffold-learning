@@ -13,8 +13,10 @@ from dotenv import load_dotenv
 # Load the environment variables for the API keys
 load_dotenv()
 
-DEFAULT_OPENAI_MODEL = "gpt-4.1-nano"
-DEFAULT_ANTHROPIC_MODEL = "claude-3-5-haiku-latest"
+class LLMConfig:
+    """Configuration class for LLM settings"""
+    DEFAULT_OPENAI_MODEL = "gpt-4.1-nano"
+    DEFAULT_ANTHROPIC_MODEL = "claude-3-5-haiku-latest"
 
 class LLMInterface(ABC):
     """Abstract base class for LLM interfaces"""
@@ -32,7 +34,7 @@ class LLMInterface(ABC):
 class OpenAIInterface(LLMInterface):
     """Interface for OpenAI GPT models"""
     
-    def __init__(self, model: str = DEFAULT_OPENAI_MODEL, api_key: Optional[str] = None):
+    def __init__(self, model: str = LLMConfig.DEFAULT_OPENAI_MODEL, api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
@@ -57,7 +59,7 @@ class OpenAIInterface(LLMInterface):
 class AnthropicInterface(LLMInterface):
     """Interface for Anthropic Claude models"""
     
-    def __init__(self, model: str = DEFAULT_ANTHROPIC_MODEL, api_key: Optional[str] = None):
+    def __init__(self, model: str = LLMConfig.DEFAULT_ANTHROPIC_MODEL, api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
@@ -86,10 +88,10 @@ class LLMFactory:
     @staticmethod
     def create_llm(llm_type: str, model: Optional[str] = None, api_key: Optional[str] = None) -> LLMInterface:
         if llm_type.lower() in ["openai", "chatgpt", "gpt"]:
-            model = model or DEFAULT_OPENAI_MODEL
+            model = model or LLMConfig.DEFAULT_OPENAI_MODEL
             return OpenAIInterface(model=model, api_key=api_key)
         elif llm_type.lower() in ["anthropic", "claude"]:
-            model = model or DEFAULT_ANTHROPIC_MODEL
+            model = model or LLMConfig.DEFAULT_ANTHROPIC_MODEL
             return AnthropicInterface(model=model, api_key=api_key)
         else:
             raise ValueError(f"Unsupported LLM type: {llm_type}") 
