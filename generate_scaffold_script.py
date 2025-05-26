@@ -39,7 +39,7 @@ def generate_executor_library_code(executor_config: Dict[str, Any]) -> str:
         return template.format(executor_config=repr(executor_config))
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Generate Python scripts using a coder LLM")
     parser.add_argument("coder_prompt", help="Prompt describing what the generated script should do")
     parser.add_argument("-o", "--output", required=True, help="Output directory for the generated script")

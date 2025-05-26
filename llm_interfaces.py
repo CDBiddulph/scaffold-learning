@@ -84,7 +84,7 @@ class LLMFactory:
     """Factory for creating LLM interfaces"""
     
     @staticmethod
-    def create_llm(llm_type: str, model: str = None, api_key: str = None) -> LLMInterface:
+    def create_llm(llm_type: str, model: Optional[str] = None, api_key: Optional[str] = None) -> LLMInterface:
         if llm_type.lower() in ["openai", "chatgpt", "gpt"]:
             model = model or DEFAULT_OPENAI_MODEL
             return OpenAIInterface(model=model, api_key=api_key)
