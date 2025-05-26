@@ -14,22 +14,27 @@ from llm_interfaces import LLMFactory
 import shutil
 import logging
 
+# Template file paths
+MAIN_SCRIPT_TEMPLATE = "templates/main_script_template.py"
+CODER_SYSTEM_PROMPT_TEMPLATE = "templates/coder_system_prompt.txt"
+EXECUTOR_LIBRARY_TEMPLATE = "templates/executor_library_template.py"
 
-def generate_main_script() -> str:
+
+def get_main_script() -> str:
     """Generate the main script that handles boilerplate functionality"""
-    with open("templates/main_script_template.py", "r") as f:
+    with open(MAIN_SCRIPT_TEMPLATE, "r") as f:
         return f.read()
 
 
 def get_coder_system_prompt() -> str:
     """Get the system prompt for the coder LLM"""
-    with open("templates/coder_system_prompt.txt", "r") as f:
+    with open(CODER_SYSTEM_PROMPT_TEMPLATE, "r") as f:
         return f.read()
 
 
 def generate_executor_library_code(executor_config: Dict[str, Any]) -> str:
     """Generate the executor library code that will be available to generated scripts"""
-    with open("templates/executor_library_template.py", "r") as f:
+    with open(EXECUTOR_LIBRARY_TEMPLATE, "r") as f:
         template = f.read()
         return template.format(executor_config=repr(executor_config))
 
@@ -108,7 +113,7 @@ def main():
         # Write the main script
         main_file = os.path.join(args.output, "main.py")
         with open(main_file, 'w') as f:
-            f.write(generate_main_script())
+            f.write(get_main_script())
         os.chmod(main_file, 0o755)
         
         # Generate the executor library in the same directory
