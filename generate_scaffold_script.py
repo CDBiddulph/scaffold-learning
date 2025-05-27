@@ -52,48 +52,48 @@ def main() -> None:
     parser.add_argument("coder_prompt", help="Prompt describing what the generated script should do")
     parser.add_argument("-o", "--output", required=True, help="Output directory for the generated script")
     
-    # Coder LLM configuration
-    parser.add_argument("--coder-type", default="openai", help="Type of coder LLM (openai, anthropic, mock, human)")
-    parser.add_argument("--coder-model", help="Specific model for coder LLM")
-    parser.add_argument("--coder-api-key", help="API key for coder LLM")
+    # LLM configuration
+    parser.add_argument("--coder-model", default="gpt-4.1-nano", 
+                       help="Coder LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')")
+    parser.add_argument("--executor-model", default="gpt-4.1-nano",
+                       help="Executor LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')")
     
-    # Executor LLM configuration
-    parser.add_argument("--executor-type", default="openai", help="Type of executor LLM (openai, anthropic, mock, human)")
-    parser.add_argument("--executor-model", help="Specific model for executor LLM")
-    parser.add_argument("--executor-api-key", help="API key for executor LLM")
+    # API Keys
+    parser.add_argument("--openai-api-key", help="OpenAI API key")
+    parser.add_argument("--anthropic-api-key", help="Anthropic API key")
     
     args = parser.parse_args()
     
     try:
-        # Create LLM instances
+        # Create LLM instances using new consolidated model specification
         coder_llm = LLMFactory.create_llm(
-            llm_type=args.coder_type,
-            model=args.coder_model,
-            api_key=args.coder_api_key
+            model_spec=args.coder_model,
+            openai_api_key=args.openai_api_key,
+            anthropic_api_key=args.anthropic_api_key
         )
         
         executor_llm = LLMFactory.create_llm(
-            llm_type=args.executor_type,
-            model=args.executor_model,
-            api_key=args.executor_api_key
+            model_spec=args.executor_model,
+            openai_api_key=args.openai_api_key,
+            anthropic_api_key=args.anthropic_api_key
         )
         
         # Log configuration summary
         logger.info("Configuration Summary:")
         logger.info(f"Output Directory: {args.output}")
         logger.info("Coder LLM Configuration:")
-        logger.info(f"  Type: {args.coder_type}")
         logger.info(f"  Model: {coder_llm.get_model_info()}")
         logger.info("Executor LLM Configuration:")
-        logger.info(f"  Type: {args.executor_type}")
         logger.info(f"  Model: {executor_llm.get_model_info()}")
         logger.info(f"Generating script based on prompt: {args.coder_prompt}")
         
-        # Prepare executor configuration
+        # Prepare executor configuration (parse the executor model spec)
+        executor_type, executor_model = LLMFactory.parse_model_spec(args.executor_model)
         executor_config = {
-            "type": args.executor_type,
-            "model": args.executor_model,
-            "api_key": args.executor_api_key
+            "type": executor_type,
+            "model": executor_model,
+            "openai_api_key": args.openai_api_key,
+            "anthropic_api_key": args.anthropic_api_key
         }
         
         # Generate the script using coder LLM

@@ -56,7 +56,7 @@ class OpenAIInterface(LLMInterface):
             raise ImportError("openai package not installed. Run: pip install openai")
 
     def get_model_info(self) -> str:
-        return self.model
+        return f"openai/{self.model}"
 
 class AnthropicInterface(LLMInterface):
     """Interface for Anthropic Claude models"""
@@ -82,13 +82,13 @@ class AnthropicInterface(LLMInterface):
             raise ImportError("anthropic package not installed. Run: pip install anthropic")
 
     def get_model_info(self) -> str:
-        return self.model
+        return f"anthropic/{self.model}"
 
 class MockLLMInterface(LLMInterface):
     """Mock interface for testing without API calls"""
     
-    def __init__(self, model: str = "mock-model"):
-        self.model = model
+    def __init__(self):
+        pass
     
     def generate_response(self, prompt: str, system_prompt: str = "") -> str:
         """Return appropriate mock response based on context"""
@@ -107,13 +107,13 @@ class MockLLMInterface(LLMInterface):
             return f"Mock LLM response to: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
     
     def get_model_info(self) -> str:
-        return self.model
+        return "mock"
 
 class HumanLLMInterface(LLMInterface):
     """Interface that allows humans to act as the LLM"""
     
-    def __init__(self, model: str = "human"):
-        self.model = model
+    def __init__(self):
+        pass
     
     def generate_response(self, prompt: str, system_prompt: str = "") -> str:
         """Get response from human user via CLI"""
@@ -232,22 +232,65 @@ class HumanLLMInterface(LLMInterface):
                 pass
     
     def get_model_info(self) -> str:
-        return self.model
+        return "human"
 
 class LLMFactory:
     """Factory for creating LLM interfaces"""
     
+    # Known model mappings
+    KNOWN_MODELS = {
+        # OpenAI models
+        "gpt-4": "openai",
+        "gpt-4o": "openai", 
+        "gpt-4o-mini": "openai",
+        "gpt-4.1-nano": "openai",
+        "gpt-3.5-turbo": "openai",
+        "o1": "openai",
+        "o1-mini": "openai",
+        
+        # Anthropic models
+        "claude-3-5-sonnet-latest": "anthropic",
+        "claude-3-5-haiku-latest": "anthropic",
+        "claude-3-opus-latest": "anthropic",
+        "claude-3-sonnet": "anthropic",
+        "claude-3-haiku": "anthropic",
+        
+        # Special types
+        "mock": "mock",
+        "human": "human",
+    }
+    
     @staticmethod
-    def create_llm(llm_type: str, model: Optional[str] = None, api_key: Optional[str] = None) -> LLMInterface:
-        if llm_type.lower() in ["openai", "chatgpt", "gpt"]:
-            model = model or LLMConfig.DEFAULT_OPENAI_MODEL
-            return OpenAIInterface(model=model, api_key=api_key)
-        elif llm_type.lower() in ["anthropic", "claude"]:
-            model = model or LLMConfig.DEFAULT_ANTHROPIC_MODEL
-            return AnthropicInterface(model=model, api_key=api_key)
-        elif llm_type.lower() == "mock":
-            return MockLLMInterface(model=model or "mock-model")
-        elif llm_type.lower() == "human":
-            return HumanLLMInterface(model=model or "human")
+    def parse_model_spec(model_spec: str) -> tuple[str, str]:
+        """Parse model specification into (type, model) tuple"""
+        if not model_spec:
+            return "openai", LLMConfig.DEFAULT_OPENAI_MODEL
+            
+        # Check if it contains a slash (explicit type/model format)
+        if "/" in model_spec:
+            llm_type, model = model_spec.split("/", 1)
+            return llm_type.lower(), model
+        
+        # Check known models
+        if model_spec in LLMFactory.KNOWN_MODELS:
+            llm_type = LLMFactory.KNOWN_MODELS[model_spec]
+            return llm_type, model_spec
+        
+        # Default to OpenAI if unknown
+        return "openai", model_spec
+    
+    @staticmethod
+    def create_llm(model_spec: str, openai_api_key: Optional[str] = None, anthropic_api_key: Optional[str] = None) -> LLMInterface:
+        """Create LLM from consolidated model specification"""
+        llm_type, model = LLMFactory.parse_model_spec(model_spec)
+        
+        if llm_type in ["openai", "chatgpt", "gpt"]:
+            return OpenAIInterface(model=model, api_key=openai_api_key)
+        elif llm_type in ["anthropic", "claude"]:
+            return AnthropicInterface(model=model, api_key=anthropic_api_key)
+        elif llm_type == "mock":
+            return MockLLMInterface()
+        elif llm_type == "human":
+            return HumanLLMInterface()
         else:
             raise ValueError(f"Unsupported LLM type: {llm_type}") 

@@ -25,10 +25,18 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
     # Import the LLM factory (this assumes the factory is available)
     from llm_interfaces import LLMFactory
     
+    # Reconstruct model spec from type and model
+    executor_type = EXECUTOR_CONFIG["type"] 
+    model = EXECUTOR_CONFIG.get("model")
+    if executor_type in ["mock", "human"]:
+        model_spec = executor_type
+    else:
+        model_spec = f"{{executor_type}}/{{model}}"
+    
     executor_llm = LLMFactory.create_llm(
-        llm_type=EXECUTOR_CONFIG["type"],
-        model=EXECUTOR_CONFIG.get("model"),
-        api_key=EXECUTOR_CONFIG.get("api_key")
+        model_spec=model_spec,
+        openai_api_key=EXECUTOR_CONFIG.get("openai_api_key"),
+        anthropic_api_key=EXECUTOR_CONFIG.get("anthropic_api_key")
     )
     
     return executor_llm.generate_response(prompt, system_prompt) 
