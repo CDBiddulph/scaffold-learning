@@ -6,6 +6,8 @@ This module provides abstract interfaces and concrete implementations for differ
 """
 
 import os
+import tempfile
+import subprocess
 from abc import ABC, abstractmethod
 from typing import Optional
 from dotenv import load_dotenv
@@ -125,9 +127,25 @@ class HumanLLMInterface(LLMInterface):
         
         print(f"\nUSER PROMPT:\n{prompt}")
         print("-" * 40)
-        print("\nPlease provide your response (end with an empty line):")
         
-        lines = []
+        return self._get_user_input(prompt, system_prompt)
+    
+    def _get_user_input(self, prompt: str, system_prompt: str = "") -> str:
+        """Get user input with vim option"""
+        print("\nPlease provide your response (end with an empty line, or type 'vim' to use vim editor):")
+        
+        # Check if user wants to use vim
+        try:
+            first_line = input()
+        except (EOFError, KeyboardInterrupt):
+            print("\nInterrupted. Retrying input.")
+            return self._get_user_input(prompt, system_prompt)
+            
+        if first_line.strip().lower() == "vim":
+            return self._get_vim_response(prompt, system_prompt)
+        
+        # Regular CLI input mode
+        lines = [first_line] if first_line else []
         while True:
             try:
                 line = input()
@@ -135,12 +153,83 @@ class HumanLLMInterface(LLMInterface):
                     break
                 lines.append(line)
             except (EOFError, KeyboardInterrupt):
-                print("\nInterrupted. Using partial response.")
-                break
+                print("\nInterrupted. Retrying input.")
+                return self._get_user_input(prompt, system_prompt)
         
         response = "\n".join(lines)
         print("\n" + "="*80)
         return response
+    
+    def _get_vim_response(self, prompt: str, system_prompt: str = "") -> str:
+        """Get response using vim editor"""
+        # Create temporary file with prompt context
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as f:
+            f.write("# LLM RESPONSE FILE\n")
+            f.write("# Only the content from the first non-comment line onwards will be used.\n")
+            f.write("#\n")
+            
+            if system_prompt:
+                f.write("# SYSTEM PROMPT:\n")
+                for line in system_prompt.split('\n'):
+                    f.write(f"# {line}\n")
+                f.write("#\n")
+            
+            f.write("# USER PROMPT:\n")
+            for line in prompt.split('\n'):
+                f.write(f"# {line}\n")
+            f.write("#\n")
+            f.write("# Write your response below this line:\n\n")
+            
+            temp_path = f.name
+        
+        try:
+            # Open vim with the temporary file
+            subprocess.run(['vim', temp_path], check=True)
+            
+            # Read the response
+            with open(temp_path, 'r') as f:
+                content = f.read()
+            
+            # Extract only the response (skip comments until first non-empty non-comment line)
+            lines = content.split('\n')
+            response_started = False
+            response_lines = []
+            
+            for line in lines:
+                if not response_started:
+                    # Skip empty lines and comments until we find the first content line
+                    if line.strip() and not line.startswith('#'):
+                        response_started = True
+                        response_lines.append(line)
+                else:
+                    # Once we've started, include everything (even comments)
+                    response_lines.append(line)
+            
+            response = '\n'.join(response_lines).strip()
+            
+            # Check if response is empty
+            if not response:
+                print("\nVim response was empty. Returning to input.")
+                return self._get_user_input(prompt, system_prompt)
+            
+            print(f"\nVim response captured ({len(response)} characters)")
+            print("\n" + "="*80)
+            return response
+            
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            if isinstance(e, FileNotFoundError):
+                print("\nVim not found. Retrying input.")
+            else:
+                print("\nVim was cancelled or failed. Retrying input.")
+            
+            return self._get_user_input(prompt, system_prompt)
+            
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
     
     def get_model_info(self) -> str:
         return self.model
