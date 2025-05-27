@@ -65,12 +65,6 @@ def main() -> None:
     args = parser.parse_args()
     
     try:
-        # Delete the output directory if it exists
-        if os.path.exists(args.output):
-            shutil.rmtree(args.output)
-        # Create the output directory
-        os.makedirs(args.output)
-        
         # Create LLM instances
         coder_llm = LLMFactory.create_llm(
             llm_type=args.coder_type,
@@ -111,6 +105,11 @@ def main() -> None:
             generated_script = generated_script.split("```python")[1].split("```")[0].strip()
         elif "```" in generated_script:
             generated_script = generated_script.split("```")[1].split("```")[0].strip()
+        
+        # Only delete and create output directory after script is generated successfully
+        if os.path.exists(args.output):
+            shutil.rmtree(args.output)
+        os.makedirs(args.output)
         
         # Write the generated script to file
         scaffold_file = os.path.join(args.output, "scaffold.py")
