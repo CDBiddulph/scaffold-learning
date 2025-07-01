@@ -6,13 +6,14 @@ import puz
 import re
 
 
-def score_puzzle(puz_file, answer_file):
+def score_puzzle(puz_file, answer_file, mode='strict'):
     """
     Score a puzzle answer file against the solution.
     
     Args:
         puz_file: Path to .puz file
         answer_file: Path to .txt file with answers
+        mode: 'strict' (all instances must be correct) or 'lenient' (any instance can be correct)
     
     Returns:
         tuple: (score_float, correct_count, total_count)
@@ -37,9 +38,10 @@ def score_puzzle(puz_file, answer_file):
         return (0.0, 0, 0)
     
     # Track correctness of each fillable square
-    # We'll use None for unfilled, True for correct, False for incorrect
+    # We'll track sets of squares that have been seen as correct/incorrect
     total_squares = puzzle.width * puzzle.height
-    square_correctness = [None] * total_squares
+    correct_squares = set()
+    incorrect_squares = set()
     
     # Process each piece
     for piece in pieces:
@@ -48,22 +50,31 @@ def score_puzzle(puz_file, answer_file):
             continue
             
         if piece.startswith('Across:'):
-            _process_clue_section(piece, numbering.across, puzzle, square_correctness, 'across')
+            _process_clue_section(piece, numbering.across, puzzle, correct_squares, incorrect_squares, 'across')
         elif piece.startswith('Down:'):
-            _process_clue_section(piece, numbering.down, puzzle, square_correctness, 'down')
+            _process_clue_section(piece, numbering.down, puzzle, correct_squares, incorrect_squares, 'down')
         else:
             # Assume it's a grid
-            _process_grid(piece, puzzle, square_correctness)
+            _process_grid(piece, puzzle, correct_squares, incorrect_squares)
     
-    # Count fillable squares and correct squares
+    # Count fillable squares and determine correct squares based on mode
     fillable_count = 0
-    correct_count = 0
+    final_correct_squares = set()
     
     for i in range(total_squares):
         if puzzle.solution[i] != '.':  # Not a black square
             fillable_count += 1
-            if square_correctness[i] is True:
-                correct_count += 1
+            
+            if mode == 'strict':
+                # Square is correct only if it was never marked incorrect
+                if i in correct_squares and i not in incorrect_squares:
+                    final_correct_squares.add(i)
+            elif mode == 'lenient':
+                # Square is correct if it was ever marked correct
+                if i in correct_squares:
+                    final_correct_squares.add(i)
+    
+    correct_count = len(final_correct_squares)
     
     # Calculate score
     if fillable_count == 0:
@@ -73,7 +84,7 @@ def score_puzzle(puz_file, answer_file):
     return (score, correct_count, fillable_count)
 
 
-def _process_grid(grid_text, puzzle, square_correctness):
+def _process_grid(grid_text, puzzle, correct_squares, incorrect_squares):
     """Process a grid format piece"""
     lines = grid_text.strip().split('\n')
     
@@ -97,13 +108,12 @@ def _process_grid(grid_text, puzzle, square_correctness):
                 
             # Mark square as correct or incorrect
             if actual == expected:
-                if square_correctness[square_idx] is None:
-                    square_correctness[square_idx] = True
+                correct_squares.add(square_idx)
             else:
-                square_correctness[square_idx] = False
+                incorrect_squares.add(square_idx)
 
 
-def _process_clue_section(section_text, clues, puzzle, square_correctness, direction):
+def _process_clue_section(section_text, clues, puzzle, correct_squares, incorrect_squares, direction):
     """Process an Across: or Down: section"""
     lines = section_text.split('\n')[1:]  # Skip the "Across:" or "Down:" line
     
@@ -151,23 +161,28 @@ def _process_clue_section(section_text, clues, puzzle, square_correctness, direc
                 
             # Mark square as correct or incorrect
             if letter == expected:
-                if square_correctness[square_idx] is None:
-                    square_correctness[square_idx] = True
+                correct_squares.add(square_idx)
             else:
-                square_correctness[square_idx] = False
+                incorrect_squares.add(square_idx)
 
 
 def main():
     """Command line interface"""
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <puzzle.puz> <answer.txt>")
+    if len(sys.argv) < 3 or len(sys.argv) > 4:
+        print(f"Usage: {sys.argv[0]} <puzzle.puz> <answer.txt> [mode]")
+        print("Mode: 'strict' (default) or 'lenient'")
         sys.exit(1)
     
     puz_file = sys.argv[1]
     answer_file = sys.argv[2]
+    mode = sys.argv[3] if len(sys.argv) == 4 else 'strict'
     
-    score, correct, total = score_puzzle(puz_file, answer_file)
-    print(f"Score: {score:.3f} ({correct}/{total})")
+    if mode not in ['strict', 'lenient']:
+        print("Mode must be 'strict' or 'lenient'")
+        sys.exit(1)
+    
+    score, correct, total = score_puzzle(puz_file, answer_file, mode)
+    print(f"Score: {score:.3f} ({correct}/{total}) [{mode}]")
 
 
 if __name__ == '__main__':
