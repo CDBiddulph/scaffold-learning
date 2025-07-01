@@ -248,6 +248,24 @@ e m b e r
             answer_content, 7 / 23
         )  # Same as strict - no conflicts
 
+    def test_exploit_lenient_with_multiple_grids(self):
+        """Test that lenient mode can be exploited with multiple conflicting grids"""
+        # Create multiple grids that together cover all correct letters
+        answer_content = "\n\n".join(
+            "\n".join(
+                " ".join(letter for _ in range(self.puzzle.width))
+                for _ in range(self.puzzle.height)
+            )
+            for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        )
+
+        # In strict mode: every square is wrong in most grids, so score is 0
+        self._assert_score_strict(answer_content, 0.0)
+
+        # In lenient mode: every correct letter appears somewhere, so perfect score!
+        # This demonstrates the exploit - submitting every possible letter guarantees 100%
+        self._assert_score_lenient(answer_content, 1.0)
+
     def test_command_line_interface(self):
         """Test the command line interface with both modes"""
         # Create a test answer file with conflicts to show mode differences
@@ -267,14 +285,23 @@ Across:
         try:
             # Test cases: (mode, argv, expected_output)
             test_cases = [
-                ("strict", ["score_puz.py", self.temp_puz_file.name, answer_file], 
-                 "Score: 0.957 (22/23) [strict]"),
-                ("strict_explicit", ["score_puz.py", self.temp_puz_file.name, answer_file, "strict"], 
-                 "Score: 0.957 (22/23) [strict]"),
-                ("lenient", ["score_puz.py", self.temp_puz_file.name, answer_file, "lenient"], 
-                 "Score: 1.000 (23/23) [lenient]"),
+                (
+                    "strict",
+                    ["score_puz.py", self.temp_puz_file.name, answer_file],
+                    "Score: 0.957 (22/23) [strict]",
+                ),
+                (
+                    "strict_explicit",
+                    ["score_puz.py", self.temp_puz_file.name, answer_file, "strict"],
+                    "Score: 0.957 (22/23) [strict]",
+                ),
+                (
+                    "lenient",
+                    ["score_puz.py", self.temp_puz_file.name, answer_file, "lenient"],
+                    "Score: 1.000 (23/23) [lenient]",
+                ),
             ]
-            
+
             for mode_name, argv, expected_output in test_cases:
                 with self.subTest(mode=mode_name):
                     with patch("sys.argv", argv):
