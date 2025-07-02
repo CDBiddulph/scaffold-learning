@@ -8,12 +8,34 @@ This module provides abstract interfaces and concrete implementations for differ
 import os
 import tempfile
 import subprocess
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional
+from contextlib import contextmanager
 from dotenv import load_dotenv
 
 # Load the environment variables for the API keys
 load_dotenv()
+
+
+@contextmanager
+def suppress_logging(*logger_names, level=logging.WARNING):
+    """Context manager to temporarily suppress logging for specified loggers.
+    
+    Args:
+        *logger_names: Names of loggers to suppress
+        level: Logging level to set (default: WARNING)
+    """
+    loggers = [logging.getLogger(name) for name in logger_names]
+    original_levels = [logger.level for logger in loggers]
+    
+    try:
+        for logger in loggers:
+            logger.setLevel(level)
+        yield
+    finally:
+        for logger, original_level in zip(loggers, original_levels):
+            logger.setLevel(original_level)
 
 
 class LLMConfig:
@@ -82,16 +104,16 @@ class AnthropicInterface(LLMInterface):
     def generate_response(self, prompt: str, system_prompt: str = "") -> str:
         try:
             import anthropic
-
-            client = anthropic.Anthropic(api_key=self.api_key)
-
-            response = client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return response.content[0].text
+            
+            with suppress_logging("httpx", "anthropic._base_client"):
+                client = anthropic.Anthropic(api_key=self.api_key)
+                response = client.messages.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return response.content[0].text
         except ImportError:
             raise ImportError(
                 "anthropic package not installed. Run: pip install anthropic"
