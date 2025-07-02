@@ -9,6 +9,8 @@ The generated script will take string input and produce string output.
 import argparse
 import os
 import sys
+import json
+from datetime import datetime
 from typing import Dict, Any
 from llm_interfaces import LLMFactory
 import shutil
@@ -133,28 +135,26 @@ def main() -> None:
         with open(scaffold_file, "w") as f:
             f.write(generated_script)
 
-        # Write the main script
-        main_file = os.path.join(args.output, "main.py")
-        with open(main_file, "w") as f:
-            f.write(get_main_script())
-        os.chmod(main_file, 0o755)
-
-        # Generate the executor library in the same directory
-        executor_lib_path = os.path.join(args.output, "llm_executor.py")
-        with open(executor_lib_path, "w") as f:
-            f.write(generate_executor_library_code(executor_config))
-
-        # Copy the llm_interfaces.py file to the output directory
-        interfaces_path = os.path.join(args.output, "llm_interfaces.py")
-        shutil.copy2("llm_interfaces.py", interfaces_path)
+        # Create metadata file with executor configuration
+        metadata = {
+            "executor_type": executor_config["type"],
+            "executor_model": executor_config["model"],
+            "coder_model": args.coder_model,
+            "prompt": args.coder_prompt,
+            "created": datetime.now().isoformat(),
+            "openai_api_key_provided": bool(executor_config.get("openai_api_key")),
+            "anthropic_api_key_provided": bool(executor_config.get("anthropic_api_key"))
+        }
+        
+        metadata_file = os.path.join(args.output, "metadata.json")
+        with open(metadata_file, "w") as f:
+            json.dump(metadata, f, indent=2)
 
         logger.info(f"Generated script saved to: {scaffold_file}")
-        logger.info(f"Main script saved to: {main_file}")
-        logger.info(f"Executor library saved to: {executor_lib_path}")
-        logger.info(f"LLM interfaces copied to: {interfaces_path}")
+        logger.info(f"Metadata saved to: {metadata_file}")
         print(f"\nGeneration complete! To run the generated script:")
-        print(f"  python {main_file} 'your input string'")
-        print(f"  python {main_file} 'your input string' --log-level DEBUG")
+        print(f"  python run_scaffold.py {os.path.basename(args.output)} 'your input string'")
+        print(f"  python run_scaffold.py {os.path.basename(args.output)} 'your input string' --log-level DEBUG --model claude-3-5-sonnet-latest")
 
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
