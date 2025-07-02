@@ -17,7 +17,7 @@ def load_metadata(scaffold_name: str) -> dict:
     metadata_path = Path("scaffold-scripts") / scaffold_name / "metadata.json"
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
-    
+
     with open(metadata_path, "r") as f:
         return json.load(f)
 
@@ -27,16 +27,13 @@ def ensure_docker_image():
     try:
         # Check if image exists
         result = subprocess.run(
-            ["docker", "inspect", "scaffold-runner"],
-            capture_output=True,
-            check=False
+            ["docker", "inspect", "scaffold-runner"], capture_output=True, check=False
         )
-        
+
         if result.returncode != 0:
             print("Building Docker image...")
             subprocess.run(
-                ["docker", "build", "-t", "scaffold-runner", "."],
-                check=True
+                ["docker", "build", "-t", "scaffold-runner", "."], check=True
             )
             print("Docker image built successfully!")
     except subprocess.CalledProcessError as e:
@@ -44,75 +41,80 @@ def ensure_docker_image():
         sys.exit(1)
 
 
-def run_scaffold(scaffold_name: str, input_string: str, log_level: str = "INFO", 
-                override_model: str = None, keep_container: bool = False) -> None:
-    """Run a scaffold in Docker container."""
-    
-    # Load metadata
-    try:
-        metadata = load_metadata(scaffold_name)
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-    
-    # Ensure Docker image exists
-    ensure_docker_image()
-    
-    # Prepare scaffold directory path
-    scaffold_dir = Path("scaffold-scripts") / scaffold_name
-    if not scaffold_dir.exists():
-        print(f"Error: Scaffold directory not found: {scaffold_dir}")
-        sys.exit(1)
-    
-    # Prepare logs directory
-    logs_dir = Path("logs")
-    logs_dir.mkdir(exist_ok=True)
-    
-    # Create timestamp for log file
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = logs_dir / f"{scaffold_name}_{timestamp}.log"
-    
-    # Prepare Docker command
+def resolve_executor_config(
+    metadata: dict, override_model: str = None
+) -> tuple[str, str]:
+    """Resolve executor type and model, handling overrides."""
+    if override_model:
+        from llm_interfaces import LLMFactory
+
+        return LLMFactory.parse_model_spec(override_model)
+    else:
+        return metadata["executor_type"], metadata["executor_model"]
+
+
+def build_docker_command(
+    scaffold_dir: Path,
+    logs_dir: Path,
+    scaffold_name: str,
+    timestamp: str,
+    executor_type: str,
+    executor_model: str,
+    log_level: str,
+    keep_container: bool = False,
+) -> list[str]:
+    """Build the Docker command with all necessary flags and environment variables."""
     docker_cmd = ["docker", "run", "--rm"]
-    
+
     if keep_container:
         docker_cmd.extend(["--name", f"scaffold-{scaffold_name}-{timestamp}"])
-    
-    docker_cmd.extend([
-        "--user", f"{os.getuid()}:{os.getgid()}",
-        "-v", f"{scaffold_dir.absolute()}:/workspace/scaffold",
-        "-v", f"{logs_dir.absolute()}:/workspace/logs",
-    ])
-    
+
+    # Check if we need interactive mode for human model
+    if executor_model == "human":
+        docker_cmd.insert(2, "-it")
+        print("Note: Using interactive mode for human model")
+
+    docker_cmd.extend(
+        [
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "-v",
+            f"{scaffold_dir.absolute()}:/workspace/scaffold",
+            "-v",
+            f"{logs_dir.absolute()}:/workspace/logs",
+        ]
+    )
+
     # Add environment variables from .env file if it exists
     env_file = Path(".env")
     if env_file.exists():
         docker_cmd.extend(["--env-file", str(env_file.absolute())])
-    
-    # Set executor configuration as environment variables
-    if override_model:
-        # Parse the override model to get type and model
-        from llm_interfaces import LLMFactory
-        executor_type, executor_model = LLMFactory.parse_model_spec(override_model)
-    else:
-        # Use original metadata
-        executor_type = metadata["executor_type"]
-        executor_model = metadata["executor_model"]
-    
-    # Check if we need interactive mode for human model
-    is_human_model = executor_model == "human"
-    
-    if is_human_model:
-        # Insert -it flags for interactive terminal (needed for human model)
-        docker_cmd.insert(2, "-it")
-        print("Note: Using interactive mode for human model")
-    
-    docker_cmd.extend([
-        "-e", f"EXECUTOR_TYPE={executor_type}",
-        "-e", f"EXECUTOR_MODEL={executor_model}",
-        "-e", f"LOG_LEVEL={log_level}",
-        "scaffold-runner",
-        "python", "-c", f"""
+
+    docker_cmd.extend(
+        [
+            "-e",
+            f"EXECUTOR_TYPE={executor_type}",
+            "-e",
+            f"EXECUTOR_MODEL={executor_model}",
+            "-e",
+            f"LOG_LEVEL={log_level}",
+            "scaffold-runner",
+        ]
+    )
+
+    return docker_cmd
+
+
+def generate_python_script(
+    scaffold_name: str,
+    input_string: str,
+    executor_type: str,
+    executor_model: str,
+    log_level: str,
+    timestamp: str,
+) -> str:
+    """Generate the Python script to run inside the Docker container."""
+    return f"""
 import sys
 import logging
 import json
@@ -155,41 +157,133 @@ except Exception as e:
     logging.error(f'Error occurred: {{str(e)}}', exc_info=True)
     sys.exit(1)
 """
-    ])
-    
-    print(f"Running scaffold '{scaffold_name}' with executor {executor_type}/{executor_model}")
-    print(f"Logs will be saved to: {log_file}")
-    
-    try:
-        # Run the Docker container and capture output
-        result = subprocess.run(docker_cmd, capture_output=True, text=True, check=False)
-        
-        # Save combined stdout and stderr to log file
-        with open(log_file, 'w') as f:
-            f.write(f"=== Scaffold Execution Log ===\n")
-            f.write(f"Scaffold: {scaffold_name}\n")
-            f.write(f"Executor: {executor_type}/{executor_model}\n")
-            f.write(f"Input: {input_string}\n")
-            f.write(f"Timestamp: {timestamp}\n")
-            f.write(f"Exit Code: {result.returncode}\n")
-            f.write(f"================================\n\n")
-            
-            if result.stdout:
-                f.write("=== STDOUT ===\n")
-                f.write(result.stdout)
-                f.write("\n")
-            
-            if result.stderr:
-                f.write("=== STDERR ===\n") 
-                f.write(result.stderr)
-                f.write("\n")
-        
-        # Still print to console for immediate feedback
+
+
+def save_execution_log(
+    log_file: Path,
+    scaffold_name: str,
+    executor_type: str,
+    executor_model: str,
+    input_string: str,
+    timestamp: str,
+    result: subprocess.CompletedProcess,
+) -> None:
+    """Save the execution log to a file."""
+    with open(log_file, "w") as f:
+        f.write(f"=== Scaffold Execution Log ===\n")
+        f.write(f"Scaffold: {scaffold_name}\n")
+        f.write(f"Executor: {executor_type}/{executor_model}\n")
+        f.write(f"Input: {input_string}\n")
+        f.write(f"Timestamp: {timestamp}\n")
+        f.write(f"Exit Code: {result.returncode}\n")
+        f.write(f"================================\n\n")
+
         if result.stdout:
-            print(result.stdout, end='')
+            f.write("=== STDOUT ===\n")
+            f.write(result.stdout)
+            f.write("\n")
+
         if result.stderr:
-            print(result.stderr, end='', file=sys.stderr)
-            
+            f.write("=== STDERR ===\n")
+            f.write(result.stderr)
+            f.write("\n")
+
+
+def run_scaffold(
+    scaffold_name: str,
+    input_string: str,
+    log_level: str = "INFO",
+    override_model: str = None,
+    keep_container: bool = False,
+) -> None:
+    """Run a scaffold in Docker container."""
+
+    # Load metadata
+    try:
+        metadata = load_metadata(scaffold_name)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    # Ensure Docker image exists
+    ensure_docker_image()
+
+    # Prepare directories and paths
+    scaffold_dir = Path("scaffold-scripts") / scaffold_name
+    if not scaffold_dir.exists():
+        print(f"Error: Scaffold directory not found: {scaffold_dir}")
+        sys.exit(1)
+
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = logs_dir / f"{scaffold_name}_{timestamp}.log"
+
+    # Resolve executor configuration
+    executor_type, executor_model = resolve_executor_config(metadata, override_model)
+
+    # Build Docker command
+    docker_cmd = build_docker_command(
+        scaffold_dir,
+        logs_dir,
+        scaffold_name,
+        timestamp,
+        executor_type,
+        executor_model,
+        log_level,
+        keep_container,
+    )
+
+    # Add Python script to execute
+    python_script = generate_python_script(
+        scaffold_name, input_string, executor_type, executor_model, log_level, timestamp
+    )
+    docker_cmd.extend(["python", "-c", python_script])
+
+    print(
+        f"Running scaffold '{scaffold_name}' with executor {executor_type}/{executor_model}"
+    )
+    print(f"Logs will be saved to: {log_file}")
+
+    try:
+        if executor_model == "human":
+            # For human model, don't capture output - let it connect directly to terminal
+            result = subprocess.run(docker_cmd, check=False)
+
+            # Create a minimal log file for human model
+            with open(log_file, "w") as f:
+                f.write(f"=== Scaffold Execution Log ===\n")
+                f.write(f"Scaffold: {scaffold_name}\n")
+                f.write(f"Executor: {executor_type}/{executor_model}\n")
+                f.write(f"Input: {input_string}\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Exit Code: {result.returncode}\n")
+                f.write(f"================================\n\n")
+                f.write("Note: Human model execution - no output captured\n")
+                f.write("User interaction occurred directly in terminal.\n")
+
+            return result.returncode
+        # For other models, capture output as before
+        result = subprocess.run(docker_cmd, capture_output=True, text=True, check=False)
+
+        # Save execution log to file
+        save_execution_log(
+            log_file,
+            scaffold_name,
+            executor_type,
+            executor_model,
+            input_string,
+            timestamp,
+            result,
+        )
+
+        # Print to console for immediate feedback
+        if result.stdout:
+            print(result.stdout, end="")
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr)
+
         return result.returncode
     except subprocess.CalledProcessError as e:
         print(f"Failed to run scaffold: {e}")
@@ -213,25 +307,25 @@ def main():
     parser.add_argument(
         "--keep-container",
         action="store_true",
-        help="Keep the container after execution (for debugging)"
+        help="Keep the container after execution (for debugging)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Get input string (from command line argument or stdin)
     if args.input_string:
         input_string = args.input_string
     else:
         input_string = input().strip()
-    
+
     exit_code = run_scaffold(
         args.scaffold_name,
         input_string,
         args.log_level,
         args.model,
-        args.keep_container
+        args.keep_container,
     )
-    
+
     sys.exit(exit_code)
 
 
