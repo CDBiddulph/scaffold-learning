@@ -161,8 +161,35 @@ except Exception as e:
     print(f"Logs will be saved to: {log_file}")
     
     try:
-        # Run the Docker container
-        result = subprocess.run(docker_cmd, check=False)
+        # Run the Docker container and capture output
+        result = subprocess.run(docker_cmd, capture_output=True, text=True, check=False)
+        
+        # Save combined stdout and stderr to log file
+        with open(log_file, 'w') as f:
+            f.write(f"=== Scaffold Execution Log ===\n")
+            f.write(f"Scaffold: {scaffold_name}\n")
+            f.write(f"Executor: {executor_type}/{executor_model}\n")
+            f.write(f"Input: {input_string}\n")
+            f.write(f"Timestamp: {timestamp}\n")
+            f.write(f"Exit Code: {result.returncode}\n")
+            f.write(f"================================\n\n")
+            
+            if result.stdout:
+                f.write("=== STDOUT ===\n")
+                f.write(result.stdout)
+                f.write("\n")
+            
+            if result.stderr:
+                f.write("=== STDERR ===\n") 
+                f.write(result.stderr)
+                f.write("\n")
+        
+        # Still print to console for immediate feedback
+        if result.stdout:
+            print(result.stdout, end='')
+        if result.stderr:
+            print(result.stderr, end='', file=sys.stderr)
+            
         return result.returncode
     except subprocess.CalledProcessError as e:
         print(f"Failed to run scaffold: {e}")
