@@ -17,29 +17,13 @@ import shutil
 import logging
 
 # Template file paths
-MAIN_SCRIPT_TEMPLATE = "templates/main_script_template.py"
 CODER_SYSTEM_PROMPT_TEMPLATE = "templates/coder_system_prompt.txt"
-EXECUTOR_LIBRARY_TEMPLATE = "templates/executor_library_template.py"
-MOCK_SCRIPT_TEMPLATE = "templates/mock_script_template.py"
-
-
-def get_main_script() -> str:
-    """Generate the main script that handles boilerplate functionality"""
-    with open(MAIN_SCRIPT_TEMPLATE, "r") as f:
-        return f.read()
 
 
 def get_coder_system_prompt() -> str:
     """Get the system prompt for the coder LLM"""
     with open(CODER_SYSTEM_PROMPT_TEMPLATE, "r") as f:
         return f.read()
-
-
-def generate_executor_library_code(executor_config: Dict[str, Any]) -> str:
-    """Generate the executor library code that will be available to generated scripts"""
-    with open(EXECUTOR_LIBRARY_TEMPLATE, "r") as f:
-        template = f.read()
-        return template.format(executor_config=repr(executor_config))
 
 
 def main() -> None:

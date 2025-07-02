@@ -5,7 +5,6 @@ This module provides access to the executor LLM for generated scripts running in
 """
 
 import os
-from typing import Optional
 
 
 def execute_llm(prompt: str, system_prompt: str = "") -> str:
