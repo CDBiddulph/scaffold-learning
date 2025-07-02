@@ -108,6 +108,9 @@ def generate_python_script(
     timestamp: str,
 ) -> str:
     """Generate the Python script to run inside the Docker container."""
+    # Properly escape the input string for Python
+    escaped_input = json.dumps(input_string)
+
     return f"""
 import sys
 import logging
@@ -120,8 +123,11 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(message)s',
 )
 
+# Use properly escaped input string
+input_string = {escaped_input}
+
 logging.info(f'Running scaffold: {scaffold_name}')
-logging.info(f'Input: {input_string}')
+logging.info(f'Input length: {{len(input_string)}} characters')
 logging.info(f'Executor: {executor_model_spec}')
 
 try:
@@ -130,14 +136,14 @@ try:
     from scaffold import process_input
     
     # Run the scaffold
-    result = process_input('{input_string}')
+    result = process_input(input_string)
     print(result)
     
     # Save result to log file
     log_data = {{
         'scaffold_name': '{scaffold_name}',
         'timestamp': datetime.now().isoformat(),
-        'input': '{input_string}',
+        'input': input_string,
         'result': result,
         'executor_model_spec': '{executor_model_spec}',
         'log_level': '{log_level}'
@@ -281,10 +287,19 @@ def run_scaffold(
         return 1
 
 
-def main():
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a scaffold script in Docker")
     parser.add_argument("scaffold_name", help="Name of the scaffold directory")
-    parser.add_argument("input_string", nargs="?", help="Input string to process")
+    parser.add_argument(
+        "input_string",
+        nargs="?",
+        help="Input string to process (if not provided, will read from stdin)",
+    )
+    parser.add_argument(
+        "--file",
+        "-f",
+        help="Read input from file instead of command line or stdin",
+    )
     parser.add_argument(
         "--log-level",
         default="INFO",
@@ -303,11 +318,29 @@ def main():
 
     args = parser.parse_args()
 
-    # Get input string (from command line argument or stdin)
-    if args.input_string:
-        input_string = args.input_string
+    # Validate that file and input_string are not both provided
+    if args.file and args.input_string:
+        raise ValueError("Cannot specify both --file and input_string argument")
+
+    return args
+
+
+def _get_input_string(args: argparse.Namespace) -> str:
+    """Get the input string from the command line arguments or stdin."""
+    if args.file:
+        with open(args.file, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    elif args.input_string:
+        return args.input_string
     else:
-        input_string = input().strip()
+        return input().strip()
+
+
+def main():
+    args = _parse_args()
+
+    # Get input string (from file, command line argument, or stdin)
+    input_string = _get_input_string(args)
 
     exit_code = run_scaffold(
         args.scaffold_name,
