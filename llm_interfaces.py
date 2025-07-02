@@ -21,14 +21,14 @@ load_dotenv()
 @contextmanager
 def suppress_logging(*logger_names, level=logging.WARNING):
     """Context manager to temporarily suppress logging for specified loggers.
-    
+
     Args:
         *logger_names: Names of loggers to suppress
         level: Logging level to set (default: WARNING)
     """
     loggers = [logging.getLogger(name) for name in logger_names]
     original_levels = [logger.level for logger in loggers]
-    
+
     try:
         for logger in loggers:
             logger.setLevel(level)
@@ -104,7 +104,7 @@ class AnthropicInterface(LLMInterface):
     def generate_response(self, prompt: str, system_prompt: str = "") -> str:
         try:
             import anthropic
-            
+
             with suppress_logging("httpx", "anthropic._base_client"):
                 client = anthropic.Anthropic(api_key=self.api_key)
                 response = client.messages.create(
@@ -282,6 +282,13 @@ class HumanLLMInterface(LLMInterface):
 class LLMFactory:
     """Factory for creating LLM interfaces"""
 
+    MODEL_ALIASES = {
+        # Aliases for latest Anthropic models
+        "opus": "claude-opus-4-20250514",
+        "sonnet": "claude-sonnet-4-20250514",
+        "haiku": "claude-3-5-haiku-latest",
+    }
+
     # Known model mappings
     KNOWN_MODELS = {
         # OpenAI models
@@ -310,6 +317,9 @@ class LLMFactory:
         """Parse model specification into (type, model) tuple"""
         if not model_spec:
             return "openai", LLMConfig.DEFAULT_OPENAI_MODEL
+
+        # Check for aliases first and resolve them
+        model_spec = LLMFactory.MODEL_ALIASES.get(model_spec, model_spec)
 
         # Check if it contains a slash (explicit type/model format)
         if "/" in model_spec:
