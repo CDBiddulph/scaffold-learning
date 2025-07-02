@@ -73,29 +73,15 @@ def main() -> None:
             anthropic_api_key=args.anthropic_api_key,
         )
 
-        executor_llm = LLMFactory.create_llm(
-            model_spec=args.executor_model,
-            openai_api_key=args.openai_api_key,
-            anthropic_api_key=args.anthropic_api_key,
-        )
+        coder_model_spec = LLMFactory.resolve_model_spec(args.coder_model)
+        executor_model_spec = LLMFactory.resolve_model_spec(args.executor_model)
 
         # Log configuration summary
         logger.info("Configuration Summary:")
         logger.info(f"Output Directory: {args.output}")
-        logger.info("Coder LLM Configuration:")
-        logger.info(f"  Model: {coder_llm.get_model_info()}")
-        logger.info("Executor LLM Configuration:")
-        logger.info(f"  Model: {executor_llm.get_model_info()}")
+        logger.info(f"Coder LLM: {coder_model_spec}")
+        logger.info(f"Executor LLM: {executor_model_spec}")
         logger.info(f"Generating script based on prompt: {args.coder_prompt}")
-
-        # Prepare executor configuration (parse the executor model spec)
-        executor_type, executor_model = LLMFactory.parse_model_spec(args.executor_model)
-        executor_config = {
-            "type": executor_type,
-            "model": executor_model,
-            "openai_api_key": args.openai_api_key,
-            "anthropic_api_key": args.anthropic_api_key,
-        }
 
         # Generate the script using coder LLM
         system_prompt = get_coder_system_prompt()
@@ -121,15 +107,10 @@ def main() -> None:
 
         # Create metadata file with executor configuration
         metadata = {
-            "executor_type": executor_config["type"],
-            "executor_model": executor_config["model"],
-            "coder_model": args.coder_model,
+            "executor_model_spec": executor_model_spec,
+            "coder_model_spec": coder_model_spec,
             "prompt": args.coder_prompt,
             "created": datetime.now().isoformat(),
-            "openai_api_key_provided": bool(executor_config.get("openai_api_key")),
-            "anthropic_api_key_provided": bool(
-                executor_config.get("anthropic_api_key")
-            ),
         }
 
         metadata_file = os.path.join(args.output, "metadata.json")

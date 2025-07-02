@@ -41,16 +41,14 @@ def ensure_docker_image():
         sys.exit(1)
 
 
-def resolve_executor_config(
-    metadata: dict, override_model: str = None
-) -> tuple[str, str]:
-    """Resolve executor type and model, handling overrides."""
+def resolve_executor_model_spec(metadata: dict, override_model: str = None) -> str:
+    """Resolve executor specification, handling overrides."""
     if override_model:
         from llm_interfaces import LLMFactory
 
-        return LLMFactory.parse_model_spec(override_model)
+        return LLMFactory.resolve_model_spec(override_model)
     else:
-        return metadata["executor_type"], metadata["executor_model"]
+        return metadata["executor_model_spec"]
 
 
 def build_docker_command(
@@ -58,8 +56,7 @@ def build_docker_command(
     logs_dir: Path,
     scaffold_name: str,
     timestamp: str,
-    executor_type: str,
-    executor_model: str,
+    executor_spec: str,
     log_level: str,
     keep_container: bool = False,
 ) -> list[str]:
@@ -70,7 +67,7 @@ def build_docker_command(
         docker_cmd.extend(["--name", f"scaffold-{scaffold_name}-{timestamp}"])
 
     # Check if we need interactive mode for human model
-    if executor_model == "human":
+    if executor_spec == "human/human":
         docker_cmd.insert(2, "-it")
         print("Note: Using interactive mode for human model")
 
@@ -93,9 +90,7 @@ def build_docker_command(
     docker_cmd.extend(
         [
             "-e",
-            f"EXECUTOR_TYPE={executor_type}",
-            "-e",
-            f"EXECUTOR_MODEL={executor_model}",
+            f"EXECUTOR_SPEC={executor_spec}",
             "-e",
             f"LOG_LEVEL={log_level}",
             "scaffold-runner",
@@ -108,8 +103,7 @@ def build_docker_command(
 def generate_python_script(
     scaffold_name: str,
     input_string: str,
-    executor_type: str,
-    executor_model: str,
+    executor_spec: str,
     log_level: str,
     timestamp: str,
 ) -> str:
@@ -128,7 +122,7 @@ logging.basicConfig(
 
 logging.info(f'Running scaffold: {scaffold_name}')
 logging.info(f'Input: {input_string}')
-logging.info(f'Executor: {executor_type}/{executor_model}')
+logging.info(f'Executor: {executor_spec}')
 
 try:
     # Import scaffold
@@ -145,8 +139,7 @@ try:
         'timestamp': datetime.now().isoformat(),
         'input': '{input_string}',
         'result': result,
-        'executor_type': '{executor_type}',
-        'executor_model': '{executor_model}',
+        'executor_spec': '{executor_spec}',
         'log_level': '{log_level}'
     }}
     
@@ -162,8 +155,7 @@ except Exception as e:
 def save_execution_log(
     log_file: Path,
     scaffold_name: str,
-    executor_type: str,
-    executor_model: str,
+    executor_spec: str,
     input_string: str,
     timestamp: str,
     result: subprocess.CompletedProcess,
@@ -172,7 +164,7 @@ def save_execution_log(
     with open(log_file, "w") as f:
         f.write(f"=== Scaffold Execution Log ===\n")
         f.write(f"Scaffold: {scaffold_name}\n")
-        f.write(f"Executor: {executor_type}/{executor_model}\n")
+        f.write(f"Executor: {executor_spec}\n")
         f.write(f"Input: {input_string}\n")
         f.write(f"Timestamp: {timestamp}\n")
         f.write(f"Exit Code: {result.returncode}\n")
@@ -220,8 +212,8 @@ def run_scaffold(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = logs_dir / f"{scaffold_name}_{timestamp}.log"
 
-    # Resolve executor configuration
-    executor_type, executor_model = resolve_executor_config(metadata, override_model)
+    # Resolve executor specification
+    executor_spec = resolve_executor_model_spec(metadata, override_model)
 
     # Build Docker command
     docker_cmd = build_docker_command(
@@ -229,25 +221,22 @@ def run_scaffold(
         logs_dir,
         scaffold_name,
         timestamp,
-        executor_type,
-        executor_model,
+        executor_spec,
         log_level,
         keep_container,
     )
 
     # Add Python script to execute
     python_script = generate_python_script(
-        scaffold_name, input_string, executor_type, executor_model, log_level, timestamp
+        scaffold_name, input_string, executor_spec, log_level, timestamp
     )
     docker_cmd.extend(["python", "-c", python_script])
 
-    print(
-        f"Running scaffold '{scaffold_name}' with executor {executor_type}/{executor_model}"
-    )
+    print(f"Running scaffold '{scaffold_name}' with executor {executor_spec}")
     print(f"Logs will be saved to: {log_file}")
 
     try:
-        if executor_model == "human":
+        if executor_spec == "human/human":
             # For human model, don't capture output - let it connect directly to terminal
             result = subprocess.run(docker_cmd, check=False)
 
@@ -255,7 +244,7 @@ def run_scaffold(
             with open(log_file, "w") as f:
                 f.write(f"=== Scaffold Execution Log ===\n")
                 f.write(f"Scaffold: {scaffold_name}\n")
-                f.write(f"Executor: {executor_type}/{executor_model}\n")
+                f.write(f"Executor: {executor_spec}\n")
                 f.write(f"Input: {input_string}\n")
                 f.write(f"Timestamp: {timestamp}\n")
                 f.write(f"Exit Code: {result.returncode}\n")
@@ -264,19 +253,21 @@ def run_scaffold(
                 f.write("User interaction occurred directly in terminal.\n")
 
             return result.returncode
-        # For other models, capture output as before
-        result = subprocess.run(docker_cmd, capture_output=True, text=True, check=False)
+        else:
+            # For other models, capture output as before
+            result = subprocess.run(
+                docker_cmd, capture_output=True, text=True, check=False
+            )
 
-        # Save execution log to file
-        save_execution_log(
-            log_file,
-            scaffold_name,
-            executor_type,
-            executor_model,
-            input_string,
-            timestamp,
-            result,
-        )
+            # Save execution log to file
+            save_execution_log(
+                log_file,
+                scaffold_name,
+                executor_spec,
+                input_string,
+                timestamp,
+                result,
+            )
 
         # Print to console for immediate feedback
         if result.stdout:

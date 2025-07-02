@@ -313,26 +313,41 @@ class LLMFactory:
     }
 
     @staticmethod
-    def parse_model_spec(model_spec: str) -> tuple[str, str]:
-        """Parse model specification into (type, model) tuple"""
+    def resolve_model_spec(model_spec: str) -> str:
+        """Resolve a model specification to its canonical form.
+
+        Examples:
+            "haiku" → "anthropic/claude-3-5-haiku-latest"
+            "human" → "human/human"
+            "gpt-4o" → "openai/gpt-4o"
+            "anthropic/claude-3-haiku" → "anthropic/claude-3-haiku" (unchanged)
+        """
         if not model_spec:
-            return "openai", LLMConfig.DEFAULT_OPENAI_MODEL
+            return f"openai/{LLMConfig.DEFAULT_OPENAI_MODEL}"
 
         # Check for aliases first and resolve them
         model_spec = LLMFactory.MODEL_ALIASES.get(model_spec, model_spec)
 
-        # Check if it contains a slash (explicit type/model format)
+        # If it already contains a slash, it's already in canonical form
         if "/" in model_spec:
-            llm_type, model = model_spec.split("/", 1)
-            return llm_type.lower(), model
+            return model_spec
 
         # Check known models
         if model_spec in LLMFactory.KNOWN_MODELS:
             llm_type = LLMFactory.KNOWN_MODELS[model_spec]
-            return llm_type, model_spec
+            return f"{llm_type}/{model_spec}"
 
-        # Default to OpenAI if unknown
-        return "openai", model_spec
+        raise ValueError(f"Unknown model spec: {model_spec}")
+
+    @staticmethod
+    def _parse_model_spec(model_spec: str) -> tuple[str, str]:
+        """Parse a model specification into (type, model) tuple.
+
+        This method first resolves the spec to canonical form, then splits it.
+        """
+        canonical_spec = LLMFactory.resolve_model_spec(model_spec)
+        llm_type, model = canonical_spec.split("/", 1)
+        return llm_type, model
 
     @staticmethod
     def create_llm(
@@ -341,7 +356,7 @@ class LLMFactory:
         anthropic_api_key: Optional[str] = None,
     ) -> LLMInterface:
         """Create LLM from consolidated model specification"""
-        llm_type, model = LLMFactory.parse_model_spec(model_spec)
+        llm_type, model = LLMFactory._parse_model_spec(model_spec)
 
         if llm_type in ["openai", "chatgpt", "gpt"]:
             return OpenAIInterface(model=model, api_key=openai_api_key)

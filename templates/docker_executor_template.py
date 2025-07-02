@@ -21,20 +21,13 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
     # Import the LLM factory and logging suppression
     from llm_interfaces import LLMFactory, suppress_logging
 
-    # Get executor configuration from environment variables
-    executor_type = os.environ.get("EXECUTOR_TYPE", "anthropic")
-    executor_model = os.environ.get("EXECUTOR_MODEL", "claude-3-haiku-20240307")
-
-    # Reconstruct model spec
-    if executor_model in ["mock", "human"]:
-        model_spec = executor_model
-    else:
-        model_spec = f"{executor_type}/{executor_model}"
+    # Get executor specification from environment variable
+    executor_model_spec = os.environ.get("EXECUTOR_MODEL_SPEC", "haiku")
 
     # Create LLM instance
     with suppress_logging("httpx", "anthropic._base_client"):
         executor_llm = LLMFactory.create_llm(
-            model_spec=model_spec,
+            model_spec=executor_model_spec,
             openai_api_key=os.environ.get("OPENAI_API_KEY"),
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
         )
