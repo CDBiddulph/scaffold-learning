@@ -47,37 +47,52 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
     logger = logging.getLogger(__name__)
-    
-    parser = argparse.ArgumentParser(description="Generate Python scripts using a coder LLM")
-    parser.add_argument("coder_prompt", help="Prompt describing what the generated script should do")
-    parser.add_argument("-o", "--output", required=True, help="Output directory for the generated script")
-    
+
+    parser = argparse.ArgumentParser(
+        description="Generate Python scripts using a coder LLM"
+    )
+    parser.add_argument(
+        "coder_prompt", help="Prompt describing what the generated script should do"
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        required=True,
+        help="Output directory for the generated script",
+    )
+
     # LLM configuration
-    parser.add_argument("--coder-model", default="gpt-4.1-nano", 
-                       help="Coder LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')")
-    parser.add_argument("--executor-model", default="gpt-4.1-nano",
-                       help="Executor LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')")
-    
+    parser.add_argument(
+        "--coder-model",
+        default="gpt-4.1-nano",
+        help="Coder LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')",
+    )
+    parser.add_argument(
+        "--executor-model",
+        default="gpt-4.1-nano",
+        help="Executor LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')",
+    )
+
     # API Keys
     parser.add_argument("--openai-api-key", help="OpenAI API key")
     parser.add_argument("--anthropic-api-key", help="Anthropic API key")
-    
+
     args = parser.parse_args()
-    
+
     try:
         # Create LLM instances using new consolidated model specification
         coder_llm = LLMFactory.create_llm(
             model_spec=args.coder_model,
             openai_api_key=args.openai_api_key,
-            anthropic_api_key=args.anthropic_api_key
+            anthropic_api_key=args.anthropic_api_key,
         )
-        
+
         executor_llm = LLMFactory.create_llm(
             model_spec=args.executor_model,
             openai_api_key=args.openai_api_key,
-            anthropic_api_key=args.anthropic_api_key
+            anthropic_api_key=args.anthropic_api_key,
         )
-        
+
         # Log configuration summary
         logger.info("Configuration Summary:")
         logger.info(f"Output Directory: {args.output}")
@@ -86,51 +101,53 @@ def main() -> None:
         logger.info("Executor LLM Configuration:")
         logger.info(f"  Model: {executor_llm.get_model_info()}")
         logger.info(f"Generating script based on prompt: {args.coder_prompt}")
-        
+
         # Prepare executor configuration (parse the executor model spec)
         executor_type, executor_model = LLMFactory.parse_model_spec(args.executor_model)
         executor_config = {
             "type": executor_type,
             "model": executor_model,
             "openai_api_key": args.openai_api_key,
-            "anthropic_api_key": args.anthropic_api_key
+            "anthropic_api_key": args.anthropic_api_key,
         }
-        
+
         # Generate the script using coder LLM
         system_prompt = get_coder_system_prompt()
         generated_script = coder_llm.generate_response(args.coder_prompt, system_prompt)
-        
+
         # Clean up the generated script (remove markdown formatting if present)
         if "```python" in generated_script:
-            generated_script = generated_script.split("```python")[1].split("```")[0].strip()
+            generated_script = (
+                generated_script.split("```python")[1].split("```")[0].strip()
+            )
         elif "```" in generated_script:
             generated_script = generated_script.split("```")[1].split("```")[0].strip()
-        
+
         # Only delete and create output directory after script is generated successfully
         if os.path.exists(args.output):
             shutil.rmtree(args.output)
         os.makedirs(args.output)
-        
+
         # Write the generated script to file
         scaffold_file = os.path.join(args.output, "scaffold.py")
-        with open(scaffold_file, 'w') as f:
+        with open(scaffold_file, "w") as f:
             f.write(generated_script)
 
         # Write the main script
         main_file = os.path.join(args.output, "main.py")
-        with open(main_file, 'w') as f:
+        with open(main_file, "w") as f:
             f.write(get_main_script())
         os.chmod(main_file, 0o755)
-        
+
         # Generate the executor library in the same directory
         executor_lib_path = os.path.join(args.output, "llm_executor.py")
-        with open(executor_lib_path, 'w') as f:
+        with open(executor_lib_path, "w") as f:
             f.write(generate_executor_library_code(executor_config))
 
         # Copy the llm_interfaces.py file to the output directory
         interfaces_path = os.path.join(args.output, "llm_interfaces.py")
         shutil.copy2("llm_interfaces.py", interfaces_path)
-        
+
         logger.info(f"Generated script saved to: {scaffold_file}")
         logger.info(f"Main script saved to: {main_file}")
         logger.info(f"Executor library saved to: {executor_lib_path}")
@@ -138,7 +155,7 @@ def main() -> None:
         print(f"\nGeneration complete! To run the generated script:")
         print(f"  python {main_file} 'your input string'")
         print(f"  python {main_file} 'your input string' --log-level DEBUG")
-        
+
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
         sys.exit(1)
