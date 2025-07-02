@@ -56,7 +56,7 @@ def build_docker_command(
     logs_dir: Path,
     scaffold_name: str,
     timestamp: str,
-    executor_spec: str,
+    executor_model_spec: str,
     log_level: str,
     keep_container: bool = False,
 ) -> list[str]:
@@ -67,7 +67,7 @@ def build_docker_command(
         docker_cmd.extend(["--name", f"scaffold-{scaffold_name}-{timestamp}"])
 
     # Check if we need interactive mode for human model
-    if executor_spec == "human/human":
+    if executor_model_spec == "human/human":
         docker_cmd.insert(2, "-it")
         print("Note: Using interactive mode for human model")
 
@@ -90,7 +90,7 @@ def build_docker_command(
     docker_cmd.extend(
         [
             "-e",
-            f"EXECUTOR_SPEC={executor_spec}",
+            f"EXECUTOR_MODEL_SPEC={executor_model_spec}",
             "-e",
             f"LOG_LEVEL={log_level}",
             "scaffold-runner",
@@ -103,7 +103,7 @@ def build_docker_command(
 def generate_python_script(
     scaffold_name: str,
     input_string: str,
-    executor_spec: str,
+    executor_model_spec: str,
     log_level: str,
     timestamp: str,
 ) -> str:
@@ -122,7 +122,7 @@ logging.basicConfig(
 
 logging.info(f'Running scaffold: {scaffold_name}')
 logging.info(f'Input: {input_string}')
-logging.info(f'Executor: {executor_spec}')
+logging.info(f'Executor: {executor_model_spec}')
 
 try:
     # Import scaffold
@@ -139,7 +139,7 @@ try:
         'timestamp': datetime.now().isoformat(),
         'input': '{input_string}',
         'result': result,
-        'executor_spec': '{executor_spec}',
+        'executor_model_spec': '{executor_model_spec}',
         'log_level': '{log_level}'
     }}
     
@@ -155,7 +155,7 @@ except Exception as e:
 def save_execution_log(
     log_file: Path,
     scaffold_name: str,
-    executor_spec: str,
+    executor_model_spec: str,
     input_string: str,
     timestamp: str,
     result: subprocess.CompletedProcess,
@@ -164,7 +164,7 @@ def save_execution_log(
     with open(log_file, "w") as f:
         f.write(f"=== Scaffold Execution Log ===\n")
         f.write(f"Scaffold: {scaffold_name}\n")
-        f.write(f"Executor: {executor_spec}\n")
+        f.write(f"Executor: {executor_model_spec}\n")
         f.write(f"Input: {input_string}\n")
         f.write(f"Timestamp: {timestamp}\n")
         f.write(f"Exit Code: {result.returncode}\n")
@@ -213,7 +213,7 @@ def run_scaffold(
     log_file = logs_dir / f"{scaffold_name}_{timestamp}.log"
 
     # Resolve executor specification
-    executor_spec = resolve_executor_model_spec(metadata, override_model)
+    executor_model_spec = resolve_executor_model_spec(metadata, override_model)
 
     # Build Docker command
     docker_cmd = build_docker_command(
@@ -221,22 +221,22 @@ def run_scaffold(
         logs_dir,
         scaffold_name,
         timestamp,
-        executor_spec,
+        executor_model_spec,
         log_level,
         keep_container,
     )
 
     # Add Python script to execute
     python_script = generate_python_script(
-        scaffold_name, input_string, executor_spec, log_level, timestamp
+        scaffold_name, input_string, executor_model_spec, log_level, timestamp
     )
     docker_cmd.extend(["python", "-c", python_script])
 
-    print(f"Running scaffold '{scaffold_name}' with executor {executor_spec}")
+    print(f"Running scaffold '{scaffold_name}' with executor {executor_model_spec}")
     print(f"Logs will be saved to: {log_file}")
 
     try:
-        if executor_spec == "human/human":
+        if executor_model_spec == "human/human":
             # For human model, don't capture output - let it connect directly to terminal
             result = subprocess.run(docker_cmd, check=False)
 
@@ -244,7 +244,7 @@ def run_scaffold(
             with open(log_file, "w") as f:
                 f.write(f"=== Scaffold Execution Log ===\n")
                 f.write(f"Scaffold: {scaffold_name}\n")
-                f.write(f"Executor: {executor_spec}\n")
+                f.write(f"Executor: {executor_model_spec}\n")
                 f.write(f"Input: {input_string}\n")
                 f.write(f"Timestamp: {timestamp}\n")
                 f.write(f"Exit Code: {result.returncode}\n")
@@ -263,7 +263,7 @@ def run_scaffold(
             save_execution_log(
                 log_file,
                 scaffold_name,
-                executor_spec,
+                executor_model_spec,
                 input_string,
                 timestamp,
                 result,
