@@ -8,7 +8,9 @@ import argparse
 from typing import Optional
 
 
-def run_script(input_string: str, log_level: str = "INFO", override_model: Optional[str] = None) -> Optional[str]:
+def run_script(
+    input_string: str, log_level: str = "INFO", override_model: Optional[str] = None
+) -> Optional[str]:
     """
     Run the generated script with the given input and log level.
 
@@ -27,13 +29,13 @@ def run_script(input_string: str, log_level: str = "INFO", override_model: Optio
     )
 
     logging.info(f"Processing input: {input_string}")
-    
+
     # Override executor model if specified
     if override_model:
         logging.info(f"Overriding executor model to: {override_model}")
         import llm_executor
         from llm_interfaces import LLMFactory
-        
+
         # Parse the override model and update the config
         executor_type, model = LLMFactory.parse_model_spec(override_model)
         llm_executor.EXECUTOR_CONFIG["type"] = executor_type

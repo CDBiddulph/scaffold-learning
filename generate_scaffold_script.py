@@ -143,9 +143,11 @@ def main() -> None:
             "prompt": args.coder_prompt,
             "created": datetime.now().isoformat(),
             "openai_api_key_provided": bool(executor_config.get("openai_api_key")),
-            "anthropic_api_key_provided": bool(executor_config.get("anthropic_api_key"))
+            "anthropic_api_key_provided": bool(
+                executor_config.get("anthropic_api_key")
+            ),
         }
-        
+
         metadata_file = os.path.join(args.output, "metadata.json")
         with open(metadata_file, "w") as f:
             json.dump(metadata, f, indent=2)
@@ -153,8 +155,12 @@ def main() -> None:
         logger.info(f"Generated script saved to: {scaffold_file}")
         logger.info(f"Metadata saved to: {metadata_file}")
         print(f"\nGeneration complete! To run the generated script:")
-        print(f"  python run_scaffold.py {os.path.basename(args.output)} 'your input string'")
-        print(f"  python run_scaffold.py {os.path.basename(args.output)} 'your input string' --log-level DEBUG --model claude-3-5-sonnet-latest")
+        print(
+            f"  python run_scaffold.py {os.path.basename(args.output)} 'your input string'"
+        )
+        print(
+            f"  python run_scaffold.py {os.path.basename(args.output)} 'your input string' --log-level DEBUG --model claude-3-5-sonnet-latest"
+        )
 
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
