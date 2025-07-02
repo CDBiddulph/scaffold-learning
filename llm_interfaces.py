@@ -271,6 +271,8 @@ class LLMFactory:
         "o1": "openai",
         "o1-mini": "openai",
         # Anthropic models
+        "claude-opus-4-20250514": "anthropic",
+        "claude-sonnet-4-20250514": "anthropic",
         "claude-3-5-sonnet-latest": "anthropic",
         "claude-3-5-haiku-latest": "anthropic",
         "claude-3-opus-latest": "anthropic",

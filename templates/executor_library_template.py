@@ -4,10 +4,6 @@ LLM Executor Library
 This module provides access to the executor LLM for generated scripts.
 """
 
-import os
-import sys
-from typing import Optional
-
 # Configuration loaded from main script
 EXECUTOR_CONFIG = {executor_config}
 
