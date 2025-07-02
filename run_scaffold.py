@@ -79,6 +79,7 @@ def run_scaffold(scaffold_name: str, input_string: str, log_level: str = "INFO",
         docker_cmd.extend(["--name", f"scaffold-{scaffold_name}-{timestamp}"])
     
     docker_cmd.extend([
+        "--user", f"{os.getuid()}:{os.getgid()}",
         "-v", f"{scaffold_dir.absolute()}:/workspace/scaffold",
         "-v", f"{logs_dir.absolute()}:/workspace/logs",
     ])
@@ -89,8 +90,22 @@ def run_scaffold(scaffold_name: str, input_string: str, log_level: str = "INFO",
         docker_cmd.extend(["--env-file", str(env_file.absolute())])
     
     # Set executor configuration as environment variables
-    executor_type = metadata["executor_type"]
-    executor_model = override_model or metadata["executor_model"]
+    if override_model:
+        # Parse the override model to get type and model
+        from llm_interfaces import LLMFactory
+        executor_type, executor_model = LLMFactory.parse_model_spec(override_model)
+    else:
+        # Use original metadata
+        executor_type = metadata["executor_type"]
+        executor_model = metadata["executor_model"]
+    
+    # Check if we need interactive mode for human model
+    is_human_model = executor_model == "human"
+    
+    if is_human_model:
+        # Insert -it flags for interactive terminal (needed for human model)
+        docker_cmd.insert(2, "-it")
+        print("Note: Using interactive mode for human model")
     
     docker_cmd.extend([
         "-e", f"EXECUTOR_TYPE={executor_type}",

@@ -26,8 +26,8 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
     executor_model = os.environ.get("EXECUTOR_MODEL", "claude-3-haiku-20240307")
     
     # Reconstruct model spec
-    if executor_type in ["mock", "human"]:
-        model_spec = executor_type
+    if executor_model in ["mock", "human"]:
+        model_spec = executor_model
     else:
         model_spec = f"{executor_type}/{executor_model}"
     
