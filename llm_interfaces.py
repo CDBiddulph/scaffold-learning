@@ -131,12 +131,12 @@ class MockLLMInterface(LLMInterface):
 
     def generate_response(self, prompt: str, system_prompt: str = "") -> str:
         """Return appropriate mock response based on context"""
-        # If this looks like a coder prompt (contains system prompt about Python generation),
+        # If this looks like a scaffolder prompt (contains system prompt about Python generation),
         # return a mock script. Otherwise, return a simple mock response.
         if "Python code generator" in system_prompt or "process_input" in system_prompt:
             # Load the mock script template
             try:
-                with open("templates/mock_coder_script.py", "r") as f:
+                with open("templates/mock_scaffolder_script.py", "r") as f:
                     return f.read()
             except FileNotFoundError:
                 # Fallback if template file is missing

@@ -2,7 +2,7 @@
 """
 Multi-LLM Script Generator
 
-This script uses a "coder LLM" to generate Python scripts that can utilize an "executor LLM".
+This script uses a "scaffolder LLM" to generate Python scripts that can utilize an "executor LLM".
 The generated script will take string input and produce string output.
 """
 
@@ -17,12 +17,12 @@ import shutil
 import logging
 
 # Template file paths
-CODER_SYSTEM_PROMPT_TEMPLATE = "templates/coder_system_prompt.txt"
+SCAFFOLDER_SYSTEM_PROMPT_TEMPLATE = "templates/scaffolder_system_prompt.txt"
 
 
-def get_coder_system_prompt() -> str:
-    """Get the system prompt for the coder LLM"""
-    with open(CODER_SYSTEM_PROMPT_TEMPLATE, "r") as f:
+def get_scaffolder_system_prompt() -> str:
+    """Get the system prompt for the scaffolder LLM"""
+    with open(SCAFFOLDER_SYSTEM_PROMPT_TEMPLATE, "r") as f:
         return f.read()
 
 
@@ -35,10 +35,10 @@ def main() -> None:
     logger = logging.getLogger(__name__)
 
     parser = argparse.ArgumentParser(
-        description="Generate Python scripts using a coder LLM"
+        description="Generate Python scripts using a scaffolder LLM"
     )
     parser.add_argument(
-        "coder_prompt", help="Prompt describing what the generated script should do"
+        "scaffolder_prompt", help="Prompt describing what the generated script should do"
     )
     parser.add_argument(
         "-o",
@@ -49,9 +49,9 @@ def main() -> None:
 
     # LLM configuration
     parser.add_argument(
-        "--coder-model",
+        "--scaffolder-model",
         default="gpt-4.1-nano",
-        help="Coder LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')",
+        help="Scaffolder LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')",
     )
     parser.add_argument(
         "--executor-model",
@@ -67,25 +67,25 @@ def main() -> None:
 
     try:
         # Create LLM instances using new consolidated model specification
-        coder_llm = LLMFactory.create_llm(
-            model_spec=args.coder_model,
+        scaffolder_llm = LLMFactory.create_llm(
+            model_spec=args.scaffolder_model,
             openai_api_key=args.openai_api_key,
             anthropic_api_key=args.anthropic_api_key,
         )
 
-        coder_model_spec = LLMFactory.resolve_model_spec(args.coder_model)
+        scaffolder_model_spec = LLMFactory.resolve_model_spec(args.scaffolder_model)
         executor_model_spec = LLMFactory.resolve_model_spec(args.executor_model)
 
         # Log configuration summary
         logger.info("Configuration Summary:")
         logger.info(f"Output Directory: {args.output}")
-        logger.info(f"Coder LLM: {coder_model_spec}")
+        logger.info(f"Scaffolder LLM: {scaffolder_model_spec}")
         logger.info(f"Executor LLM: {executor_model_spec}")
-        logger.info(f"Generating script based on prompt: {args.coder_prompt}")
+        logger.info(f"Generating script based on prompt: {args.scaffolder_prompt}")
 
-        # Generate the script using coder LLM
-        system_prompt = get_coder_system_prompt()
-        generated_script = coder_llm.generate_response(args.coder_prompt, system_prompt)
+        # Generate the script using scaffolder LLM
+        system_prompt = get_scaffolder_system_prompt()
+        generated_script = scaffolder_llm.generate_response(args.scaffolder_prompt, system_prompt)
 
         # Clean up the generated script (remove markdown formatting if present)
         if "```python" in generated_script:
@@ -108,8 +108,8 @@ def main() -> None:
         # Create metadata file with executor configuration
         metadata = {
             "executor_model_spec": executor_model_spec,
-            "coder_model_spec": coder_model_spec,
-            "prompt": args.coder_prompt,
+            "scaffolder_model_spec": scaffolder_model_spec,
+            "prompt": args.scaffolder_prompt,
             "created": datetime.now().isoformat(),
         }
 
