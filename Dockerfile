@@ -1,7 +1,13 @@
 FROM python:3.10-slim
 
-# Install Python dependencies
-RUN pip install anthropic openai python-dotenv
+# Create app directory
+WORKDIR /app
+
+# Copy dependency files first (for better layer caching)
+COPY pyproject.toml /app/
+
+# Install Python dependencies from pyproject.toml
+RUN pip install -e .
 
 # Copy source files
 COPY llm_interfaces.py /app/
