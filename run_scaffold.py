@@ -149,7 +149,7 @@ try:
         'log_level': '{log_level}'
     }}
     
-    with open('/workspace/logs/{scaffold_name}_{timestamp}.json', 'w') as f:
+    with open('/workspace/logs/{timestamp}.json', 'w') as f:
         json.dump(log_data, f, indent=2)
         
 except Exception as e:
@@ -213,11 +213,12 @@ def run_scaffold(
         print(f"Error: Scaffold directory not found: {scaffold_dir}")
         sys.exit(1)
 
-    logs_dir = Path("logs")
-    logs_dir.mkdir(exist_ok=True)
+    # Create scaffold-specific log directory
+    logs_dir = Path("logs") / scaffold_name
+    logs_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = logs_dir / f"{scaffold_name}_{timestamp}.log"
+    log_file = logs_dir / f"{timestamp}.log"
 
     # Resolve executor specification
     executor_model_spec = resolve_executor_model_spec(metadata, override_model)
