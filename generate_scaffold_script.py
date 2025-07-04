@@ -38,13 +38,17 @@ def main() -> None:
         description="Generate Python scripts using a scaffolder LLM"
     )
     parser.add_argument(
-        "scaffolder_prompt", help="Prompt describing what the generated script should do"
+        "scaffolder_prompt",
+        help="Prompt describing what the generated script should do",
     )
     parser.add_argument(
-        "-o",
-        "--output",
-        required=True,
-        help="Output directory for the generated script",
+        "--scaffold-name",
+        help="Name for the scaffold",
+    )
+    parser.add_argument(
+        "--scaffold-dir",
+        default="scaffold-scripts",
+        help="Base directory for scaffold scripts",
     )
 
     # LLM configuration
@@ -76,16 +80,22 @@ def main() -> None:
         scaffolder_model_spec = LLMFactory.resolve_model_spec(args.scaffolder_model)
         executor_model_spec = LLMFactory.resolve_model_spec(args.executor_model)
 
+        # Construct output directory path
+        output_dir = os.path.join(args.scaffold_dir, args.scaffold_name)
+
         # Log configuration summary
         logger.info("Configuration Summary:")
-        logger.info(f"Output Directory: {args.output}")
+        logger.info(f"Scaffold Name: {args.scaffold_name}")
+        logger.info(f"Output Directory: {output_dir}")
         logger.info(f"Scaffolder LLM: {scaffolder_model_spec}")
         logger.info(f"Executor LLM: {executor_model_spec}")
         logger.info(f"Generating script based on prompt: {args.scaffolder_prompt}")
 
         # Generate the script using scaffolder LLM
         system_prompt = get_scaffolder_system_prompt()
-        generated_script = scaffolder_llm.generate_response(args.scaffolder_prompt, system_prompt)
+        generated_script = scaffolder_llm.generate_response(
+            args.scaffolder_prompt, system_prompt
+        )
 
         # Clean up the generated script (remove markdown formatting if present)
         if "```python" in generated_script:
@@ -96,12 +106,12 @@ def main() -> None:
             generated_script = generated_script.split("```")[1].split("```")[0].strip()
 
         # Only delete and create output directory after script is generated successfully
-        if os.path.exists(args.output):
-            shutil.rmtree(args.output)
-        os.makedirs(args.output)
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
 
         # Write the generated script to file
-        scaffold_file = os.path.join(args.output, "scaffold.py")
+        scaffold_file = os.path.join(output_dir, "scaffold.py")
         with open(scaffold_file, "w") as f:
             f.write(generated_script)
 
@@ -113,18 +123,16 @@ def main() -> None:
             "created": datetime.now().isoformat(),
         }
 
-        metadata_file = os.path.join(args.output, "metadata.json")
+        metadata_file = os.path.join(output_dir, "metadata.json")
         with open(metadata_file, "w") as f:
             json.dump(metadata, f, indent=2)
 
         logger.info(f"Generated script saved to: {scaffold_file}")
         logger.info(f"Metadata saved to: {metadata_file}")
         print(f"\nGeneration complete! To run the generated script:")
+        print(f"  python run_scaffold.py {args.scaffold_name} 'your input string'")
         print(
-            f"  python run_scaffold.py {os.path.basename(args.output)} 'your input string'"
-        )
-        print(
-            f"  python run_scaffold.py {os.path.basename(args.output)} 'your input string' --log-level DEBUG --model claude-3-5-sonnet-latest"
+            f"  python run_scaffold.py {args.scaffold_name} 'your input string' --log-level DEBUG --model claude-3-5-sonnet-latest"
         )
 
     except Exception as e:

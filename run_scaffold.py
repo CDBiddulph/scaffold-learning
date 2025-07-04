@@ -12,9 +12,9 @@ from datetime import datetime
 from pathlib import Path
 
 
-def load_metadata(scaffold_name: str) -> dict:
+def load_metadata(scaffold_name: str, scaffold_dir: str) -> dict:
     """Load metadata for a scaffold."""
-    metadata_path = Path("scaffold-scripts") / scaffold_name / "metadata.json"
+    metadata_path = Path(scaffold_dir) / scaffold_name / "metadata.json"
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
 
@@ -189,16 +189,17 @@ def save_execution_log(
 
 def run_scaffold(
     scaffold_name: str,
+    scaffold_base_dir: str,
     input_string: str,
-    log_level: str = "INFO",
-    override_model: str = None,
-    keep_container: bool = False,
+    log_level: str,
+    override_model: str,
+    keep_container: bool,
 ) -> None:
     """Run a scaffold in Docker container."""
 
     # Load metadata
     try:
-        metadata = load_metadata(scaffold_name)
+        metadata = load_metadata(scaffold_name, scaffold_base_dir)
     except FileNotFoundError as e:
         print(f"Error: {e}")
         sys.exit(1)
@@ -207,7 +208,7 @@ def run_scaffold(
     ensure_docker_image()
 
     # Prepare directories and paths
-    scaffold_dir = Path("scaffold-scripts") / scaffold_name
+    scaffold_dir = Path(scaffold_base_dir) / scaffold_name
     if not scaffold_dir.exists():
         print(f"Error: Scaffold directory not found: {scaffold_dir}")
         sys.exit(1)
@@ -289,11 +290,16 @@ def run_scaffold(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a scaffold script in Docker")
-    parser.add_argument("scaffold_name", help="Name of the scaffold directory")
+    parser.add_argument("scaffold_name", help="Name of the scaffold (without path)")
     parser.add_argument(
         "input_string",
         nargs="?",
         help="Input string to process (if not provided, will read from stdin)",
+    )
+    parser.add_argument(
+        "--scaffold-dir",
+        default="scaffold-scripts",
+        help="Base directory for scaffold scripts",
     )
     parser.add_argument(
         "--file",
@@ -344,6 +350,7 @@ def main():
 
     exit_code = run_scaffold(
         args.scaffold_name,
+        args.scaffold_dir,
         input_string,
         args.log_level,
         args.model,
