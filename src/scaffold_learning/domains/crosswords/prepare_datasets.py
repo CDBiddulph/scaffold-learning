@@ -204,7 +204,11 @@ def collect_puzzles(data, header, target_count, source, day_pattern):
                     # Convert to text
                     input_text, solution_text = puzzle_to_text(puzzle)
                     
+                    # Generate name using same format as download_puz
+                    name = f"{source}_{year}_{month}_{day}".replace(" ", "_")
+                    
                     puzzles.append({
+                        "name": name,
                         "input": input_text,
                         "solution": solution_text
                     })
