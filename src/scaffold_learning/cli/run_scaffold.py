@@ -11,6 +11,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
+import threading
+import queue
+import time
 
 
 def _get_exit_code(
@@ -341,22 +344,113 @@ def _execute_llm_scaffold(
     timestamp: str,
 ) -> int:
     """Execute scaffold with LLM model."""
-    result = subprocess.run(
-        docker_cmd, capture_output=True, text=True, check=False, timeout=timeout
-    )
 
-    # Save execution log to file
-    _log_results(
-        log_file,
-        scaffold_name,
-        executor_model_spec,
-        input_string,
-        timestamp,
-        stdout=result.stdout,
-        stderr=result.stderr,
-    )
-    _print_results(result.stdout, result.stderr)
-    return _get_exit_code(completed_process=result)
+    def stream_output(pipe, output_queue, stream_name):
+        """Stream output from pipe to queue."""
+        try:
+            for line in iter(pipe.readline, ""):
+                output_queue.put((stream_name, line))
+            pipe.close()
+        except Exception as e:
+            output_queue.put((stream_name, f"Error reading {stream_name}: {e}\n"))
+
+    try:
+        # Start process
+        process = subprocess.Popen(
+            docker_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+        )
+
+        # Set up output streaming
+        output_queue = queue.Queue()
+        stdout_thread = threading.Thread(
+            target=stream_output, args=(process.stdout, output_queue, "stdout")
+        )
+        stderr_thread = threading.Thread(
+            target=stream_output, args=(process.stderr, output_queue, "stderr")
+        )
+
+        stdout_thread.daemon = True
+        stderr_thread.daemon = True
+        stdout_thread.start()
+        stderr_thread.start()
+
+        stdout_lines = []
+        stderr_lines = []
+        start_time = time.time()
+
+        # Process output in real-time
+        while process.poll() is None:
+            # Check timeout
+            if timeout and (time.time() - start_time) > timeout:
+                process.kill()
+                raise subprocess.TimeoutExpired(docker_cmd, timeout)
+
+            try:
+                # Get output with short timeout to avoid blocking
+                stream_name, line = output_queue.get(timeout=0.1)
+
+                if stream_name == "stdout":
+                    stdout_lines.append(line)
+                    print(line, end="")  # Print immediately
+                elif stream_name == "stderr":
+                    stderr_lines.append(line)
+                    print(line, end="", file=sys.stderr)  # Print immediately
+
+            except queue.Empty:
+                continue  # No output available, continue checking
+
+        # Process any remaining output after process finishes
+        while not output_queue.empty():
+            try:
+                stream_name, line = output_queue.get_nowait()
+                if stream_name == "stdout":
+                    stdout_lines.append(line)
+                    print(line, end="")
+                elif stream_name == "stderr":
+                    stderr_lines.append(line)
+                    print(line, end="", file=sys.stderr)
+            except queue.Empty:
+                break
+
+        # Wait for threads to finish
+        stdout_thread.join(timeout=1)
+        stderr_thread.join(timeout=1)
+
+        # Combine all output
+        full_stdout = "".join(stdout_lines)
+        full_stderr = "".join(stderr_lines)
+
+        # Save execution log to file
+        _log_results(
+            log_file,
+            scaffold_name,
+            executor_model_spec,
+            input_string,
+            timestamp,
+            stdout=full_stdout,
+            stderr=full_stderr,
+        )
+
+        return process.returncode
+
+    except subprocess.TimeoutExpired:
+        error_msg = f"Execution timed out after {timeout} seconds"
+        print(f"Error: {error_msg}", file=sys.stderr)
+
+        _log_results(
+            log_file,
+            scaffold_name,
+            executor_model_spec,
+            input_string,
+            timestamp,
+            error_message=error_msg,
+        )
+        return 124  # Timeout exit code
 
 
 def _handle_execution_error(
