@@ -16,28 +16,6 @@ import queue
 import time
 
 
-def _get_exit_code(
-    completed_process: Optional[subprocess.CompletedProcess] = None,
-    error: Optional[Exception] = None,
-) -> int:
-    """Determine the appropriate exit code."""
-    if completed_process is not None and error is not None:
-        raise ValueError("Cannot provide both completed_process and error")
-    if completed_process is None and error is None:
-        raise ValueError("Must provide either completed_process or error")
-
-    if completed_process is not None:
-        return completed_process.returncode
-    else:  # error is not None
-        # Determine exit code based on error type
-        if hasattr(error, "returncode"):
-            return error.returncode
-        elif isinstance(error, subprocess.TimeoutExpired):
-            return 124  # Standard timeout exit code
-        else:
-            return 1  # General error
-
-
 def _log_results(
     log_file: Path,
     scaffold_name: str,
@@ -90,14 +68,6 @@ def _log_results(
             f.write("\n\n")
 
 
-def _print_results(stdout: Optional[str], stderr: Optional[str]) -> None:
-    """Print results to console."""
-    if stderr:
-        print(stderr, file=sys.stderr, end="")
-    if stdout:
-        print(stdout, end="")
-
-
 def _load_metadata(scaffold_name: str, scaffold_dir: str) -> dict:
     """Load metadata for a scaffold."""
     metadata_path = Path(scaffold_dir) / scaffold_name / "metadata.json"
@@ -110,21 +80,17 @@ def _load_metadata(scaffold_name: str, scaffold_dir: str) -> dict:
 
 def _ensure_docker_image():
     """Ensure the Docker image is built."""
-    try:
-        # Check if image exists
-        result = subprocess.run(
-            ["docker", "inspect", "scaffold-runner"], capture_output=True, check=False
-        )
+    # Check if image exists
+    result = subprocess.run(
+        ["docker", "inspect", "scaffold-runner"], capture_output=True, check=False
+    )
 
-        if result.returncode != 0:
-            print("Building Docker image...")
-            subprocess.run(
-                ["docker", "build", "-t", "scaffold-runner", "."], check=True
-            )
-            print("Docker image built successfully!")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to build Docker image: {e}")
-        sys.exit(1)
+    if result.returncode != 0:
+        print("Building Docker image...")
+        subprocess.run(
+            ["docker", "build", "-t", "scaffold-runner", "."], check=True
+        )
+        print("Docker image built successfully!")
 
 
 def _resolve_executor_model_spec(metadata: dict, override_model: str = None) -> str:
@@ -244,16 +210,145 @@ except Exception as e:
 """
 
 
-def _setup_scaffold_execution(
-    scaffold_name: str, scaffold_base_dir: str, override_model: str
-) -> tuple[str, Path, Path, str]:
-    """Setup and validate scaffold execution environment."""
+def _execute_human_scaffold(docker_cmd: list[str]) -> None:
+    """Execute scaffold with human model."""
+    subprocess.run(docker_cmd, check=True)
+
+
+def _execute_llm_scaffold(
+    docker_cmd: list[str],
+    timeout: int,
+    log_file: Path,
+    scaffold_name: str,
+    executor_model_spec: str,
+    input_string: str,
+    timestamp: str,
+) -> None:
+    """Execute scaffold with LLM model."""
+
+    def stream_output(pipe, output_queue, stream_name):
+        """Stream output from pipe to queue."""
+        try:
+            for line in iter(pipe.readline, ""):
+                output_queue.put((stream_name, line))
+            pipe.close()
+        except Exception as e:
+            output_queue.put((stream_name, f"Error reading {stream_name}: {e}\n"))
+
+    # Start process
+    process = subprocess.Popen(
+        docker_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        universal_newlines=True,
+    )
+
+    # Set up output streaming
+    output_queue = queue.Queue()
+    stdout_thread = threading.Thread(
+        target=stream_output, args=(process.stdout, output_queue, "stdout")
+    )
+    stderr_thread = threading.Thread(
+        target=stream_output, args=(process.stderr, output_queue, "stderr")
+    )
+
+    stdout_thread.daemon = True
+    stderr_thread.daemon = True
+    stdout_thread.start()
+    stderr_thread.start()
+
+    stdout_lines = []
+    stderr_lines = []
+    start_time = time.time()
+
+    # Process output in real-time
+    while process.poll() is None:
+        # Check timeout
+        if timeout and (time.time() - start_time) > timeout:
+            process.kill()
+            
+            # Save what we have so far before raising timeout error
+            full_stdout = "".join(stdout_lines)
+            full_stderr = "".join(stderr_lines)
+            _log_results(
+                log_file,
+                scaffold_name,
+                executor_model_spec,
+                input_string,
+                timestamp,
+                stdout=full_stdout,
+                stderr=full_stderr,
+                error_message=f"Execution timed out after {timeout} seconds",
+            )
+            
+            raise subprocess.TimeoutExpired(docker_cmd, timeout)
+
+        try:
+            # Get output with short timeout to avoid blocking
+            stream_name, line = output_queue.get(timeout=0.1)
+
+            if stream_name == "stdout":
+                stdout_lines.append(line)
+                print(line, end="")  # Print immediately
+            elif stream_name == "stderr":
+                stderr_lines.append(line)
+                print(line, end="", file=sys.stderr)  # Print immediately
+
+        except queue.Empty:
+            continue  # No output available, continue checking
+
+    # Process any remaining output after process finishes
+    while not output_queue.empty():
+        try:
+            stream_name, line = output_queue.get_nowait()
+            if stream_name == "stdout":
+                stdout_lines.append(line)
+                print(line, end="")
+            elif stream_name == "stderr":
+                stderr_lines.append(line)
+                print(line, end="", file=sys.stderr)
+        except queue.Empty:
+            break
+
+    # Wait for threads to finish
+    stdout_thread.join(timeout=1)
+    stderr_thread.join(timeout=1)
+
+    # Combine all output for logging
+    full_stdout = "".join(stdout_lines)
+    full_stderr = "".join(stderr_lines)
+
+    # Save execution log to file
+    _log_results(
+        log_file,
+        scaffold_name,
+        executor_model_spec,
+        input_string,
+        timestamp,
+        stdout=full_stdout,
+        stderr=full_stderr,
+    )
+
+    # Check if process failed
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, docker_cmd)
+
+
+def run_scaffold(
+    scaffold_name: str,
+    scaffold_base_dir: str,
+    input_string: str,
+    log_level: str,
+    override_model: str,
+    keep_container: bool,
+    timeout: int = None,
+) -> None:
+    """Run a scaffold in Docker container."""
+
     # Load metadata
-    try:
-        metadata = _load_metadata(scaffold_name, scaffold_base_dir)
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+    metadata = _load_metadata(scaffold_name, scaffold_base_dir)
 
     # Ensure Docker image exists
     _ensure_docker_image()
@@ -261,8 +356,7 @@ def _setup_scaffold_execution(
     # Prepare directories and paths
     scaffold_dir = Path(scaffold_base_dir) / scaffold_name
     if not scaffold_dir.exists():
-        print(f"Error: Scaffold directory not found: {scaffold_dir}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Scaffold directory not found: {scaffold_dir}")
 
     # Create scaffold-specific log directory
     logs_dir = Path("logs") / scaffold_name
@@ -273,20 +367,8 @@ def _setup_scaffold_execution(
     # Resolve executor specification
     executor_model_spec = _resolve_executor_model_spec(metadata, override_model)
 
-    return executor_model_spec, scaffold_dir, logs_dir, timestamp
+    log_file = logs_dir / f"{timestamp}.log"
 
-
-def _prepare_docker_execution(
-    scaffold_name: str,
-    scaffold_dir: Path,
-    logs_dir: Path,
-    timestamp: str,
-    executor_model_spec: str,
-    log_level: str,
-    keep_container: bool,
-    input_string: str,
-) -> list[str]:
-    """Prepare Docker command for execution."""
     # Build Docker command
     docker_cmd = _build_docker_command(
         scaffold_dir,
@@ -304,241 +386,33 @@ def _prepare_docker_execution(
     )
     docker_cmd.extend(["python", "-c", python_script])
 
-    return docker_cmd
-
-
-def _execute_human_scaffold(
-    docker_cmd: list[str],
-    timeout: int,
-    log_file: Path,
-    scaffold_name: str,
-    executor_model_spec: str,
-    input_string: str,
-    timestamp: str,
-) -> int:
-    """Execute scaffold with human model."""
-    if timeout:
-        print("Warning: Timeout not supported for human model (interactive mode)")
-
-    result = subprocess.run(docker_cmd, check=False)
-
-    # Save log for human model
-    _log_results(
-        log_file,
-        scaffold_name,
-        executor_model_spec,
-        input_string,
-        timestamp,
-        stdout="Note: Human model execution - no output captured\nUser interaction occurred directly in terminal.\n",
-    )
-    return _get_exit_code(completed_process=result)
-
-
-def _execute_llm_scaffold(
-    docker_cmd: list[str],
-    timeout: int,
-    log_file: Path,
-    scaffold_name: str,
-    executor_model_spec: str,
-    input_string: str,
-    timestamp: str,
-) -> int:
-    """Execute scaffold with LLM model."""
-
-    def stream_output(pipe, output_queue, stream_name):
-        """Stream output from pipe to queue."""
-        try:
-            for line in iter(pipe.readline, ""):
-                output_queue.put((stream_name, line))
-            pipe.close()
-        except Exception as e:
-            output_queue.put((stream_name, f"Error reading {stream_name}: {e}\n"))
-
-    try:
-        # Start process
-        process = subprocess.Popen(
-            docker_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            universal_newlines=True,
-        )
-
-        # Set up output streaming
-        output_queue = queue.Queue()
-        stdout_thread = threading.Thread(
-            target=stream_output, args=(process.stdout, output_queue, "stdout")
-        )
-        stderr_thread = threading.Thread(
-            target=stream_output, args=(process.stderr, output_queue, "stderr")
-        )
-
-        stdout_thread.daemon = True
-        stderr_thread.daemon = True
-        stdout_thread.start()
-        stderr_thread.start()
-
-        stdout_lines = []
-        stderr_lines = []
-        start_time = time.time()
-
-        # Process output in real-time
-        while process.poll() is None:
-            # Check timeout
-            if timeout and (time.time() - start_time) > timeout:
-                process.kill()
-                raise subprocess.TimeoutExpired(docker_cmd, timeout)
-
-            try:
-                # Get output with short timeout to avoid blocking
-                stream_name, line = output_queue.get(timeout=0.1)
-
-                if stream_name == "stdout":
-                    stdout_lines.append(line)
-                    print(line, end="")  # Print immediately
-                elif stream_name == "stderr":
-                    stderr_lines.append(line)
-                    print(line, end="", file=sys.stderr)  # Print immediately
-
-            except queue.Empty:
-                continue  # No output available, continue checking
-
-        # Process any remaining output after process finishes
-        while not output_queue.empty():
-            try:
-                stream_name, line = output_queue.get_nowait()
-                if stream_name == "stdout":
-                    stdout_lines.append(line)
-                    print(line, end="")
-                elif stream_name == "stderr":
-                    stderr_lines.append(line)
-                    print(line, end="", file=sys.stderr)
-            except queue.Empty:
-                break
-
-        # Wait for threads to finish
-        stdout_thread.join(timeout=1)
-        stderr_thread.join(timeout=1)
-
-        # Combine all output
-        full_stdout = "".join(stdout_lines)
-        full_stderr = "".join(stderr_lines)
-
-        # Save execution log to file
-        _log_results(
-            log_file,
-            scaffold_name,
-            executor_model_spec,
-            input_string,
-            timestamp,
-            stdout=full_stdout,
-            stderr=full_stderr,
-        )
-
-        return process.returncode
-
-    except subprocess.TimeoutExpired:
-        error_msg = f"Execution timed out after {timeout} seconds"
-        print(f"Error: {error_msg}", file=sys.stderr)
-
-        _log_results(
-            log_file,
-            scaffold_name,
-            executor_model_spec,
-            input_string,
-            timestamp,
-            error_message=error_msg,
-        )
-        return 124  # Timeout exit code
-
-
-def _handle_execution_error(
-    e: Exception,
-    log_file: Path,
-    scaffold_name: str,
-    executor_model_spec: str,
-    input_string: str,
-    timestamp: str,
-) -> int:
-    """Handle execution errors and log them."""
-    # Extract stdout/stderr from exception if available
-    error_stdout = e.stdout if hasattr(e, "stdout") else None
-    error_stderr = e.stderr if hasattr(e, "stderr") else None
-
-    _log_results(
-        log_file,
-        scaffold_name,
-        executor_model_spec,
-        input_string,
-        timestamp,
-        stdout=error_stdout,
-        stderr=error_stderr,
-        error_message=str(e),
-    )
-    # Print error information to console
-    _print_results(error_stdout, error_stderr)
-    return _get_exit_code(error=e)
-
-
-def run_scaffold(
-    scaffold_name: str,
-    scaffold_base_dir: str,
-    input_string: str,
-    log_level: str,
-    override_model: str,
-    keep_container: bool,
-    timeout: int = None,
-) -> int:
-    """Run a scaffold in Docker container."""
-
-    # Setup and validation
-    executor_model_spec, scaffold_dir, logs_dir, timestamp = _setup_scaffold_execution(
-        scaffold_name, scaffold_base_dir, override_model
-    )
-
-    log_file = logs_dir / f"{timestamp}.log"
-
-    # Prepare Docker execution
-    docker_cmd = _prepare_docker_execution(
-        scaffold_name,
-        scaffold_dir,
-        logs_dir,
-        timestamp,
-        executor_model_spec,
-        log_level,
-        keep_container,
-        input_string,
-    )
-
     print(f"Running scaffold '{scaffold_name}' with executor {executor_model_spec}")
     print(f"Logs will be saved to: {log_file}")
 
-    try:
-        if executor_model_spec == "human/human":
-            return _execute_human_scaffold(
-                docker_cmd,
-                timeout,
-                log_file,
-                scaffold_name,
-                executor_model_spec,
-                input_string,
-                timestamp,
-            )
-        else:
-            return _execute_llm_scaffold(
-                docker_cmd,
-                timeout,
-                log_file,
-                scaffold_name,
-                executor_model_spec,
-                input_string,
-                timestamp,
-            )
-
-    except Exception as e:
-        return _handle_execution_error(
-            e, log_file, scaffold_name, executor_model_spec, input_string, timestamp
+    # Execute based on model type
+    if executor_model_spec == "human/human":
+        if timeout:
+            print("Warning: Timeout not supported for human model (interactive mode)")
+        _execute_human_scaffold(docker_cmd)
+        
+        # Save basic log for human model
+        _log_results(
+            log_file,
+            scaffold_name,
+            executor_model_spec,
+            input_string,
+            timestamp,
+            stdout="Note: Human model execution - no output captured\nUser interaction occurred directly in terminal.\n",
+        )
+    else:
+        _execute_llm_scaffold(
+            docker_cmd,
+            timeout,
+            log_file,
+            scaffold_name,
+            executor_model_spec,
+            input_string,
+            timestamp,
         )
 
 
@@ -592,49 +466,28 @@ def _parse_args() -> argparse.Namespace:
 
 def _get_input_string(args: argparse.Namespace) -> str:
     """Get the input string from the command line arguments or stdin."""
-    try:
-        if args.file:
-            with open(args.file, "r", encoding="utf-8") as f:
-                return f.read().strip()
-        elif args.input_string:
-            return args.input_string
-        else:
-            return input().strip()
-    except FileNotFoundError:
-        print(f"Error: Input file '{args.file}' not found")
-        sys.exit(2)  # File not found error
-    except PermissionError:
-        print(f"Error: Permission denied reading file '{args.file}'")
-        sys.exit(2)  # Permission error
-    except (EOFError, KeyboardInterrupt):
-        print("\nError: No input provided")
-        sys.exit(130)  # Interrupted by user (Ctrl+C)
+    if args.file:
+        with open(args.file, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    elif args.input_string:
+        return args.input_string
+    else:
+        return input().strip()
 
 
 def main():
-    try:
-        args = _parse_args()
+    args = _parse_args()
+    input_string = _get_input_string(args)
 
-        # Get input string (from file, command line argument, or stdin)
-        input_string = _get_input_string(args)
-
-        exit_code = run_scaffold(
-            args.scaffold_name,
-            args.scaffold_dir,
-            input_string,
-            args.log_level,
-            args.model,
-            args.keep_container,
-            args.timeout,
-        )
-
-        sys.exit(exit_code)
-    except KeyboardInterrupt:
-        print("\nInterrupted by user")
-        sys.exit(130)  # Interrupted by user (Ctrl+C)
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        sys.exit(1)  # General error
+    run_scaffold(
+        args.scaffold_name,
+        args.scaffold_dir,
+        input_string,
+        args.log_level,
+        args.model,
+        args.keep_container,
+        args.timeout,
+    )
 
 
 if __name__ == "__main__":
