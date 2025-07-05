@@ -8,7 +8,7 @@ import re
 from . import puz
 
 
-def score_puzzle(expected_solution, attempted_solution, mode="strict"):
+def score(expected_solution, attempted_solution, mode="strict"):
     """
     Score a puzzle answer against the solution.
 
@@ -20,13 +20,11 @@ def score_puzzle(expected_solution, attempted_solution, mode="strict"):
     Returns:
         float: Score from 0.0 to 1.0 representing percentage of correct squares
     """
-    score, correct_count, total_count = score_puzzle_detailed(
-        expected_solution, attempted_solution, mode
-    )
+    score, _, _ = _score_detailed(expected_solution, attempted_solution, mode)
     return score
 
 
-def score_puzzle_detailed(expected_solution, attempted_solution, mode="strict"):
+def _score_detailed(expected_solution, attempted_solution, mode="strict"):
     """
     Score a puzzle answer against the solution with detailed results.
 
@@ -405,7 +403,7 @@ def main():
     with open(args.attempted_solution, "r", encoding="utf-8") as f:
         attempted_solution = f.read()
 
-    score, correct_count, total_count = score_puzzle_detailed(
+    score, correct_count, total_count = score_detailed(
         expected_solution, attempted_solution, args.mode
     )
     print(f"Score: {score:.3f} ({correct_count}/{total_count}) [{args.mode}]")

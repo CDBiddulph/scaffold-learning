@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Tests for score_puz.py"""
+"""Tests for score.py"""
 
 import unittest
-from scaffold_learning.domains.crosswords import score_puz
+from scaffold_learning.domains.crosswords import score
 
 
-class TestScorePuz(unittest.TestCase):
+class TestScore(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
@@ -32,7 +32,7 @@ Down:
 
     def _score_answer_content(self, answer_content, mode="strict"):
         """Helper method to score answer content and return float score"""
-        return score_puz.score_puzzle(self.expected_solution, answer_content, mode)
+        return score.score(self.expected_solution, answer_content, mode)
 
     def _assert_score(self, answer_content, expected_score, mode):
         """Helper method to score answer content and assert expected score"""
@@ -229,10 +229,7 @@ e m b e r
         # Create multiple grids that together cover all correct letters
         # 5x5 grid with letters filling each position
         answer_content = "\n\n".join(
-            "\n".join(
-                " ".join(letter for _ in range(5))
-                for _ in range(5)
-            )
+            "\n".join(" ".join(letter for _ in range(5)) for _ in range(5))
             for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         )
 
@@ -256,17 +253,11 @@ Across:
   1. FATX"""  # Wrong last letter conflicts with correct grid
 
         # Strict mode: conflict makes position wrong
-        strict_score = score_puz.score_puzzle(
-            self.expected_solution, answer_content, "strict"
-        )
-        self.assertAlmostEqual(
-            strict_score, 22 / 23, places=3
-        )  # 22 out of 23 correct
+        strict_score = score.score(self.expected_solution, answer_content, "strict")
+        self.assertAlmostEqual(strict_score, 22 / 23, places=3)  # 22 out of 23 correct
 
         # Lenient mode: grid has all correct, so all squares count as correct
-        lenient_score = score_puz.score_puzzle(
-            self.expected_solution, answer_content, "lenient"
-        )
+        lenient_score = score.score(self.expected_solution, answer_content, "lenient")
         self.assertAlmostEqual(
             lenient_score, 1.0, places=3
         )  # All correct in lenient mode
