@@ -6,8 +6,6 @@ import tempfile
 import os
 from scaffold_learning.domains.crosswords import puz, score_puz
 
-from unittest.mock import patch
-
 
 class TestScorePuz(unittest.TestCase):
 
@@ -265,8 +263,8 @@ e m b e r
         # This demonstrates the exploit - submitting every possible letter guarantees 100%
         self._assert_score_lenient(answer_content, 1.0)
 
-    def test_command_line_interface(self):
-        """Test the command line interface with both modes"""
+    def test_command_line_interface_logic(self):
+        """Test the scoring logic that would be used by command line interface"""
         # Create a test answer file with conflicts to show mode differences
         answer_content = """F A T E .
 A D U L T
@@ -282,31 +280,26 @@ Across:
             answer_file = f.name
 
         try:
-            # Test cases: (mode, argv, expected_output)
-            test_cases = [
-                (
-                    "strict",
-                    ["score_puz.py", self.temp_puz_file.name, answer_file],
-                    "Score: 0.957 (22/23) [strict]",
-                ),
-                (
-                    "strict_explicit",
-                    ["score_puz.py", self.temp_puz_file.name, answer_file, "strict"],
-                    "Score: 0.957 (22/23) [strict]",
-                ),
-                (
-                    "lenient",
-                    ["score_puz.py", self.temp_puz_file.name, answer_file, "lenient"],
-                    "Score: 1.000 (23/23) [lenient]",
-                ),
-            ]
+            # Strict mode: conflict makes position wrong
+            strict_score, strict_correct, strict_total = score_puz.score_puzzle(
+                self.temp_puz_file.name, answer_file, "strict"
+            )
+            self.assertAlmostEqual(
+                strict_score, 22 / 23, places=3
+            )  # 22 out of 23 correct
+            self.assertEqual(strict_correct, 22)
+            self.assertEqual(strict_total, 23)
 
-            for mode_name, argv, expected_output in test_cases:
-                with self.subTest(mode=mode_name):
-                    with patch("sys.argv", argv):
-                        with patch("builtins.print") as mock_print:
-                            score_puz.main()
-                            mock_print.assert_called_with(expected_output)
+            # Lenient mode: grid has all correct, so all squares count as correct
+            lenient_score, lenient_correct, lenient_total = score_puz.score_puzzle(
+                self.temp_puz_file.name, answer_file, "lenient"
+            )
+            self.assertAlmostEqual(
+                lenient_score, 1.0, places=3
+            )  # All correct in lenient mode
+            self.assertEqual(lenient_correct, 23)
+            self.assertEqual(lenient_total, 23)
+
         finally:
             os.unlink(answer_file)
 

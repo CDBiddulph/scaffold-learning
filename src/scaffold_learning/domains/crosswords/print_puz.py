@@ -2,7 +2,7 @@
 """Print the contents of a .puz crossword puzzle file"""
 
 import sys
-import puz
+from . import puz
 
 
 def print_puzzle(filename):

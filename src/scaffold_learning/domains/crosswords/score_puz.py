@@ -2,7 +2,7 @@
 """Score a crossword puzzle answer against the solution"""
 
 import sys
-import puz
+from . import puz
 import re
 
 

@@ -3,7 +3,7 @@
 
 import sys
 import os
-import puz
+from . import puz
 
 
 def save_puzzle_file(puzzle, numbering, output_path):
