@@ -3,6 +3,7 @@
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 from urllib.request import urlopen, Request
@@ -108,7 +109,7 @@ def convert_to_puz(puzzle_data, source, date):
     return puzzle
 
 
-def download_puzzles(data, header, output_dir, target_count, source):
+def download_puzzles(data, header, output_dir, target_count, source, day_pattern):
     """Download puzzles until target count is reached"""
     saved_count = 0
 
@@ -122,7 +123,7 @@ def download_puzzles(data, header, output_dir, target_count, source):
     for year, months in sorted(years.items(), reverse=True):
         for month, days in sorted(months.items(), reverse=True):
             for day, info in sorted(days.items(), reverse=True):
-                if day.endswith("-mini"):
+                if not re.match(day_pattern, day):
                     continue
                 # Fetch puzzle data
                 try:
@@ -173,6 +174,11 @@ def main():
         default="NY Times",
         help="Puzzle source to download from (default: NY Times)",
     )
+    parser.add_argument(
+        "--day-filter",
+        default=r"^\d+$",
+        help="Regex pattern to filter day names (default: '^\\d+$' for numbered days only)",
+    )
     args = parser.parse_args()
 
     # Output directory from argument
@@ -189,7 +195,9 @@ def main():
     target_count = args.num_puzzles
     print(f"Searching for {target_count} suitable puzzles from {args.source}...")
 
-    saved_count = download_puzzles(data, header, output_dir, target_count, args.source)
+    saved_count = download_puzzles(
+        data, header, output_dir, target_count, args.source, args.day_filter
+    )
 
     print(f"\nSuccessfully downloaded {saved_count} puzzles to {output_dir}")
     return saved_count
