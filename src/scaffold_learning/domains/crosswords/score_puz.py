@@ -20,7 +20,9 @@ def score_puzzle(expected_solution, attempted_solution, mode="strict"):
     Returns:
         float: Score from 0.0 to 1.0 representing percentage of correct squares
     """
-    score, correct_count, total_count = score_puzzle_detailed(expected_solution, attempted_solution, mode)
+    score, correct_count, total_count = score_puzzle_detailed(
+        expected_solution, attempted_solution, mode
+    )
     return score
 
 
@@ -37,8 +39,10 @@ def score_puzzle_detailed(expected_solution, attempted_solution, mode="strict"):
         tuple: (score, correct_count, total_count) where score is float 0.0-1.0
     """
     # Parse expected solution into sections
-    expected_grid, expected_across, expected_down = _parse_expected_solution(expected_solution)
-    
+    expected_grid, expected_across, expected_down = _parse_expected_solution(
+        expected_solution
+    )
+
     # If attempted solution is empty, score is 0.0
     content = attempted_solution.strip()
     if not content:
@@ -53,10 +57,10 @@ def score_puzzle_detailed(expected_solution, attempted_solution, mode="strict"):
     # We'll use row,col coordinates since that's easier to work with
     width = len(expected_grid[0]) if expected_grid else 0
     height = len(expected_grid)
-    
+
     if width == 0 or height == 0:
         return 0.0, 0, 0
-    
+
     # Track which squares are correct/incorrect
     correct_squares = set()
     incorrect_squares = set()
@@ -68,12 +72,30 @@ def score_puzzle_detailed(expected_solution, attempted_solution, mode="strict"):
             continue
 
         if piece.startswith("Across:"):
-            _process_across_section(piece, expected_across, width, height, expected_grid, correct_squares, incorrect_squares)
+            _process_across_section(
+                piece,
+                expected_across,
+                width,
+                height,
+                expected_grid,
+                correct_squares,
+                incorrect_squares,
+            )
         elif piece.startswith("Down:"):
-            _process_down_section(piece, expected_down, width, height, expected_grid, correct_squares, incorrect_squares)
+            _process_down_section(
+                piece,
+                expected_down,
+                width,
+                height,
+                expected_grid,
+                correct_squares,
+                incorrect_squares,
+            )
         else:
             # Assume it's a grid
-            _process_grid_section(piece, expected_grid, correct_squares, incorrect_squares)
+            _process_grid_section(
+                piece, expected_grid, correct_squares, incorrect_squares
+            )
 
     # Count fillable squares and determine final correct squares based on mode
     fillable_count = 0
@@ -106,8 +128,8 @@ def score_puzzle_detailed(expected_solution, attempted_solution, mode="strict"):
 
 def _parse_expected_solution(expected_solution):
     """Parse expected solution into grid, across clues, and down clues"""
-    lines = expected_solution.strip().split('\n')
-    
+    lines = expected_solution.strip().split("\n")
+
     # Extract grid
     grid_lines = []
     line_idx = 0
@@ -117,11 +139,11 @@ def _parse_expected_solution(expected_solution):
             break
         grid_lines.append(line.split())
         line_idx += 1
-    
+
     # Extract clues
     across_clues = {}
     down_clues = {}
-    
+
     current_section = None
     for i in range(line_idx, len(lines)):
         line = lines[i].strip()
@@ -131,7 +153,7 @@ def _parse_expected_solution(expected_solution):
             current_section = "down"
         elif line and current_section:
             # Parse clue line
-            match = re.match(r'\s*(\d+)\.\s*(.+)', line)
+            match = re.match(r"\s*(\d+)\.\s*(.+)", line)
             if match:
                 clue_num = int(match.group(1))
                 answer = match.group(2).strip().upper()
@@ -139,7 +161,7 @@ def _parse_expected_solution(expected_solution):
                     across_clues[clue_num] = answer
                 else:
                     down_clues[clue_num] = answer
-    
+
     return grid_lines, across_clues, down_clues
 
 
@@ -173,7 +195,15 @@ def _process_grid_section(grid_text, expected_grid, correct_squares, incorrect_s
                 incorrect_squares.add(pos)
 
 
-def _process_across_section(section_text, expected_across, width, height, expected_grid, correct_squares, incorrect_squares):
+def _process_across_section(
+    section_text,
+    expected_across,
+    width,
+    height,
+    expected_grid,
+    correct_squares,
+    incorrect_squares,
+):
     """Process an Across: section"""
     lines = section_text.split("\n")[1:]  # Skip the "Across:" line
 
@@ -193,16 +223,16 @@ def _process_across_section(section_text, expected_across, width, height, expect
         # Find where this clue should be in the expected solution
         if clue_num not in expected_across:
             continue
-        
+
         expected_answer = expected_across[clue_num]
-        
+
         # Find the position of this clue in the grid
         clue_pos = _find_clue_position(clue_num, expected_grid, "across")
         if clue_pos is None:
             continue
-            
+
         row, col = clue_pos
-        
+
         # Check each letter of the answer
         for i, letter in enumerate(answer):
             if col + i >= width or i >= len(expected_answer):
@@ -222,7 +252,15 @@ def _process_across_section(section_text, expected_across, width, height, expect
                 incorrect_squares.add(pos)
 
 
-def _process_down_section(section_text, expected_down, width, height, expected_grid, correct_squares, incorrect_squares):
+def _process_down_section(
+    section_text,
+    expected_down,
+    width,
+    height,
+    expected_grid,
+    correct_squares,
+    incorrect_squares,
+):
     """Process a Down: section"""
     lines = section_text.split("\n")[1:]  # Skip the "Down:" line
 
@@ -242,16 +280,16 @@ def _process_down_section(section_text, expected_down, width, height, expected_g
         # Find where this clue should be in the expected solution
         if clue_num not in expected_down:
             continue
-            
+
         expected_answer = expected_down[clue_num]
-        
+
         # Find the position of this clue in the grid
         clue_pos = _find_clue_position(clue_num, expected_grid, "down")
         if clue_pos is None:
             continue
-            
+
         row, col = clue_pos
-        
+
         # Check each letter of the answer
         for i, letter in enumerate(answer):
             if row + i >= height or i >= len(expected_answer):
@@ -275,117 +313,102 @@ def _find_clue_position(clue_num, grid, direction):
     """Find the starting position of a clue in the grid based on numbering logic"""
     height = len(grid)
     width = len(grid[0]) if height > 0 else 0
-    
+
     current_num = 1
-    
+
     for row in range(height):
         for col in range(width):
             # Skip black squares
             if grid[row][col] == ".":
                 continue
-                
+
             # Check if this position starts a word
-            starts_across = (col == 0 or grid[row][col-1] == ".") and col + 1 < width and grid[row][col+1] != "."
-            starts_down = (row == 0 or grid[row-1][col] == ".") and row + 1 < height and grid[row+1][col] != "."
-            
+            starts_across = (
+                (col == 0 or grid[row][col - 1] == ".")
+                and col + 1 < width
+                and grid[row][col + 1] != "."
+            )
+            starts_down = (
+                (row == 0 or grid[row - 1][col] == ".")
+                and row + 1 < height
+                and grid[row + 1][col] != "."
+            )
+
             if starts_across or starts_down:
                 if current_num == clue_num:
                     return (row, col)
                 current_num += 1
-    
+
     return None
-
-
 
 
 def load_expected_solution(file_path, puzzle_name=None):
     """
     Load expected solution from either a text file or JSONL file
-    
+
     Args:
         file_path: Path to the file
         puzzle_name: If JSONL file, the name of the puzzle to find
-    
+
     Returns:
         str: Expected solution string
     """
-    if file_path.endswith('.jsonl'):
+    if file_path.endswith(".jsonl"):
         if puzzle_name is None:
             raise ValueError("puzzle_name required when using JSONL file")
-        
-        with open(file_path, 'r', encoding='utf-8') as f:
+
+        with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
                 data = json.loads(line.strip())
-                if data.get('name') == puzzle_name:
-                    return data['solution']
-        
+                if data.get("name") == puzzle_name:
+                    return data["solution"]
+
         raise ValueError(f"Puzzle '{puzzle_name}' not found in JSONL file")
-    
+
     else:
         # Assume it's a text file with the expected solution
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             return f.read()
 
 
 def main():
     """Command line interface"""
-    if len(sys.argv) < 3 or len(sys.argv) > 5:
-        print(f"Usage: {sys.argv[0]} <expected_solution> <attempted_solution> [puzzle_name] [mode]")
-        print("  expected_solution: Text file with expected solution OR JSONL file")
-        print("  attempted_solution: Text file with attempted solution")
-        print("  puzzle_name: Required if expected_solution is JSONL file")
-        print("  mode: 'strict' (default) or 'lenient'")
-        print()
-        print("Examples:")
-        print(f"  {sys.argv[0]} expected.txt attempted.txt")
-        print(f"  {sys.argv[0]} dataset.jsonl attempted.txt NY_Times_2025_06_23")
-        print(f"  {sys.argv[0]} dataset.jsonl attempted.txt NY_Times_2025_06_23 lenient")
-        sys.exit(1)
+    import argparse
 
-    expected_file = sys.argv[1]
-    attempted_file = sys.argv[2]
-    
-    # Handle variable arguments
-    if len(sys.argv) == 4:
-        if sys.argv[3] in ["strict", "lenient"]:
-            puzzle_name = None
-            mode = sys.argv[3]
-        else:
-            puzzle_name = sys.argv[3]
-            mode = "strict"
-    elif len(sys.argv) == 5:
-        puzzle_name = sys.argv[3]
-        mode = sys.argv[4]
-    else:
-        puzzle_name = None
-        mode = "strict"
+    parser = argparse.ArgumentParser(
+        description="Score a crossword puzzle answer against the solution",
+    )
 
-    if mode not in ["strict", "lenient"]:
-        print("Mode must be 'strict' or 'lenient'")
-        sys.exit(1)
+    parser.add_argument(
+        "expected_solution", help="Text file with expected solution OR JSONL file"
+    )
+    parser.add_argument("attempted_solution", help="Text file with attempted solution")
+    parser.add_argument(
+        "--puzzle",
+        "-p",
+        help="Puzzle name (required if expected_solution is JSONL file)",
+    )
+    parser.add_argument(
+        "--mode",
+        "-m",
+        choices=["strict", "lenient"],
+        default="strict",
+        help="Scoring mode: 'strict' (all instances must be correct) or 'lenient' (any instance can be correct) (default: strict)",
+    )
 
-    if not os.path.exists(expected_file):
-        print(f"Error: Expected solution file '{expected_file}' not found")
-        sys.exit(1)
-    
-    if not os.path.exists(attempted_file):
-        print(f"Error: Attempted solution file '{attempted_file}' not found")
-        sys.exit(1)
+    args = parser.parse_args()
 
-    try:
-        # Load expected solution
-        expected_solution = load_expected_solution(expected_file, puzzle_name)
-        
-        # Load attempted solution
-        with open(attempted_file, 'r', encoding='utf-8') as f:
-            attempted_solution = f.read()
+    # Load expected solution
+    expected_solution = load_expected_solution(args.expected_solution, args.puzzle)
 
-        score, correct_count, total_count = score_puzzle_detailed(expected_solution, attempted_solution, mode)
-        print(f"Score: {score:.3f} ({correct_count}/{total_count}) [{mode}]")
+    # Load attempted solution
+    with open(args.attempted_solution, "r", encoding="utf-8") as f:
+        attempted_solution = f.read()
 
-    except Exception as e:
-        print(f"Error scoring puzzle: {e}")
-        sys.exit(1)
+    score, correct_count, total_count = score_puzzle_detailed(
+        expected_solution, attempted_solution, args.mode
+    )
+    print(f"Score: {score:.3f} ({correct_count}/{total_count}) [{args.mode}]")
 
 
 if __name__ == "__main__":
