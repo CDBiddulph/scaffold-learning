@@ -4,58 +4,19 @@
 import sys
 import os
 from . import puz
+from .puzzle_utils import puzzle_to_input_text, puzzle_to_solution_text
 
 
 def save_puzzle_file(puzzle, numbering, output_path):
     """Save the puzzle file with empty grid and clues"""
     with open(output_path, "w", encoding="utf-8") as f:
-        # Write empty grid
-        for row in range(puzzle.height):
-            cell = row * puzzle.width
-            row_text = []
-            for col in range(puzzle.width):
-                idx = cell + col
-                if puzzle.solution[idx] == ".":
-                    row_text.append(".")
-                else:
-                    row_text.append("-")
-            f.write(" ".join(row_text) + "\n")
-        f.write("\n")
-
-        # Write clues without answers
-        f.write("Across:\n")
-        for clue in numbering.across:
-            f.write(f"{clue['num']:3d}. {clue['clue']}\n")
-
-        f.write("\nDown:\n")
-        for clue in numbering.down:
-            f.write(f"{clue['num']:3d}. {clue['clue']}\n")
+        f.write(puzzle_to_input_text(puzzle, numbering))
 
 
 def save_answer_file(puzzle, numbering, output_path):
     """Save the answer file with solution grid and answers"""
     with open(output_path, "w", encoding="utf-8") as f:
-        # Write solution grid
-        for row in range(puzzle.height):
-            cell = row * puzzle.width
-            f.write(" ".join(puzzle.solution[cell : cell + puzzle.width]) + "\n")
-        f.write("\n")
-
-        # Write answer list
-        f.write("Across:\n")
-        for clue in numbering.across:
-            answer = "".join(
-                puzzle.solution[clue["cell"] + i] for i in range(clue["len"])
-            )
-            f.write(f"{clue['num']:3d}. {answer}\n")
-
-        f.write("\nDown:\n")
-        for clue in numbering.down:
-            answer = "".join(
-                puzzle.solution[clue["cell"] + i * numbering.width]
-                for i in range(clue["len"])
-            )
-            f.write(f"{clue['num']:3d}. {answer}\n")
+        f.write(puzzle_to_solution_text(puzzle, numbering))
 
 
 def save_puzzle_files(filename, output_dir=None):
