@@ -8,9 +8,7 @@ from urllib.request import urlopen, Request
 import gzip
 import json
 
-# Add parent directory to path to import puz module
-sys.path.insert(0, str(Path(__file__).parent.parent))
-import puz
+from . import puz
 
 
 # Constants from view_archive.py
@@ -83,28 +81,28 @@ def convert_to_puz(puzzle_data, source, date):
     # Process clues
     # Create a mapping of clue numbers to their clues and directions
     clue_map = {}
-    
+
     for clue_data in clues_data:
         clue_text = clue_data[0]
         direction = clue_data[1]  # 0 = Across, 1 = Down
         clue_num = clue_data[2]
-        
+
         if clue_num not in clue_map:
             clue_map[clue_num] = {}
-        
+
         if direction == 0:
-            clue_map[clue_num]['across'] = clue_text
+            clue_map[clue_num]["across"] = clue_text
         else:
-            clue_map[clue_num]['down'] = clue_text
-    
+            clue_map[clue_num]["down"] = clue_text
+
     # Build clues list in the order expected by .puz format:
     # For each numbered square (in order), add across clue first (if exists), then down clue (if exists)
     puzzle.clues = []
     for num in sorted(clue_map.keys()):
-        if 'across' in clue_map[num]:
-            puzzle.clues.append(clue_map[num]['across'])
-        if 'down' in clue_map[num]:
-            puzzle.clues.append(clue_map[num]['down'])
+        if "across" in clue_map[num]:
+            puzzle.clues.append(clue_map[num]["across"])
+        if "down" in clue_map[num]:
+            puzzle.clues.append(clue_map[num]["down"])
 
     return puzzle
 
