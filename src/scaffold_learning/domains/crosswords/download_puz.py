@@ -141,15 +141,15 @@ def download_puzzles(data, header, output_dir, target_count, source, day_pattern
                     filepath = output_dir / filename
                     puzzle.save(str(filepath))
 
-                    saved_count += 1
-                    print(f"Saved {saved_count}/{target_count}: {filename}")
-
-                    if saved_count >= target_count:
-                        return saved_count
-
                 except Exception as e:
                     print(f"Error processing {source} {year}-{month}-{day}: {e}")
                     continue
+
+                saved_count += 1
+                print(f"Saved {saved_count}/{target_count}: {filename}")
+
+                if saved_count >= target_count:
+                    return saved_count
 
     return saved_count
 
