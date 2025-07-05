@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import random
 import re
 import sys
 from pathlib import Path
@@ -255,6 +256,12 @@ def main():
         default=r"^\d+$",
         help="Regex pattern to filter day names (default: '^\\d+$' for numbered days only)",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for shuffling puzzles (default: 42)",
+    )
     args = parser.parse_args()
 
     # Output directory from argument
@@ -275,6 +282,10 @@ def main():
     
     if len(all_puzzles) < total_needed:
         print(f"Warning: Only found {len(all_puzzles)} puzzles, needed {total_needed}")
+    
+    # Shuffle with deterministic seed
+    random.seed(args.seed)
+    random.shuffle(all_puzzles)
     
     # Split into train and validation
     train_puzzles = all_puzzles[:args.num_train]
