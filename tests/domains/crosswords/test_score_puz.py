@@ -2,63 +2,42 @@
 """Tests for score_puz.py"""
 
 import unittest
-import tempfile
-import os
-from scaffold_learning.domains.crosswords import puz, score_puz
+from scaffold_learning.domains.crosswords import score_puz
 
 
 class TestScorePuz(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # Create a real puzzle object for our test crossword
-        self.puzzle = puz.Puzzle()
-        self.puzzle.width = 5
-        self.puzzle.height = 5
-        self.puzzle.solution = "FATE." + "ADULT" + "KARMA" + "EMBER" + ".SORT"
-        self.puzzle.fill = (
-            "FATE." + "ADULT" + "KARMA" + "EMBER" + ".SORT"
-        )  # Use solution as fill
+        # Create expected solution string in the format used by save_puz.py and prepare_datasets.py
+        self.expected_solution = """F A T E .
+A D U L T
+K A R M A
+E M B E R
+. S O R T
 
-        # Set up clues in order: across clues first, then down clues
-        self.puzzle.clues = [
-            "Destiny",  # 1 Across: FATE
-            "Grown-up",  # 5 Across: ADULT
-            "What goes around",  # 6 Across: KARMA
-            "Glowing coal",  # 7 Across: EMBER
-            "Organize",  # 8 Across: SORT
-            "Not real",  # 1 Down: FAKE
-            "President John Quincy ___",  # 2 Down: ADAMS
-            "Supercharged",  # 3 Down: TURBO
-            "Cartoon hunter",  # 4 Down: ELMER
-            "Pop-___",  # 9 Down: TART
-        ]
+Across:
+  1. FATE
+  5. ADULT
+  7. KARMA
+  8. EMBER
+  9. SORT
 
-        # Save puzzle to a temporary file for testing
-        self.temp_puz_file = tempfile.NamedTemporaryFile(suffix=".puz", delete=False)
-        self.puzzle.save(self.temp_puz_file.name)
-        self.temp_puz_file.close()
-
-    def tearDown(self):
-        """Clean up test fixtures"""
-        os.unlink(self.temp_puz_file.name)
+Down:
+  1. FAKE
+  2. ADAMS
+  3. TURBO
+  4. ELMER
+  6. TART"""
 
     def _score_answer_content(self, answer_content, mode="strict"):
-        """Helper method to score answer content and return score tuple"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write(answer_content)
-            answer_file = f.name
-
-        try:
-            return score_puz.score_puzzle(self.temp_puz_file.name, answer_file, mode)
-        finally:
-            os.unlink(answer_file)
+        """Helper method to score answer content and return float score"""
+        return score_puz.score_puzzle(self.expected_solution, answer_content, mode)
 
     def _assert_score(self, answer_content, expected_score, mode):
         """Helper method to score answer content and assert expected score"""
-        score, correct, total = self._score_answer_content(answer_content, mode)
-        self.assertEqual(score, expected_score)
-        self.assertEqual(score, correct / total if total > 0 else 0.0)
+        score = self._score_answer_content(answer_content, mode)
+        self.assertAlmostEqual(score, expected_score, places=3)
 
     def _assert_score_strict(self, answer_content, expected_score):
         """Helper method to score answer content with strict mode and assert expected score"""
@@ -248,10 +227,11 @@ e m b e r
     def test_exploit_lenient_with_multiple_grids(self):
         """Test that lenient mode can be exploited with multiple conflicting grids"""
         # Create multiple grids that together cover all correct letters
+        # 5x5 grid with letters filling each position
         answer_content = "\n\n".join(
             "\n".join(
-                " ".join(letter for _ in range(self.puzzle.width))
-                for _ in range(self.puzzle.height)
+                " ".join(letter for _ in range(5))
+                for _ in range(5)
             )
             for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         )
@@ -265,7 +245,7 @@ e m b e r
 
     def test_command_line_interface_logic(self):
         """Test the scoring logic that would be used by command line interface"""
-        # Create a test answer file with conflicts to show mode differences
+        # Create a test answer with conflicts to show mode differences
         answer_content = """F A T E .
 A D U L T
 K A R M A
@@ -275,33 +255,21 @@ E M B E R
 Across:
   1. FATX"""  # Wrong last letter conflicts with correct grid
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write(answer_content)
-            answer_file = f.name
+        # Strict mode: conflict makes position wrong
+        strict_score = score_puz.score_puzzle(
+            self.expected_solution, answer_content, "strict"
+        )
+        self.assertAlmostEqual(
+            strict_score, 22 / 23, places=3
+        )  # 22 out of 23 correct
 
-        try:
-            # Strict mode: conflict makes position wrong
-            strict_score, strict_correct, strict_total = score_puz.score_puzzle(
-                self.temp_puz_file.name, answer_file, "strict"
-            )
-            self.assertAlmostEqual(
-                strict_score, 22 / 23, places=3
-            )  # 22 out of 23 correct
-            self.assertEqual(strict_correct, 22)
-            self.assertEqual(strict_total, 23)
-
-            # Lenient mode: grid has all correct, so all squares count as correct
-            lenient_score, lenient_correct, lenient_total = score_puz.score_puzzle(
-                self.temp_puz_file.name, answer_file, "lenient"
-            )
-            self.assertAlmostEqual(
-                lenient_score, 1.0, places=3
-            )  # All correct in lenient mode
-            self.assertEqual(lenient_correct, 23)
-            self.assertEqual(lenient_total, 23)
-
-        finally:
-            os.unlink(answer_file)
+        # Lenient mode: grid has all correct, so all squares count as correct
+        lenient_score = score_puz.score_puzzle(
+            self.expected_solution, answer_content, "lenient"
+        )
+        self.assertAlmostEqual(
+            lenient_score, 1.0, places=3
+        )  # All correct in lenient mode
 
 
 if __name__ == "__main__":
