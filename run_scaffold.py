@@ -241,17 +241,10 @@ except Exception as e:
 """
 
 
-def run_scaffold(
-    scaffold_name: str,
-    scaffold_base_dir: str,
-    input_string: str,
-    log_level: str,
-    override_model: str,
-    keep_container: bool,
-    timeout: int = None,
-) -> None:
-    """Run a scaffold in Docker container."""
-
+def _setup_scaffold_execution(
+    scaffold_name: str, scaffold_base_dir: str, override_model: str
+) -> tuple[str, Path, Path, str]:
+    """Setup and validate scaffold execution environment."""
     # Load metadata
     try:
         metadata = _load_metadata(scaffold_name, scaffold_base_dir)
@@ -273,11 +266,24 @@ def run_scaffold(
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = logs_dir / f"{timestamp}.log"
 
     # Resolve executor specification
     executor_model_spec = _resolve_executor_model_spec(metadata, override_model)
 
+    return executor_model_spec, scaffold_dir, logs_dir, timestamp
+
+
+def _prepare_docker_execution(
+    scaffold_name: str,
+    scaffold_dir: Path,
+    logs_dir: Path,
+    timestamp: str,
+    executor_model_spec: str,
+    log_level: str,
+    keep_container: bool,
+    input_string: str,
+) -> list[str]:
+    """Prepare Docker command for execution."""
     # Build Docker command
     docker_cmd = _build_docker_command(
         scaffold_dir,
@@ -295,67 +301,151 @@ def run_scaffold(
     )
     docker_cmd.extend(["python", "-c", python_script])
 
+    return docker_cmd
+
+
+def _execute_human_scaffold(
+    docker_cmd: list[str],
+    timeout: int,
+    log_file: Path,
+    scaffold_name: str,
+    executor_model_spec: str,
+    input_string: str,
+    timestamp: str,
+) -> int:
+    """Execute scaffold with human model."""
+    if timeout:
+        print("Warning: Timeout not supported for human model (interactive mode)")
+
+    result = subprocess.run(docker_cmd, check=False)
+
+    # Save log for human model
+    _log_results(
+        log_file,
+        scaffold_name,
+        executor_model_spec,
+        input_string,
+        timestamp,
+        stdout="Note: Human model execution - no output captured\nUser interaction occurred directly in terminal.\n",
+    )
+    return _get_exit_code(completed_process=result)
+
+
+def _execute_llm_scaffold(
+    docker_cmd: list[str],
+    timeout: int,
+    log_file: Path,
+    scaffold_name: str,
+    executor_model_spec: str,
+    input_string: str,
+    timestamp: str,
+) -> int:
+    """Execute scaffold with LLM model."""
+    result = subprocess.run(
+        docker_cmd, capture_output=True, text=True, check=False, timeout=timeout
+    )
+
+    # Save execution log to file
+    _log_results(
+        log_file,
+        scaffold_name,
+        executor_model_spec,
+        input_string,
+        timestamp,
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
+    _print_results(result.stdout, result.stderr)
+    return _get_exit_code(completed_process=result)
+
+
+def _handle_execution_error(
+    e: Exception,
+    log_file: Path,
+    scaffold_name: str,
+    executor_model_spec: str,
+    input_string: str,
+    timestamp: str,
+) -> int:
+    """Handle execution errors and log them."""
+    # Extract stdout/stderr from exception if available
+    error_stdout = e.stdout if hasattr(e, "stdout") else None
+    error_stderr = e.stderr if hasattr(e, "stderr") else None
+
+    _log_results(
+        log_file,
+        scaffold_name,
+        executor_model_spec,
+        input_string,
+        timestamp,
+        stdout=error_stdout,
+        stderr=error_stderr,
+        error_message=str(e),
+    )
+    # Print error information to console
+    _print_results(error_stdout, error_stderr)
+    return _get_exit_code(error=e)
+
+
+def run_scaffold(
+    scaffold_name: str,
+    scaffold_base_dir: str,
+    input_string: str,
+    log_level: str,
+    override_model: str,
+    keep_container: bool,
+    timeout: int = None,
+) -> int:
+    """Run a scaffold in Docker container."""
+
+    # Setup and validation
+    executor_model_spec, scaffold_dir, logs_dir, timestamp = _setup_scaffold_execution(
+        scaffold_name, scaffold_base_dir, override_model
+    )
+
+    log_file = logs_dir / f"{timestamp}.log"
+
+    # Prepare Docker execution
+    docker_cmd = _prepare_docker_execution(
+        scaffold_name,
+        scaffold_dir,
+        logs_dir,
+        timestamp,
+        executor_model_spec,
+        log_level,
+        keep_container,
+        input_string,
+    )
+
     print(f"Running scaffold '{scaffold_name}' with executor {executor_model_spec}")
     print(f"Logs will be saved to: {log_file}")
 
     try:
         if executor_model_spec == "human/human":
-            # For human model, don't capture output - let it connect directly to terminal
-            if timeout:
-                print(
-                    "Warning: Timeout not supported for human model (interactive mode)"
-                )
-            result = subprocess.run(docker_cmd, check=False)
-
-            # Save log for human model
-            _log_results(
+            return _execute_human_scaffold(
+                docker_cmd,
+                timeout,
                 log_file,
                 scaffold_name,
                 executor_model_spec,
                 input_string,
                 timestamp,
-                stdout="Note: Human model execution - no output captured\nUser interaction occurred directly in terminal.\n",
             )
-            # Human executor already printed to terminal directly, no need to print results
-            return _get_exit_code(completed_process=result)
-
         else:
-            # For other models, capture output as before
-            result = subprocess.run(
-                docker_cmd, capture_output=True, text=True, check=False, timeout=timeout
-            )
-
-            # Save execution log to file
-            _log_results(
+            return _execute_llm_scaffold(
+                docker_cmd,
+                timeout,
                 log_file,
                 scaffold_name,
                 executor_model_spec,
                 input_string,
                 timestamp,
-                stdout=result.stdout,
-                stderr=result.stderr,
             )
-            _print_results(result.stdout, result.stderr)
-            return _get_exit_code(completed_process=result)
 
     except Exception as e:
-        # Extract stdout/stderr from exception if available
-        error_stdout = e.stdout if hasattr(e, "stdout") else None
-        error_stderr = e.stderr if hasattr(e, "stderr") else None
-
-        _log_results(
-            log_file,
-            scaffold_name,
-            executor_model_spec,
-            input_string,
-            timestamp,
-            stdout=error_stdout,
-            stderr=error_stderr,
-            error_message=str(e),
+        return _handle_execution_error(
+            e, log_file, scaffold_name, executor_model_spec, input_string, timestamp
         )
-        # Print error information to console
-        _print_results(error_stdout, error_stderr)
-        return _get_exit_code(error=e)
 
 
 def _parse_args() -> argparse.Namespace:
