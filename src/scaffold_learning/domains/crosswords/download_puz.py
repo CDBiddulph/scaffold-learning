@@ -108,45 +108,47 @@ def convert_to_puz(puzzle_data, source, date):
     return puzzle
 
 
-def download_puzzles(data, header, output_dir, target_count):
+def download_puzzles(data, header, output_dir, target_count, source):
     """Download puzzles until target count is reached"""
     saved_count = 0
 
-    for source, years in data.items():
-        if source not in ["NY Times"]:
-            continue
-        for year, months in sorted(years.items(), reverse=True):
-            for month, days in sorted(months.items(), reverse=True):
-                for day, info in sorted(days.items(), reverse=True):
-                    if day.endswith("-mini"):
-                        continue
-                    # Fetch puzzle data
-                    try:
-                        puzzle_data = get_data(*info, mode="gzip", header=header)
+    if source not in data:
+        print(f"Error: Source '{source}' not found in archive")
+        available_sources = sorted(data.keys())
+        print(f"Available sources: {', '.join(available_sources)}")
+        return 0
 
-                        # Convert to puz format
-                        date = f"{year}-{month}-{day}"
-                        puzzle = convert_to_puz(puzzle_data, source, date)
+    years = data[source]
+    for year, months in sorted(years.items(), reverse=True):
+        for month, days in sorted(months.items(), reverse=True):
+            for day, info in sorted(days.items(), reverse=True):
+                if day.endswith("-mini"):
+                    continue
+                # Fetch puzzle data
+                try:
+                    puzzle_data = get_data(*info, mode="gzip", header=header)
 
-                        if puzzle is None:
-                            continue  # Skip problematic/acrostic/diagramless
+                    # Convert to puz format
+                    date = f"{year}-{month}-{day}"
+                    puzzle = convert_to_puz(puzzle_data, source, date)
 
-                        # Save puzzle
-                        filename = f"{source}_{year}_{month}_{day}.puz".replace(
-                            " ", "_"
-                        )
-                        filepath = output_dir / filename
-                        puzzle.save(str(filepath))
+                    if puzzle is None:
+                        continue  # Skip problematic/acrostic/diagramless
 
-                        saved_count += 1
-                        print(f"Saved {saved_count}/{target_count}: {filename}")
+                    # Save puzzle
+                    filename = f"{source}_{year}_{month}_{day}.puz".replace(" ", "_")
+                    filepath = output_dir / filename
+                    puzzle.save(str(filepath))
 
-                        if saved_count >= target_count:
-                            return saved_count
+                    saved_count += 1
+                    print(f"Saved {saved_count}/{target_count}: {filename}")
 
-                    except Exception as e:
-                        print(f"Error processing {source} {year}-{month}-{day}: {e}")
-                        continue
+                    if saved_count >= target_count:
+                        return saved_count
+
+                except Exception as e:
+                    print(f"Error processing {source} {year}-{month}-{day}: {e}")
+                    continue
 
     return saved_count
 
@@ -165,6 +167,12 @@ def main():
         default=10,
         help="Number of puzzles to download (default: 10)",
     )
+    parser.add_argument(
+        "-s",
+        "--source",
+        default="NY Times",
+        help="Puzzle source to download from (default: NY Times)",
+    )
     args = parser.parse_args()
 
     # Output directory from argument
@@ -179,9 +187,9 @@ def main():
 
     # Download puzzles
     target_count = args.num_puzzles
-    print(f"Searching for {target_count} suitable puzzles...")
+    print(f"Searching for {target_count} suitable puzzles from {args.source}...")
 
-    saved_count = download_puzzles(data, header, output_dir, target_count)
+    saved_count = download_puzzles(data, header, output_dir, target_count, args.source)
 
     print(f"\nSuccessfully downloaded {saved_count} puzzles to {output_dir}")
     return saved_count
