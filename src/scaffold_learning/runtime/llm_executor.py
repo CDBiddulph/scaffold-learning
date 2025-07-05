@@ -19,7 +19,7 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
         The LLM's response as a string
     """
     # Import the LLM factory and logging suppression
-    from llm_interfaces import LLMFactory, suppress_logging
+    from scaffold_learning.core.llm_interfaces import LLMFactory, suppress_logging
 
     # Get executor specification from environment variable
     executor_model_spec = os.environ.get("EXECUTOR_MODEL_SPEC", "haiku")

@@ -12,12 +12,12 @@ import sys
 import json
 from datetime import datetime
 from typing import Dict, Any
-from llm_interfaces import LLMFactory
+from scaffold_learning.core.llm_interfaces import LLMFactory
 import shutil
 import logging
 
 # Template file paths
-SCAFFOLDER_SYSTEM_PROMPT_TEMPLATE = "templates/scaffolder_system_prompt.txt"
+SCAFFOLDER_SYSTEM_PROMPT_TEMPLATE = "prompts/scaffolder_system_prompt.txt"
 
 
 def get_scaffolder_system_prompt() -> str:

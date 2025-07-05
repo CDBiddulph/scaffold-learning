@@ -127,7 +127,7 @@ def _ensure_docker_image():
 def _resolve_executor_model_spec(metadata: dict, override_model: str = None) -> str:
     """Resolve executor specification, handling overrides."""
     if override_model:
-        from llm_interfaces import LLMFactory
+        from scaffold_learning.core.llm_interfaces import LLMFactory
 
         return LLMFactory.resolve_model_spec(override_model)
     else:

@@ -4,8 +4,7 @@
 import unittest
 import tempfile
 import os
-import puz
-import score_puz
+from scaffold_learning.domains.crosswords import puz, score_puz
 
 from unittest.mock import patch
 

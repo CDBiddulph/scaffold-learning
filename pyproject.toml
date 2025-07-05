@@ -7,5 +7,16 @@ dependencies = [
     "python-dotenv"
 ]
 
-[tool.setuptools]
-py-modules = ["generate_scaffold_script", "llm_interfaces"]
+[project.scripts]
+generate-scaffold = "scaffold_learning.cli.generate_scaffold_script:main"
+run-scaffold = "scaffold_learning.cli.run_scaffold:main"
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

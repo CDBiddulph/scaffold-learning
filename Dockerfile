@@ -10,8 +10,11 @@ COPY pyproject.toml /app/
 RUN pip install -e .
 
 # Copy source files
-COPY llm_interfaces.py /app/
-COPY templates/docker_executor_template.py /app/llm_executor.py
+RUN mkdir -p /app/scaffold_learning/core
+COPY src/scaffold_learning/__init__.py /app/scaffold_learning/
+COPY src/scaffold_learning/core/__init__.py /app/scaffold_learning/core/
+COPY src/scaffold_learning/core/llm_interfaces.py /app/scaffold_learning/core/
+COPY src/scaffold_learning/runtime/llm_executor.py /app/llm_executor.py
 
 # Create workspace directory
 WORKDIR /workspace
