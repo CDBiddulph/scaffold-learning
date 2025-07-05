@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Download crossword puzzles from GitHub archive and save as .puz files"""
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -114,9 +115,9 @@ def download_puzzles(data, header, output_dir, target_count):
     for xword, years in data.items():
         if xword not in ["NY Times"]:
             continue
-        for year, months in reversed(years.items()):
-            for month, days in reversed(months.items()):
-                for day, info in reversed(days.items()):
+        for year, months in sorted(years.items(), reverse=True):
+            for month, days in sorted(months.items(), reverse=True):
+                for day, info in sorted(days.items(), reverse=True):
                     if day.endswith("-mini"):
                         continue
                     # Fetch puzzle data
@@ -149,9 +150,23 @@ def download_puzzles(data, header, output_dir, target_count):
 
 
 def main():
-    """Download 10 puzzles and save as .puz files"""
-    # Output directory
-    output_dir = Path(__file__).parent.parent / "data" / "input" / "github"
+    """Download puzzles and save as .puz files"""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Download crossword puzzles from GitHub archive"
+    )
+    parser.add_argument("output_dir", help="Directory to save downloaded .puz files")
+    parser.add_argument(
+        "-n",
+        "--num-puzzles",
+        type=int,
+        default=10,
+        help="Number of puzzles to download (default: 10)",
+    )
+    args = parser.parse_args()
+
+    # Output directory from argument
+    output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Get metadata
@@ -161,7 +176,7 @@ def main():
     data = get_data(*meta[2:5], mode="gzip", header=header)
 
     # Download puzzles
-    target_count = 10
+    target_count = args.num_puzzles
     print(f"Searching for {target_count} suitable puzzles...")
 
     saved_count = download_puzzles(data, header, output_dir, target_count)
