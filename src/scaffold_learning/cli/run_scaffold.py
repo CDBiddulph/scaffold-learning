@@ -87,9 +87,7 @@ def _ensure_docker_image():
 
     if result.returncode != 0:
         print("Building Docker image...")
-        subprocess.run(
-            ["docker", "build", "-t", "scaffold-runner", "."], check=True
-        )
+        subprocess.run(["docker", "build", "-t", "scaffold-runner", "."], check=True)
         print("Docker image built successfully!")
 
 
@@ -247,20 +245,18 @@ def _execute_llm_scaffold(
 
     # Set up output streaming
     output_queue = queue.Queue()
-    stdout_thread = threading.Thread(
-        target=stream_output, args=(process.stdout, output_queue, "stdout")
-    )
-    stderr_thread = threading.Thread(
-        target=stream_output, args=(process.stderr, output_queue, "stderr")
-    )
+    lines = {"stdout": [], "stderr": []}
+    threads = {}
 
-    stdout_thread.daemon = True
-    stderr_thread.daemon = True
-    stdout_thread.start()
-    stderr_thread.start()
+    # Create threads for each stream
+    for stream_name, pipe in [("stdout", process.stdout), ("stderr", process.stderr)]:
+        thread = threading.Thread(
+            target=stream_output, args=(pipe, output_queue, stream_name)
+        )
+        thread.daemon = True
+        thread.start()
+        threads[stream_name] = thread
 
-    stdout_lines = []
-    stderr_lines = []
     start_time = time.time()
 
     # Process output in real-time
@@ -268,33 +264,31 @@ def _execute_llm_scaffold(
         # Check timeout
         if timeout and (time.time() - start_time) > timeout:
             process.kill()
-            
+
             # Save what we have so far before raising timeout error
-            full_stdout = "".join(stdout_lines)
-            full_stderr = "".join(stderr_lines)
             _log_results(
                 log_file,
                 scaffold_name,
                 executor_model_spec,
                 input_string,
                 timestamp,
-                stdout=full_stdout,
-                stderr=full_stderr,
+                stdout="".join(lines["stdout"]),
+                stderr="".join(lines["stderr"]),
                 error_message=f"Execution timed out after {timeout} seconds",
             )
-            
+
             raise subprocess.TimeoutExpired(docker_cmd, timeout)
 
         try:
             # Get output with short timeout to avoid blocking
             stream_name, line = output_queue.get(timeout=0.1)
 
+            # Append to appropriate list and print
+            lines[stream_name].append(line)
             if stream_name == "stdout":
-                stdout_lines.append(line)
-                print(line, end="")  # Print immediately
-            elif stream_name == "stderr":
-                stderr_lines.append(line)
-                print(line, end="", file=sys.stderr)  # Print immediately
+                print(line, end="")
+            else:  # stderr
+                print(line, end="", file=sys.stderr)
 
         except queue.Empty:
             continue  # No output available, continue checking
@@ -303,22 +297,17 @@ def _execute_llm_scaffold(
     while not output_queue.empty():
         try:
             stream_name, line = output_queue.get_nowait()
+            lines[stream_name].append(line)
             if stream_name == "stdout":
-                stdout_lines.append(line)
                 print(line, end="")
-            elif stream_name == "stderr":
-                stderr_lines.append(line)
+            else:  # stderr
                 print(line, end="", file=sys.stderr)
         except queue.Empty:
             break
 
     # Wait for threads to finish
-    stdout_thread.join(timeout=1)
-    stderr_thread.join(timeout=1)
-
-    # Combine all output for logging
-    full_stdout = "".join(stdout_lines)
-    full_stderr = "".join(stderr_lines)
+    for thread in threads.values():
+        thread.join(timeout=1)
 
     # Save execution log to file
     _log_results(
@@ -327,8 +316,8 @@ def _execute_llm_scaffold(
         executor_model_spec,
         input_string,
         timestamp,
-        stdout=full_stdout,
-        stderr=full_stderr,
+        stdout="".join(lines["stdout"]),
+        stderr="".join(lines["stderr"]),
     )
 
     # Check if process failed
@@ -394,7 +383,7 @@ def run_scaffold(
         if timeout:
             print("Warning: Timeout not supported for human model (interactive mode)")
         _execute_human_scaffold(docker_cmd)
-        
+
         # Save basic log for human model
         _log_results(
             log_file,
