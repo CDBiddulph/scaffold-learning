@@ -112,8 +112,8 @@ def download_puzzles(data, header, output_dir, target_count):
     """Download puzzles until target count is reached"""
     saved_count = 0
 
-    for xword, years in data.items():
-        if xword not in ["NY Times"]:
+    for source, years in data.items():
+        if source not in ["NY Times"]:
             continue
         for year, months in sorted(years.items(), reverse=True):
             for month, days in sorted(months.items(), reverse=True):
@@ -126,13 +126,15 @@ def download_puzzles(data, header, output_dir, target_count):
 
                         # Convert to puz format
                         date = f"{year}-{month}-{day}"
-                        puzzle = convert_to_puz(puzzle_data, xword, date)
+                        puzzle = convert_to_puz(puzzle_data, source, date)
 
                         if puzzle is None:
                             continue  # Skip problematic/acrostic/diagramless
 
                         # Save puzzle
-                        filename = f"{xword}_{year}_{month}_{day}.puz".replace(" ", "_")
+                        filename = f"{source}_{year}_{month}_{day}.puz".replace(
+                            " ", "_"
+                        )
                         filepath = output_dir / filename
                         puzzle.save(str(filepath))
 
@@ -143,7 +145,7 @@ def download_puzzles(data, header, output_dir, target_count):
                             return saved_count
 
                     except Exception as e:
-                        print(f"Error processing {xword} {year}-{month}-{day}: {e}")
+                        print(f"Error processing {source} {year}-{month}-{day}: {e}")
                         continue
 
     return saved_count
