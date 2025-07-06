@@ -21,7 +21,9 @@ def download_puzzles(data, header, output_dir, target_count, source, day_pattern
     """Download puzzles until target count is reached"""
     saved_count = 0
 
-    for puzzle, source_name, date, year, month, day in iterate_puzzles(data, header, source, day_pattern, target_count):
+    for puzzle, source_name, date, year, month, day in iterate_puzzles(
+        data, header, source, day_pattern, target_count
+    ):
         # Save puzzle
         filename = f"{source_name}_{year}_{month}_{day}.puz".replace(" ", "_")
         filepath = output_dir / filename

@@ -12,7 +12,12 @@ from urllib.request import urlopen, Request
 import gzip
 
 from . import puz
-from .puzzle_utils import get_data, iterate_puzzles, puzzle_to_input_text, puzzle_to_solution_text
+from .puzzle_utils import (
+    get_data,
+    iterate_puzzles,
+    puzzle_to_input_text,
+    puzzle_to_solution_text,
+)
 
 
 # get_data function moved to puzzle_utils.py
@@ -21,10 +26,10 @@ from .puzzle_utils import get_data, iterate_puzzles, puzzle_to_input_text, puzzl
 def puzzle_to_text(puzzle):
     """Convert puzzle to input and solution text strings"""
     numbering = puzzle.clue_numbering()
-    
+
     input_text = puzzle_to_input_text(puzzle, numbering)
     solution_text = puzzle_to_solution_text(puzzle, numbering)
-    
+
     return input_text, solution_text
 
 
@@ -32,18 +37,16 @@ def collect_puzzles(data, header, target_count, source, day_pattern):
     """Collect puzzles and convert to text format"""
     puzzles = []
 
-    for puzzle, source_name, date, year, month, day in iterate_puzzles(data, header, source, day_pattern, target_count):
+    for puzzle, source_name, date, year, month, day in iterate_puzzles(
+        data, header, source, day_pattern, target_count
+    ):
         # Convert to text
         input_text, solution_text = puzzle_to_text(puzzle)
-        
+
         # Generate name using same format as download_puz
         name = f"{source_name}_{year}_{month}_{day}".replace(" ", "_")
-        
-        puzzles.append({
-            "name": name,
-            "input": input_text,
-            "solution": solution_text
-        })
+
+        puzzles.append({"name": name, "input": input_text, "solution": solution_text})
 
         print(f"Collected {len(puzzles)}/{target_count}: {source_name} {date}")
 
@@ -56,7 +59,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Prepare crossword datasets from GitHub archive"
     )
-    parser.add_argument("output_dir", help="Directory to save train.jsonl and valid.jsonl files")
+    parser.add_argument(
+        "output_dir", help="Directory to save train.jsonl and valid.jsonl files"
+    )
     parser.add_argument(
         "--num-train",
         type=int,
@@ -101,26 +106,28 @@ def main():
     # Collect training puzzles
     total_needed = args.num_train + args.num_valid
     print(f"Searching for {total_needed} suitable puzzles from {args.source}...")
-    
-    all_puzzles = collect_puzzles(data, header, total_needed, args.source, args.day_filter)
-    
+
+    all_puzzles = collect_puzzles(
+        data, header, total_needed, args.source, args.day_filter
+    )
+
     if len(all_puzzles) < total_needed:
         print(f"Warning: Only found {len(all_puzzles)} puzzles, needed {total_needed}")
-    
+
     # Shuffle with deterministic seed
     random.seed(args.seed)
     random.shuffle(all_puzzles)
-    
+
     # Split into train and validation
-    train_puzzles = all_puzzles[:args.num_train]
-    valid_puzzles = all_puzzles[args.num_train:args.num_train + args.num_valid]
-    
+    train_puzzles = all_puzzles[: args.num_train]
+    valid_puzzles = all_puzzles[args.num_train : args.num_train + args.num_valid]
+
     # Save training set
     train_file = output_dir / "train.jsonl"
     with open(train_file, "w", encoding="utf-8") as f:
         for puzzle in train_puzzles:
             f.write(json.dumps(puzzle) + "\n")
-    
+
     # Save validation set
     valid_file = output_dir / "valid.jsonl"
     with open(valid_file, "w", encoding="utf-8") as f:
@@ -129,7 +136,7 @@ def main():
 
     print(f"\nSaved {len(train_puzzles)} training puzzles to {train_file}")
     print(f"Saved {len(valid_puzzles)} validation puzzles to {valid_file}")
-    
+
     return len(train_puzzles), len(valid_puzzles)
 
 

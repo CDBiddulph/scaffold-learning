@@ -107,7 +107,7 @@ def convert_github_to_puz(puzzle_data, source, date):
 def puzzle_to_input_text(puzzle, numbering):
     """Convert puzzle to input text (empty grid and clues)"""
     lines = []
-    
+
     # Write empty grid
     for row in range(puzzle.height):
         cell = row * puzzle.width
@@ -119,41 +119,39 @@ def puzzle_to_input_text(puzzle, numbering):
             else:
                 row_text.append("-")
         lines.append(" ".join(row_text))
-    
+
     lines.append("")  # Empty line after grid
-    
+
     # Write clues without answers
     lines.append("Across:")
     for clue in numbering.across:
         lines.append(f"{clue['num']:3d}. {clue['clue']}")
-    
+
     lines.append("")
     lines.append("Down:")
     for clue in numbering.down:
         lines.append(f"{clue['num']:3d}. {clue['clue']}")
-    
+
     return "\n".join(lines)
 
 
 def puzzle_to_solution_text(puzzle, numbering):
     """Convert puzzle to solution text (filled grid and answers)"""
     lines = []
-    
+
     # Write solution grid
     for row in range(puzzle.height):
         cell = row * puzzle.width
         lines.append(" ".join(puzzle.solution[cell : cell + puzzle.width]))
-    
+
     lines.append("")  # Empty line after grid
-    
+
     # Write answer list
     lines.append("Across:")
     for clue in numbering.across:
-        answer = "".join(
-            puzzle.solution[clue["cell"] + i] for i in range(clue["len"])
-        )
+        answer = "".join(puzzle.solution[clue["cell"] + i] for i in range(clue["len"]))
         lines.append(f"{clue['num']:3d}. {answer}")
-    
+
     lines.append("")
     lines.append("Down:")
     for clue in numbering.down:
@@ -162,21 +160,21 @@ def puzzle_to_solution_text(puzzle, numbering):
             for i in range(clue["len"])
         )
         lines.append(f"{clue['num']:3d}. {answer}")
-    
+
     return "\n".join(lines)
 
 
 def iterate_puzzles(data, header, source, day_pattern, max_count=None):
     """
     Generator that yields puzzle objects from the GitHub archive
-    
+
     Args:
         data: Archive data dictionary
         header: Header data for requests
         source: Puzzle source name (e.g. "NY Times")
         day_pattern: Regex pattern to filter day names
         max_count: Optional maximum number of puzzles to yield
-        
+
     Yields:
         tuple: (puzzle_object, source, date_string, year, month, day)
     """
@@ -193,7 +191,7 @@ def iterate_puzzles(data, header, source, day_pattern, max_count=None):
             for day, info in sorted(days.items(), reverse=True):
                 if not re.match(day_pattern, day):
                     continue
-                
+
                 try:
                     puzzle_data = get_data(*info, mode="gzip", header=header)
                     date = f"{year}-{month}-{day}"
@@ -204,7 +202,7 @@ def iterate_puzzles(data, header, source, day_pattern, max_count=None):
 
                     yield puzzle, source, date, year, month, day
                     count += 1
-                    
+
                     if max_count and count >= max_count:
                         return
 
