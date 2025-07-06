@@ -12,37 +12,39 @@ class TestScaffoldExecution:
         with tempfile.TemporaryDirectory() as temp_dir:
             scaffold_dir = Path(temp_dir) / "scaffold"
             logs_path = Path(temp_dir) / "logs"
-            
+
             # Create scaffold directory with files
             scaffold_dir.mkdir()
             logs_path.mkdir()
-            
+
             # Create a basic scaffold.py
-            (scaffold_dir / "scaffold.py").write_text("""
+            (scaffold_dir / "scaffold.py").write_text(
+                """
 def process_input(input_string: str) -> str:
     return f"processed: {input_string}"
-""")
-            
+"""
+            )
+
             # Create metadata.json
             (scaffold_dir / "metadata.json").write_text('{"model": "test"}')
-            
+
             # Mock subprocess to simulate successful execution
-            with patch('subprocess.Popen') as mock_popen:
+            with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
                 mock_process.communicate.return_value = ("result output", "")
                 mock_process.returncode = 0
                 mock_popen.return_value = mock_process
-                
+
                 # Mock time.time for execution timing
-                with patch('time.time', side_effect=[0.0, 1.5]):
+                with patch("time.time", side_effect=[0.0, 1.5]):
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
                         model="gpt-4",
                         logs_path=logs_path / "test.log",
-                        timeout=120
+                        timeout=120,
                     )
-                
+
                 assert isinstance(result, ScaffoldExecutionResult)
                 assert result.output == "result output"
                 assert result.stderr == ""
@@ -55,23 +57,23 @@ def process_input(input_string: str) -> str:
             logs_path = Path(temp_dir) / "logs"
             scaffold_dir.mkdir()
             logs_path.mkdir()
-            
+
             # Mock subprocess that hangs
-            with patch('subprocess.Popen') as mock_popen:
+            with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
                 mock_process.communicate.side_effect = [("", "Timeout error")]
                 mock_process.returncode = 124  # Timeout exit code
                 mock_popen.return_value = mock_process
-                
-                with patch('time.time', side_effect=[0.0, 120.5]):
+
+                with patch("time.time", side_effect=[0.0, 120.5]):
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
                         model="gpt-4",
                         logs_path=logs_path / "test.log",
-                        timeout=60
+                        timeout=60,
                     )
-                
+
                 assert result.exit_code == 124
                 assert result.execution_time == 120.5
 
@@ -81,21 +83,21 @@ def process_input(input_string: str) -> str:
             logs_path = Path(temp_dir) / "logs"
             scaffold_dir.mkdir()
             logs_path.mkdir()
-            
-            with patch('subprocess.Popen') as mock_popen:
+
+            with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
                 mock_process.communicate.return_value = ("", "Error: syntax error")
                 mock_process.returncode = 1
                 mock_popen.return_value = mock_process
-                
-                with patch('time.time', side_effect=[0.0, 0.5]):
+
+                with patch("time.time", side_effect=[0.0, 0.5]):
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
                         model="gpt-4",
-                        logs_path=logs_path / "test.log"
+                        logs_path=logs_path / "test.log",
                     )
-                
+
                 assert result.exit_code == 1
                 assert result.stderr == "Error: syntax error"
                 assert result.execution_time == 0.5
@@ -106,22 +108,22 @@ def process_input(input_string: str) -> str:
             logs_path = Path(temp_dir) / "logs"
             scaffold_dir.mkdir()
             logs_path.mkdir()
-            
-            with patch('subprocess.Popen') as mock_popen:
+
+            with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
                 mock_process.communicate.return_value = ("output", "")
                 mock_process.returncode = 0
                 mock_popen.return_value = mock_process
-                
-                with patch('time.time', side_effect=[0.0, 1.0]):
+
+                with patch("time.time", side_effect=[0.0, 1.0]):
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
                         model="gpt-4o",
                         logs_path=logs_path / "test.log",
-                        timeout=300
+                        timeout=300,
                     )
-                
+
                 # Check that docker command was constructed correctly
                 call_args = mock_popen.call_args[0][0]  # First argument (the command)
                 assert "docker" in call_args
@@ -136,21 +138,21 @@ def process_input(input_string: str) -> str:
             logs_path = Path(temp_dir) / "logs" / "execution.log"
             scaffold_dir.mkdir()
             logs_path.parent.mkdir()
-            
-            with patch('subprocess.Popen') as mock_popen:
+
+            with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
                 mock_process.communicate.return_value = ("test output", "test stderr")
                 mock_process.returncode = 0
                 mock_popen.return_value = mock_process
-                
-                with patch('time.time', side_effect=[0.0, 2.0]):
+
+                with patch("time.time", side_effect=[0.0, 2.0]):
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
                         model="gpt-4",
-                        logs_path=logs_path
+                        logs_path=logs_path,
                     )
-                
+
                 # Check that logs were saved correctly
                 assert logs_path.exists()
                 log_content = logs_path.read_text()
@@ -164,23 +166,23 @@ def process_input(input_string: str) -> str:
             logs_path = Path(temp_dir) / "logs"
             scaffold_dir.mkdir()
             logs_path.mkdir()
-            
-            with patch('subprocess.Popen') as mock_popen:
+
+            with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
                 mock_process.communicate.return_value = ("output", "")
                 mock_process.returncode = 0
                 mock_popen.return_value = mock_process
-                
+
                 # Mock environment variables
-                with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-                    with patch('time.time', side_effect=[0.0, 1.0]):
+                with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
+                    with patch("time.time", side_effect=[0.0, 1.0]):
                         result = execute_scaffold(
                             scaffold_dir=scaffold_dir,
                             input_string="test input",
                             model="gpt-4",
-                            logs_path=logs_path / "test.log"
+                            logs_path=logs_path / "test.log",
                         )
-                
+
                 # Check environment was passed to Docker
                 call_args = mock_popen.call_args[0][0]
                 # Should include environment variable passing
@@ -192,22 +194,22 @@ def process_input(input_string: str) -> str:
             logs_path = Path(temp_dir) / "logs"
             scaffold_dir.mkdir()
             logs_path.mkdir()
-            
-            with patch('subprocess.Popen') as mock_popen:
+
+            with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
                 mock_process.communicate.return_value = ("output", "")
                 mock_process.returncode = 0
                 mock_popen.return_value = mock_process
-                
-                with patch('time.time', side_effect=[0.0, 1.0]):
+
+                with patch("time.time", side_effect=[0.0, 1.0]):
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
                         model="gpt-4",
                         logs_path=logs_path / "test.log",
-                        timeout=600  # 10 minutes
+                        timeout=600,  # 10 minutes
                     )
-                
+
                 # Verify timeout was passed to subprocess
                 call_args = mock_popen.call_args
                 assert call_args is not None  # Command was called

@@ -13,7 +13,10 @@ import json
 from datetime import datetime
 from typing import Dict, Any
 from scaffold_learning.core.llm_interfaces import LLMFactory
-from scaffold_learning.core.scaffold_generation import generate_scaffold, extract_python_code
+from scaffold_learning.core.scaffold_generation import (
+    generate_scaffold,
+    extract_python_code,
+)
 from scaffold_learning.core.data_structures import DatasetExample
 import shutil
 import logging
@@ -90,7 +93,7 @@ def main() -> None:
         result = generate_scaffold(
             prompt=args.scaffolder_prompt,
             scaffolder_llm=scaffolder_llm,
-            examples=examples
+            examples=examples,
         )
         generated_script = result.code
 
@@ -108,11 +111,11 @@ def main() -> None:
         runtime_dir = os.path.join(os.path.dirname(__file__), "..", "runtime")
         shutil.copy2(
             os.path.join(runtime_dir, "llm_executor.py"),
-            os.path.join(output_dir, "llm_executor.py")
+            os.path.join(output_dir, "llm_executor.py"),
         )
         shutil.copy2(
             os.path.join(os.path.dirname(__file__), "..", "core", "llm_interfaces.py"),
-            os.path.join(output_dir, "llm_interfaces.py")
+            os.path.join(output_dir, "llm_interfaces.py"),
         )
 
         # Create metadata file with executor configuration
