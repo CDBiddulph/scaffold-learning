@@ -109,7 +109,7 @@ class AnthropicInterface(LLMInterface):
                 client = anthropic.Anthropic(api_key=self.api_key)
                 response = client.messages.create(
                     model=self.model,
-                    max_tokens=4096,
+                    max_tokens=100_000,
                     system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
