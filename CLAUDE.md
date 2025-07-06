@@ -4,7 +4,108 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Scaffold Learning is a framework for LLM-generated script execution that uses a "scaffolder LLM" to generate Python scripts that can utilize an "executor LLM". The framework supports multiple LLM providers (OpenAI, Anthropic) and includes special handling for human interaction.
+This is a research project for LLM-generated script execution, using a "scaffolder LLM" to generate Python scripts that can utilize an "executor LLM".
+
+## Best Practices
+
+### General philosophy
+- This is an ongoing, rough research project, NOT a production system
+- Focus on velocity and simplicity over "professional" code
+- Do NOT worry about backwards compatibility, as this repo has only one user
+- Things can change very quickly, so it's often not worth handling every edge case
+- However, tests should be sufficient to rule out bugs in mainline code paths
+
+### Code Structure
+- Don't import in the middle of a Python file - always import at the top
+- Break up large functions - ideally no more than 30 lines
+    - Extract validation code, complex logic, etc. into separate functions
+- Don't duplicate code - remember DRY
+    - Guideline: if ~3 lines of code appear twice, you should probably fix it
+    - If your new feature would result in duplicate code, factor the logic into a shared function
+- Python scripts should simply pass errors up the call stack most of the time
+    - This makes our code much simpler
+    - Don't catch errors and continue silently, as this can hide bugs
+    - Don't return exit codes in Python CLI scripts, just raise an error
+- Write in a style that matches the standard of the "black" Python formatter
+
+### Testing
+- When writing tests, don't use or test any private methods
+- Add new unit tests to existing files rather than creating ad-hoc test files (test_my_bugfix.py ❌)
+- Make unit tests general and useful enough to avoid future regressions
+    - Don't add unit tests just for the sake of it, testing trivial aspects of the code
+        - If you can't do better than that, it's better not to write a test at all
+    - Examples of trivial tests: 
+        - Testing that a class constructor sets attributes to the values you passed in
+        - Testing that an implementation of a class contains certain functions
+- Tests should always be about behavior, not implementation
+    - Do not test private methods, mere existence of attributes
+- Unit tests shouldn't be redundant - check explicitly for overlap with existing tests
+- Avoid `time.sleep` in tests; mock time if needed
+- Avoid patching and mocks if possible
+    - Do not patch/mock:
+        - Files (use temp files instead)
+        - Other files within the codebase
+            - Unless the file has its own dependency that requires patching/mocking
+        - Anything that is deterministic and fast
+    - Okay to patch/mock:
+        - User input (stdin, input())
+        - Time-related functions (time.time, datetime.now)
+        - Network calls (HTTP requests, API calls)
+        - External system calls (subprocess, os.system)
+        - Random number generation
+    - Prefer mocking to patching if there's a fairly easy way to do it
+        - Consider whether you can use MockLLMInterface from llm_interfaces.py
+- Be smart about parameterized tests and factoring out common test pieces
+    - You can usually reduce duplication in your tests this way
+    - Think about parameterization and deduplication each time you write tests
+    - You can even proactively modify existing tests to remove duplication
+- Test the full output of functions, not small pieces
+    - If assert on pieces, it's hard to understand what the output should actually look like
+    - Example: prefer assertEqual to assertIn when testing string outputs
+    - Prefer to test the full output in every test case, but at least do it once
+    - If the string to test is very long, you can consider using assertIn in all tests but one
+- Don't be afraid to write tests that you know are likely incorrect; you can change them later
+    - For example, if you're writing a function that shortens a string to exactly 50 characters
+        - Don't assert on the length of the string, assert on the exact value of the string!
+        - You might not be able to count characters accurately, so the test might fail
+        - But give your best guess as to the right value
+        - It doesn't matter if it fails, because you will see what the right value is soon
+        - As long as the actual output is about the same as your guess, you will see that your code is correct
+    - No need to write comments like "this test may fail" - you will fix it soon, so no need for preemptive disclaimers
+- Run tests with `pytest`, not `python -m pytest`
+
+### Test-Driven Development (TDD)
+Whenever I ask you to implement a new feature, consider whether you can use TDD, and if so, do so.
+1. Write failing tests first
+    - Don't include comments saying something like "this will fail because we're doing TDD"
+        - The comments and naming should keep with the style of the other tests in the file
+        - We should plan to keep this test around without changes
+    - Write the most generic and minimal test possible
+        - Don't duplicate the exact scenario where we saw the bug
+    - Verify that the tests actually fail
+2. Pause and wait for me to confirm that the tests look good
+3. Write minimal code that makes the tests pass
+
+### Comments
+- Write "timeless" comments
+    - Comments are not messages to your current supervisor, they are for future readers
+        - You tend to add comments mentioning whatever I just told you to do
+        - This usually doesn't make sense from the perspective of future readers
+        - The explanation of your work should go in your final response to me, NOT the comments
+    - Examples:
+        - Bad: "This flag is now required" (assumes reader knows/cares that it wasn't before)
+        - Bad: "Added parameter foo" (obviously it was added)
+        - Bad: "Test X without patching files" (there's no need to mention what you aren't doing)
+        - Good: Comments that explain *why* something exists or *how* it works
+
+### Git Practices
+- Don't reference things in commit messages that don't appear in the diff
+    - For example:
+        - You implement feature X
+        - I tell you to remove duplication in your new feature and you remove it
+        - You write a commit message saying "Implemented X and removed duplication"
+        - This is bad, because the duplication wasn't even part of the original code
+        - Your commit message should only talk about how you implemented X
 
 ## Commands
 
