@@ -100,6 +100,8 @@ def generate_scaffold(
         model=None,  # Will be set by the runner
         parent_scaffold_id=None,
         iteration=0,
+        scaffolder_prompt=full_prompt,
+        scaffolder_output=response,
     )
 
     return ScaffoldResult(code=code, metadata=metadata)
@@ -152,6 +154,8 @@ Write the complete improved scaffold.py code."""
         model=None,  # Will be set by the runner
         parent_scaffold_id=None,  # Will be set by the runner
         iteration=1,  # Will be set properly by the runner
+        scaffolder_prompt=prompt,
+        scaffolder_output=response,
     )
 
     return ScaffoldResult(code=code, metadata=metadata)

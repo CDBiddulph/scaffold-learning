@@ -25,11 +25,15 @@ class TestDataStructures:
             model="gpt-4",
             parent_scaffold_id="2-0",
             iteration=3,
+            scaffolder_prompt="prompt",
+            scaffolder_output="output",
         )
         assert metadata.created_at == "2024-01-01T12:00:00"
         assert metadata.model == "gpt-4"
         assert metadata.parent_scaffold_id == "2-0"
         assert metadata.iteration == 3
+        assert metadata.scaffolder_prompt == "prompt"
+        assert metadata.scaffolder_output == "output"
 
     def test_scaffold_metadata_optional_fields(self):
         metadata = ScaffoldMetadata(
@@ -37,6 +41,8 @@ class TestDataStructures:
             model=None,
             parent_scaffold_id=None,
             iteration=0,
+            scaffolder_prompt="prompt",
+            scaffolder_output="output",
         )
         assert metadata.model is None
         assert metadata.parent_scaffold_id is None
@@ -47,6 +53,8 @@ class TestDataStructures:
             model="gpt-4",
             parent_scaffold_id="2-0",
             iteration=3,
+            scaffolder_prompt="prompt",
+            scaffolder_output="output",
         )
         metadata_dict = metadata.to_dict()
         assert metadata_dict == {
@@ -54,6 +62,8 @@ class TestDataStructures:
             "model": "gpt-4",
             "parent_scaffold_id": "2-0",
             "iteration": 3,
+            "scaffolder_prompt": "prompt",
+            "scaffolder_output": "output",
         }
         # Ensure it's JSON serializable
         json_str = json.dumps(metadata_dict)
@@ -65,12 +75,16 @@ class TestDataStructures:
             "model": "gpt-4",
             "parent_scaffold_id": "2-0",
             "iteration": 3,
+            "scaffolder_prompt": "prompt",
+            "scaffolder_output": "output",
         }
         metadata = ScaffoldMetadata.from_dict(data)
         assert metadata.created_at == "2024-01-01T12:00:00"
         assert metadata.model == "gpt-4"
         assert metadata.parent_scaffold_id == "2-0"
         assert metadata.iteration == 3
+        assert metadata.scaffolder_prompt == "prompt"
+        assert metadata.scaffolder_output == "output"
 
     def test_scaffold_result_creation(self):
         metadata = ScaffoldMetadata(

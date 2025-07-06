@@ -26,12 +26,16 @@ class ScaffoldMetadata:
         model: Executor model name (if specified)
         parent_scaffold_id: ID of scaffold this was derived from (if applicable)
         iteration: Iteration number when created
+        scaffolder_prompt: Prompt that was sent to the scaffolder LLM
+        scaffolder_output: Full response from the scaffolder LLM
     """
 
     created_at: str
     model: Optional[str]
     parent_scaffold_id: Optional[str]
     iteration: int
+    scaffolder_prompt: Optional[str] = None
+    scaffolder_output: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert metadata to dictionary for JSON serialization.
