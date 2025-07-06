@@ -47,6 +47,8 @@ This is a research project for LLM-generated script execution, using a "scaffold
 - Getting names right is very important
     - They should be relatively short, but unambiguous
     - For example, when naming a new dataclass, think about whether it will be very clear what it does
+- Avoid "magic" values
+    - E.g. string literals should appear as constants at the top of the file, especially if they appear multiple times
 - Write in a style that matches the standard of the "black" Python formatter
 
 ### Testing
