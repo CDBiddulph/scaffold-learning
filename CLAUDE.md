@@ -237,10 +237,11 @@ Whenever I ask you to implement a new feature, consider whether you can use TDD,
 - **Format code**: `black .`
 
 ### Core Scaffold Commands
-- **Generate scaffold**: `python -m src.scaffold_learning.cli.generate_scaffold_script "prompt describing what script should do" --scaffold-name my-scaffold`
-- **Run scaffold**: `python -m src.scaffold_learning.cli.run_scaffold scaffold-name "input string"`
-- **Run scaffold with file input**: `python -m src.scaffold_learning.cli.run_scaffold scaffold-name --file input.txt`
-- **Override model**: `python -m src.scaffold_learning.cli.run_scaffold scaffold-name "input" --model gpt-4o`
+- **Generate scaffold**: `generate-scaffold "prompt describing what script should do" --scaffold-name my-scaffold`
+- **Run scaffold**: `run-scaffold scaffold-name "input string"`
+- **Run scaffold with file input**: `run-scaffold scaffold-name --file input.txt`
+- **Override model**: `run-scaffold scaffold-name "input" --model gpt-4o`
+- **Run experiment**: `run-experiment experiment-name train.jsonl valid.jsonl --domain crosswords --num-iterations 3`
 
 ### Crossword Domain Commands
 - **Download puzzles**: `python -m src.scaffold_learning.domains.crosswords.download_puz output_dir -n 10`
