@@ -26,7 +26,8 @@ class ExperimentRunner:
         scaffolds_per_iter: int,
         initial_scaffolds: int,
         num_validation_examples: int,
-        base_dir: Path = Path("experiments")
+        base_dir: Path = Path("experiments"),
+        executor_model: str = "gpt-4"
     ):
         """Initialize an experiment runner.
         
@@ -41,6 +42,7 @@ class ExperimentRunner:
             initial_scaffolds: Number of scaffolds to create initially
             num_validation_examples: Number of validation examples to use for scoring
             base_dir: Base directory for all experiments
+            executor_model: Model name to use for executing scaffolds
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -55,6 +57,7 @@ class ExperimentRunner:
         self.scaffolds_per_iter = scaffolds_per_iter
         self.initial_scaffolds = initial_scaffolds
         self.num_validation_examples = num_validation_examples
+        self.executor_model = executor_model
         
         # Set up experiment directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -316,7 +319,7 @@ class ExperimentRunner:
                 result = execute_scaffold(
                     scaffold_dir=scaffold_path,
                     input_string=example.input,
-                    model="gpt-4",  # Default model for now
+                    model=self.executor_model,
                     logs_path=logs_path
                 )
                 
@@ -398,7 +401,7 @@ class ExperimentRunner:
             execution_result = execute_scaffold(
                 scaffold_dir=scaffold_path,
                 input_string=example.input,
-                model="gpt-4",  # Default model for now
+                model=self.executor_model,
                 logs_path=logs_path
             )
             

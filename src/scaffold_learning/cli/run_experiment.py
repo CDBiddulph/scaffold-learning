@@ -103,8 +103,13 @@ def main():
     )
     parser.add_argument(
         "--scaffolder-model",
-        default="gpt-4o",
+        default="haiku",
         help="Model to use for scaffold generation/improvement",
+    )
+    parser.add_argument(
+        "--executor-model",
+        default="haiku",
+        help="Model to use for executing scaffolds",
     )
 
     # Experiment parameters
@@ -186,6 +191,7 @@ def main():
         initial_scaffolds=args.initial_scaffolds,
         num_validation_examples=args.num_validation_examples,
         base_dir=args.base_dir,
+        executor_model=args.executor_model,
     )
 
     # Run experiment

@@ -72,6 +72,7 @@ class TestExperimentRunner:
             assert runner.num_iterations == 2
             assert runner.scaffolds_per_iter == 2
             assert runner.initial_scaffolds == 3
+            assert runner.executor_model == "gpt-4"  # Default value
 
     def test_scaffold_id_generation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
