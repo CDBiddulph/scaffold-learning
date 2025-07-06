@@ -13,17 +13,10 @@ import json
 from datetime import datetime
 from typing import Dict, Any
 from scaffold_learning.core.llm_interfaces import LLMFactory
+from scaffold_learning.core.scaffold_generation import generate_scaffold, extract_python_code
+from scaffold_learning.core.data_structures import DatasetExample
 import shutil
 import logging
-
-# Template file paths
-SCAFFOLDER_SYSTEM_PROMPT_TEMPLATE = "prompts/scaffolder_system_prompt.txt"
-
-
-def get_scaffolder_system_prompt() -> str:
-    """Get the system prompt for the scaffolder LLM"""
-    with open(SCAFFOLDER_SYSTEM_PROMPT_TEMPLATE, "r") as f:
-        return f.read()
 
 
 def main() -> None:
@@ -91,19 +84,15 @@ def main() -> None:
         logger.info(f"Executor LLM: {executor_model_spec}")
         logger.info(f"Generating script based on prompt: {args.scaffolder_prompt}")
 
-        # Generate the script using scaffolder LLM
-        system_prompt = get_scaffolder_system_prompt()
-        generated_script = scaffolder_llm.generate_response(
-            args.scaffolder_prompt, system_prompt
+        # Generate the script using the new module
+        # For now, create an empty example list (no examples provided via CLI)
+        examples = []
+        result = generate_scaffold(
+            prompt=args.scaffolder_prompt,
+            scaffolder_llm=scaffolder_llm,
+            examples=examples
         )
-
-        # Clean up the generated script (remove markdown formatting if present)
-        if "```python" in generated_script:
-            generated_script = (
-                generated_script.split("```python")[1].split("```")[0].strip()
-            )
-        elif "```" in generated_script:
-            generated_script = generated_script.split("```")[1].split("```")[0].strip()
+        generated_script = result.code
 
         # Only delete and create output directory after script is generated successfully
         if os.path.exists(output_dir):
@@ -114,6 +103,17 @@ def main() -> None:
         scaffold_file = os.path.join(output_dir, "scaffold.py")
         with open(scaffold_file, "w") as f:
             f.write(generated_script)
+
+        # Copy support files
+        runtime_dir = os.path.join(os.path.dirname(__file__), "..", "runtime")
+        shutil.copy2(
+            os.path.join(runtime_dir, "llm_executor.py"),
+            os.path.join(output_dir, "llm_executor.py")
+        )
+        shutil.copy2(
+            os.path.join(os.path.dirname(__file__), "..", "core", "llm_interfaces.py"),
+            os.path.join(output_dir, "llm_interfaces.py")
+        )
 
         # Create metadata file with executor configuration
         metadata = {

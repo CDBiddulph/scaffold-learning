@@ -136,11 +136,19 @@ class MockLLMInterface(LLMInterface):
         if "Python code generator" in system_prompt or "process_input" in system_prompt:
             # Load the mock script template
             try:
-                with open("templates/mock_scaffolder_script.py", "r") as f:
+                with open("tests/mock_scaffolder_script.py", "r") as f:
                     return f.read()
             except FileNotFoundError:
                 # Fallback if template file is missing
-                return "# Mock script template file not found"
+                return """```python
+#!/usr/bin/env python3
+import logging
+from llm_executor import execute_llm
+
+def process_input(input_string: str) -> str:
+    logging.info("Mock scaffold processing input")
+    return f"Mock result: {input_string}"
+```"""
         else:
             # For executor LLM calls, return a simple mock response
             return f"Mock LLM response to: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
