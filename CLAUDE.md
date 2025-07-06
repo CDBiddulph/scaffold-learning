@@ -106,6 +106,30 @@ Whenever I ask you to implement a new feature, consider whether you can use TDD,
         - Bad: "Test X without patching files" (there's no need to mention what you aren't doing)
         - Good: Comments that explain *why* something exists or *how* it works
 
+### Planning and documentation
+- Whenever we start a big new feature, here is what will happen in terms of planning:
+    - I give you rough notes on what I want the feature to be
+    - You will ask clarifying questions and I will answer them
+    - You ask more questions, until you're 100% sure you understand what I want
+    - You write down documentation for yourself
+    - This documentation will go in a Markdown file: docs/{FEATURE}.md
+- Documentation tips
+    - Generally, you will only have to write documentation for *yourself* to use
+        - The goal is to teach yourself (or a fresh, memory-wiped instance of yourself) all the context you need
+    - Don't explain things that are obvious to you from your prior SWE knowledge, only project-specific information
+    - However, write down anything that would not be clear to somebody who hadn't heard everything you just heard
+    - It's particularly important to write things from our conversation which do NOT appear in the existing docs/code
+    - Do not use excessive verbiage
+        - For example, "this feature will be crucial for increasing efficiency, saving developer time..." is not helpful
+        - Don't use lots of pretty formatting either
+            - For instance, a table of contents is totally unnecessary
+        - Your documentation should be very practical and dense with information
+        - However, if using a concrete example would help get an idea across, feel very free to use one!
+    - Imagine looking down from heaven at a young, naive copy of yourself
+        - After it reads your documentation, it will start implementing the project, using ONLY that information
+        - Do you think "oh no, that copy doesn't know X!"
+        - If so, you should make sure that you include X!
+
 ### Git Practices
 - Don't reference things in commit messages that don't appear in the diff
     - For example:
