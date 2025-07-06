@@ -1,5 +1,7 @@
 from typing import List
 from datetime import datetime
+from pathlib import Path
+
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldResult,
@@ -51,26 +53,21 @@ def build_generation_prompt(prompt: str, examples: List[DatasetExample]) -> str:
         full_prompt += f"Expected output: {example.scoring_data.get('solution', str(example.scoring_data))}\n\n"
 
     full_prompt += "Write a scaffold.py that implements process_input() to handle inputs like these examples."
+    # TODO: make the timeout warning configurable
+    full_prompt += "\nYour code will timeout and get a score of 0 if it takes any more than 2 minutes to run, so you may want to implement measures to ensure that it stops before that point."
 
     return full_prompt
 
 
 def get_scaffolder_system_prompt() -> str:
     """Get the system prompt for the scaffolder LLM."""
-    # For now, inline the system prompt. In the future, could read from file.
-    return """You are a Python code generator. Your task is to write a complete Python script based on the user's requirements.
+    current_file = Path(__file__)
+    # TODO: make this less hacky
+    repo_root = current_file.parent.parent.parent.parent
+    prompt_file = repo_root / "prompts" / "scaffolder_system_prompt.txt"
 
-IMPORTANT CONSTRAINTS:
-1. Your script must implement a function called `process_input(input_string: str) -> str`
-2. You have access to an executor LLM through a library called 'llm_executor'
-3. The llm_executor has a function: execute_llm(prompt, system_prompt="") -> str
-4. In your prompts to the executor LLM, be clear about the expected output format
-5. Your script should be self-contained and runnable
-6. Include proper error handling
-7. Make sure your error messages include all information that would help debug the error
-8. Use Python's logging module for logging important events, errors, and debug information
-
-Generate a complete, working Python script that solves the user's problem. Do not include any explanation outside the code - only return the Python script."""
+    with open(prompt_file, "r") as f:
+        return f.read()
 
 
 def generate_scaffold(
