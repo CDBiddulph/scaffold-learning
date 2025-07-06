@@ -94,6 +94,9 @@ This is a research project for LLM-generated script execution, using a "scaffold
         - As long as the actual output is about the same as your guess, you will see that your code is correct
     - No need to write comments like "this test may fail" - you will fix it soon, so no need for preemptive disclaimers
 - Run tests with `pytest`, not `python -m pytest`
+- Before telling me you're done, remember to run `pytest` to run ALL tests.
+    - Running only a subset of tests is unnecessary unless you're working on debugging just one test
+    - It's best to run all tests with `pytest` to avoid missing failing tests
 
 ### Test-Driven Development (TDD)
 Whenever I ask you to implement a new feature, consider whether you can use TDD, and if so, do so.
