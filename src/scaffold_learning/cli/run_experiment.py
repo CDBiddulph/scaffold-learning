@@ -109,7 +109,7 @@ def main():
     parser.add_argument(
         "--scaffolder-model",
         default="haiku",
-        help="Model to use for scaffold generation/improvement",
+        help="Model to use for scaffold generation/evolution",
     )
     parser.add_argument(
         "--executor-model",
@@ -122,13 +122,13 @@ def main():
         "--num-iterations",
         type=int,
         default=3,
-        help="Number of improvement iterations to run",
+        help="Number of evolution iterations to run",
     )
     parser.add_argument(
         "--scaffolds-per-iter",
         type=int,
         default=2,
-        help="Number of top scaffolds to improve each iteration",
+        help="Number of top scaffolds to evolve each iteration",
     )
     parser.add_argument(
         "--initial-scaffolds",

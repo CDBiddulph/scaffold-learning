@@ -104,17 +104,17 @@ def generate_scaffold(
     return ScaffoldResult(code=code, metadata=metadata)
 
 
-def improve_scaffold(
+def evolve_scaffold(
     run_data: ScaffoldRunData, scaffolder_llm: LLMInterface
 ) -> ScaffoldResult:
-    """Generate an improved version of a scaffold based on execution feedback.
+    """Generate an evolved version of a scaffold based on execution feedback.
 
     Args:
         run_data: Data from previous scaffold execution including logs and score
         scaffolder_llm: LLM interface to use for generation
 
     Returns:
-        ScaffoldResult containing improved code and metadata
+        ScaffoldResult containing evolved code and metadata
 
     Raises:
         ValueError: If LLM response doesn't contain valid Python code

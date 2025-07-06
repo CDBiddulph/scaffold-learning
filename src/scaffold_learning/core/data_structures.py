@@ -90,7 +90,7 @@ class ScaffoldExecutionResult:
 
 @dataclass
 class ScaffoldRunData:
-    """Data from a scaffold run that can be used for improvement.
+    """Data from a scaffold run that can be used for evolution.
 
     Attributes:
         code: The scaffold code that was run

@@ -7,7 +7,7 @@ from scaffold_learning.core.data_structures import (
 )
 from scaffold_learning.core.scaffold_generation import (
     generate_scaffold,
-    improve_scaffold,
+    evolve_scaffold,
     ScaffoldRunData,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
@@ -127,11 +127,11 @@ More explanation"""
     return "result"'''
         )
 
-    def test_improve_scaffold_includes_all_run_data(self):
+    def test_evolve_scaffold_includes_all_run_data(self):
         mock_llm = Mock(spec=LLMInterface)
         mock_llm.generate_response.return_value = """```python
 def process_input(input_string: str) -> str:
-    # Improved implementation
+    # Evolved implementation
     return "LION"
 ```"""
 
@@ -149,7 +149,7 @@ def process_input(input_string: str) -> str:
             score=0.0,
         )
 
-        result = improve_scaffold(run_data, mock_llm)
+        result = evolve_scaffold(run_data, mock_llm)
 
         assert isinstance(result, ScaffoldResult)
         assert 'return "LION"' in result.code
@@ -162,11 +162,11 @@ def process_input(input_string: str) -> str:
         assert "def process_input(input_string: str) -> str:" in prompt  # old code
         assert "Processing...\nReturned: TIGER" in prompt  # logs
 
-    def test_improve_scaffold_sets_parent_scaffold_id(self):
+    def test_evolve_scaffold_sets_parent_scaffold_id(self):
         mock_llm = Mock(spec=LLMInterface)
         mock_llm.generate_response.return_value = """```python
 def process_input(input_string: str) -> str:
-    return "improved"
+    return "evolved"
 ```"""
 
         example = DatasetExample(
@@ -182,8 +182,8 @@ def process_input(input_string: str) -> str:
         )
 
         # Need to pass parent_scaffold_id somehow
-        # This test reveals we need to modify the improve_scaffold signature
-        result = improve_scaffold(run_data, mock_llm)
+        # This test reveals we need to modify the evolve_scaffold signature
+        result = evolve_scaffold(run_data, mock_llm)
 
         # For now, this test will need updating once we figure out
         # how to pass parent_scaffold_id
