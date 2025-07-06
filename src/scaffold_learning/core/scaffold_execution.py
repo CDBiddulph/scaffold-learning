@@ -175,11 +175,10 @@ def execute_scaffold(
             docker_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            timeout=timeout
+            text=True
         )
         
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.communicate(timeout=timeout)
         exit_code = process.returncode
         
     except subprocess.TimeoutExpired:
