@@ -139,7 +139,7 @@ def execute_scaffold(
     input_string: str,
     model: str,
     logs_path: Path,
-    timeout: int = 120,
+    timeout: int = 120,  # TODO: make this configurable
 ) -> ScaffoldExecutionResult:
     """Execute a scaffold in a Docker container with the given input.
 
