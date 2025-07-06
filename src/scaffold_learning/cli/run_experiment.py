@@ -35,6 +35,11 @@ def load_dataset(dataset_path: Path) -> List[DatasetExample]:
                 input_text = data.get("input", "")
                 scoring_data = data.get("scoring_data", {})
 
+                # TODO: make this less hacky by making solution always come from scoring_data
+                # Handle crossword dataset format where solution is at top level
+                if "solution" in data and "solution" not in scoring_data:
+                    scoring_data["solution"] = data["solution"]
+
                 if not input_text:
                     print(f"Warning: Example {example_id} has empty input, skipping")
                     continue
