@@ -12,20 +12,41 @@ This is a research project for LLM-generated script execution, using a "scaffold
 - This is an ongoing, rough research project, NOT a production system
 - Focus on velocity and simplicity over "professional" code
 - Do NOT worry about backwards compatibility, as this repo has only one user
-- Things can change very quickly, so it's often not worth handling every edge case
-- However, tests should be sufficient to rule out bugs in mainline code paths
+- Things can change very quickly, so it's often not worth writing code to handle every edge case
+    - However, tests should be sufficient to rule out bugs in mainline code paths
+- Generally, stick to the stated plan
+    - However, it's possible that problems will only become clear as you implement
+    - If in doubt, *stop* and ask me what to do
+- If I ask you a question or express doubt, that doesn't mean you're wrong
+    - Stick to your guns when it counts, don't always fold to anything I say!
+    - I often lack the context that you have, on the ground writing code; sometimes I'm just completely off-base
+    - Often, I'm just asking a question for my own personal understanding
+    - Don't immediately start your answer with "You're absolutely right!"
+        - Instead, explicitly write out why I might be right, then why you might be right, then a balanced conclusion
 
-### Code Structure
+### Code Structure and Style
 - Don't import in the middle of a Python file - always import at the top
 - Break up large functions - ideally no more than 30 lines
     - Extract validation code, complex logic, etc. into separate functions
+- Break up large files - ideally no more than 500 lines
+    - Move classes into their own files
 - Don't duplicate code - remember DRY
     - Guideline: if ~3 lines of code appear twice, you should probably fix it
     - If your new feature would result in duplicate code, factor the logic into a shared function
 - Python scripts should simply pass errors up the call stack most of the time
     - This makes our code much simpler
     - Don't catch errors and continue silently, as this can hide bugs
+        - Even when it would be too disruptive to fail entirely, you should often log a warning
     - Don't return exit codes in Python CLI scripts, just raise an error
+- Flags should use --hyphens-between-words-like-this.
+    - Even if I accidentally tell you to make a --flag_like_this, turn it into a --flag-like-this
+- Lean towards using dataclasses rather than tuples or dictionaries, especially for public interfaces 
+    - If a dataclass will be used across multiple files, consider putting it in its own file
+        - This helps avoid circular import errors
+        - It can be fine to put it in the same file as other dataclasses/enums
+- Getting names right is very important
+    - They should be relatively short, but unambiguous
+    - For example, when naming a new dataclass, think about whether it will be very clear what it does
 - Write in a style that matches the standard of the "black" Python formatter
 
 ### Testing
@@ -110,9 +131,72 @@ Whenever I ask you to implement a new feature, consider whether you can use TDD,
 - Whenever we start a big new feature, here is what will happen in terms of planning:
     - I give you rough notes on what I want the feature to be
     - You will ask clarifying questions and I will answer them
+        - Each individual question should be numbered, so that I can reference it easily in my response
+        - Include questions about the future of the code, *after* this feature is implemented
+            - This helps you understand where you need to make your code flexible/extensible
+            - This may be useful for you to know during implementation, so mention them your documentation
+            - To be clear, you should not try to implement things from these future plans I describe
+                - Unless it's very easy to do in the course of implementation
+                - E.g. making a field a list from the start is probably worth it, even if the value is singular for now
+        - Give your best guess as to the answer, and if correct, I will confirm your guess with "c" for correct
+        - Be specific in your guess, even if you think it's probably wrong
+            - If I like your guess and confirm that we should use it, that saves us both time
+        - Don't be afraid to ask dumb questions, point out big-picture flaws in my idea, or note your confusion
     - You ask more questions, until you're 100% sure you understand what I want
-    - You write down documentation for yourself
-    - This documentation will go in a Markdown file: docs/{FEATURE}.md
+        - Don't be afraid to continue asking questions, even if it seems like I want you to move on
+    - Then, tell me a full implementation plan
+        - This plan should include any parts that I didn't fully specify
+            - It should focus on the implementation details, whereas my spec to you focused more on high-level goals
+            - You should *explicitly* write the following sections:
+                - What files you will create/modify
+                    - List all new/modified/deleted classes, including dataclasses
+                        - List the new/modified/deleted public methods (even the ones that aren't in a class)
+                            - For each method, include the following information:
+                                - Full method stub
+                                    - Function signature
+                                        - Looks like `function_name(arg1: type1, ...`
+                                        - Include full types - `Callable[[int], str]` rather than `callable`
+                                    - Docstring
+                                        - A detailed description of behavior
+                                        - `Args:` with a description of each argument
+                                        - `Returns:` and `Raises:` if applicable
+                                - Where the method will be called
+                                    - Only mention the *public* class or function
+                                    - This should include *existing* locations as well as new ones, when applicable
+                                    - If it makes it clearer, explain what the method will be used for at each location
+                                    - The method should not be called by its own class
+                                        - This ensures that the method is actually fit for being public, not private
+                    - Give an estimate of the lines of code in the file after you're done
+                        - If the file already exists, mention how many lines there currently are
+                        - If the file will be more than 500 lines of code, that's okay, but acknowledge this
+                - What external libraries/frameworks you will use, if any
+                - What existing code from this codebase you will reuse
+                    - Where you will reuse it
+                    - Whether you will be able to use the code as written
+                        - Or if you will instead have to modify the code/factor out parts
+                        - How will you do this?
+                            - Will you create new utils files? Make private functions public? Etc.
+                    - This may require searching through the codebase if you haven't already done so
+                - What tests you will create
+                    - Including unit and/or integration tests and what behaviors they test
+                - Things not covered by the above
+                    - Anything else that you think should go in an implementation plan that you didn't already mention
+                    - Give a reasonably detailed explanation of how you will do it, don't just say that you will do it
+        - The plan should also include a series of milestones in the order you want to implement them
+            - Each milestone should start with writing/rewriting tests, since we are doing TDD
+            - Not counting bullet points about tests, there should be anywhere from 2-6 bullet points per milestone
+        - Ask any questions that you thought of when writing the implementation plan
+        - I will confirm whether the plan looks good, or ask you to make modifications
+    - You write down documentation for yourself about how to implement the feature
+        - This must contain *everything* you just told me in the implementation plan
+        - Also include all other information that you think will help you implement this (see "documentation tips")
+        - This documentation will go in a Markdown file: docs/{FEATURE}.md
+        - Once you're done, explicitly ask yourself whether you missed anything
+            - If so, dive back in and add more content
+            - Continue asking yourself whether you're done until you're sure you included all the relevant information
+    - I will continue to ask for changes in your documentation until I'm happy with it
+    - I completely clear your memory
+    - I tell your copy to start implementing the plan based on your documentation
 - Documentation tips
     - Generally, you will only have to write documentation for *yourself* to use
         - The goal is to teach yourself (or a fresh, memory-wiped instance of yourself) all the context you need
@@ -148,10 +232,10 @@ Whenever I ask you to implement a new feature, consider whether you can use TDD,
 - **Format code**: `black .`
 
 ### Core Scaffold Commands
-- **Generate scaffold**: `generate-scaffold "prompt describing what script should do" --scaffold-name my-scaffold`
-- **Run scaffold**: `run-scaffold scaffold-name "input string"`
-- **Run scaffold with file input**: `run-scaffold scaffold-name --file input.txt`
-- **Override model**: `run-scaffold scaffold-name "input" --model gpt-4o`
+- **Generate scaffold**: `python -m src.scaffold_learning.cli.generate_scaffold_script "prompt describing what script should do" --scaffold-name my-scaffold`
+- **Run scaffold**: `python -m src.scaffold_learning.cli.run_scaffold scaffold-name "input string"`
+- **Run scaffold with file input**: `python -m src.scaffold_learning.cli.run_scaffold scaffold-name --file input.txt`
+- **Override model**: `python -m src.scaffold_learning.cli.run_scaffold scaffold-name "input" --model gpt-4o`
 
 ### Crossword Domain Commands
 - **Download puzzles**: `python -m src.scaffold_learning.domains.crosswords.download_puz output_dir -n 10`
@@ -166,8 +250,8 @@ Whenever I ask you to implement a new feature, consider whether you can use TDD,
 - `LLMInterface`: Abstract base class for all LLM providers
 - `OpenAIInterface`: Handles OpenAI GPT models
 - `AnthropicInterface`: Handles Anthropic Claude models  
-- `HumanInterface`: Interactive human input/output
-- `MockInterface`: For testing
+- `HumanLLMInterface`: Interactive human input/output
+- `MockLLMInterface`: For testing
 - `LLMFactory`: Creates appropriate LLM instances based on model specifications
 
 **Scaffold Execution** (`src/scaffold_learning/cli/run_scaffold.py`):
@@ -246,9 +330,3 @@ API keys are loaded from `.env` file or environment variables (`OPENAI_API_KEY`,
 - Default 2-minute timeout for LLM scaffolds
 - No timeout for human scaffolds (interactive mode)
 - Graceful shutdown with partial output capture
-
-## Testing
-
-Tests are organized by domain:
-- `tests/cli/`: CLI component tests
-- `tests/domains/`: Domain-specific functionality tests
