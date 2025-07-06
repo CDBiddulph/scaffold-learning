@@ -76,15 +76,23 @@ This is a research project for LLM-generated script execution, using a "scaffold
 
 ### Test-Driven Development (TDD)
 Whenever I ask you to implement a new feature, consider whether you can use TDD, and if so, do so.
-1. Write failing tests first
+1. If applicable, write stubs
+    - If the task involves writing brand-new class(es), write these classes with stub functions
+    - The stub should include a docstring explaining the external behavior in detail, but not the internals
+    - The stubs should raise NotImplementedError
+    - *Only* write functions that will be used outside this class - that is, public functions
+    - Once you're done, explain to me in writing how each function will *call* and *be called* by other classes
+        - Do not explain this in the comments, as this information generally does not belong in code
+    - Pause and wait for me to confirm that the stubs look good
+2. Write failing tests
     - Don't include comments saying something like "this will fail because we're doing TDD"
         - The comments and naming should keep with the style of the other tests in the file
         - We should plan to keep this test around without changes
     - Write the most generic and minimal test possible
         - Don't duplicate the exact scenario where we saw the bug
     - Verify that the tests actually fail
-2. Pause and wait for me to confirm that the tests look good
-3. Write minimal code that makes the tests pass
+    - Pause and wait for me to confirm that the tests look good
+4. Write minimal code that makes the tests pass
 
 ### Comments
 - Write "timeless" comments
