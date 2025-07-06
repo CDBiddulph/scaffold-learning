@@ -49,6 +49,7 @@ This is a research project for LLM-generated script execution, using a "scaffold
     - For example, when naming a new dataclass, think about whether it will be very clear what it does
 - Avoid "magic" values
     - E.g. string literals should appear as constants at the top of the file, especially if they appear multiple times
+- If an argument can be None, remember to write its type as Optional[...]
 - Write in a style that matches the standard of the "black" Python formatter
 
 ### Testing
