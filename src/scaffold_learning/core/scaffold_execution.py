@@ -119,18 +119,18 @@ def save_execution_log(
     logs_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(logs_path, "w") as f:
-        f.write("=== Scaffold Execution Log ===\\n")
-        f.write(f"Model: {model}\\n")
-        f.write(f"Timestamp: {timestamp}\\n")
+        f.write("=== Scaffold Execution Log ===\n")
+        f.write(f"Model: {model}\n")
+        f.write(f"Timestamp: {timestamp}\n")
         if error_message:
-            f.write(f"Error: {error_message}\\n")
-        f.write(f"Exit Code: {exit_code}\\n")
-        f.write(f"Execution Time: {execution_time:.2f}s\\n")
-        f.write("\\n--- Input ---\\n")
+            f.write(f"Error: {error_message}\n")
+        f.write(f"Exit Code: {exit_code}\n")
+        f.write(f"Execution Time: {execution_time:.2f}s\n")
+        f.write("\n--- Input ---\n")
         f.write(input_string)
-        f.write("\\n\\n--- Output ---\\n")
+        f.write("\n\n--- Output ---\n")
         f.write(output or "")
-        f.write("\\n\\n--- Error Output ---\\n")
+        f.write("\n\n--- Error Output ---\n")
         f.write(stderr or "")
 
 
@@ -186,7 +186,7 @@ def execute_scaffold(
         process.kill()
         stdout, stderr = process.communicate()
         exit_code = 124  # Standard timeout exit code
-        stderr = stderr + "\\nProcess killed due to timeout"
+        stderr = stderr + "\nProcess killed due to timeout"
     except Exception as e:
         stdout = ""
         stderr = f"Execution error: {str(e)}"
