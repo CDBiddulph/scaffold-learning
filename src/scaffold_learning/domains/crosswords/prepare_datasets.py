@@ -37,18 +37,18 @@ def collect_puzzles(data, header, target_count, source, day_pattern):
     """Collect puzzles and convert to text format"""
     puzzles = []
 
-    for puzzle, source_name, date, year, month, day in iterate_puzzles(
+    for puzzle, source, date, year, month, day in iterate_puzzles(
         data, header, source, day_pattern, target_count
     ):
         # Convert to text
         input_text, solution_text = puzzle_to_text(puzzle)
 
-        # Generate name using same format as download_puz
-        name = f"{source_name}_{year}_{month}_{day}".replace(" ", "_")
+        # Generate ID using same format as download_puz
+        id = f"{source}_{year}_{month}_{day}".replace(" ", "_")
 
-        puzzles.append({"name": name, "input": input_text, "solution": solution_text})
+        puzzles.append({"id": id, "input": input_text, "solution": solution_text})
 
-        print(f"Collected {len(puzzles)}/{target_count}: {source_name} {date}")
+        print(f"Collected {len(puzzles)}/{target_count}: {source} {date}")
 
     return puzzles
 
