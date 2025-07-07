@@ -406,7 +406,9 @@ class TestExperimentRunner:
                 for iteration, iter_scores in enumerate(expected_validation_scores):
                     if scaffold_id in iter_scores:
                         return iter_scores[scaffold_id]
-                raise AssertionError(f"Unexpected validation request for scaffold {scaffold_id} (no iteration found)")
+                raise AssertionError(
+                    f"Unexpected validation request for scaffold {scaffold_id} (no iteration found)"
+                )
 
             # Return the score for this scaffold in this specific iteration
             if current_iteration < len(expected_validation_scores):
@@ -415,7 +417,9 @@ class TestExperimentRunner:
                     return iter_scores[scaffold_id]
 
             # Fail hard if we try to validate an unexpected scaffold
-            raise AssertionError(f"Unexpected validation request for scaffold {scaffold_id} in iteration {current_iteration}")
+            raise AssertionError(
+                f"Unexpected validation request for scaffold {scaffold_id} in iteration {current_iteration}"
+            )
 
         def mock_execute_func(
             scaffold_dir, input_string, model, logs_path, timeout=120
@@ -513,18 +517,30 @@ class TestExperimentRunner:
                 assert (
                     scaffold_file.exists()
                 ), f"Expected scaffold.py to exist for scaffold {scaffold_id} in iteration {iteration}"
-            
+
             # Check that no unexpected scaffolds exist
-            iteration_dir = runner.file_manager.experiment_dir / "iterations" / str(iteration) / "scaffolds" / "new"
+            iteration_dir = (
+                runner.file_manager.experiment_dir
+                / "iterations"
+                / str(iteration)
+                / "scaffolds"
+                / "new"
+            )
             if iteration_dir.exists():
-                actual_scaffolds = {d.name for d in iteration_dir.iterdir() if d.is_dir()}
-                assert expected_scaffolds == actual_scaffolds, f"Iteration {iteration}: expected scaffolds {sorted(expected_scaffolds)}, got {sorted(actual_scaffolds)}"
+                actual_scaffolds = {
+                    d.name for d in iteration_dir.iterdir() if d.is_dir()
+                }
+                assert (
+                    expected_scaffolds == actual_scaffolds
+                ), f"Iteration {iteration}: expected scaffolds {sorted(expected_scaffolds)}, got {sorted(actual_scaffolds)}"
 
         # Verify validation scores using file manager
         # Check iteration 0 should have no validation scores
         if len(expected_validation_scores) > 0 and expected_validation_scores[0]:
-            raise AssertionError(f"Iteration 0 should not have validation scores, got {expected_validation_scores[0]}")
-        
+            raise AssertionError(
+                f"Iteration 0 should not have validation scores, got {expected_validation_scores[0]}"
+            )
+
         for iteration in range(
             1, test_case["num_iterations"]
         ):  # Skip iteration 0 (no validation)
@@ -538,8 +554,8 @@ class TestExperimentRunner:
                 )  # No validation expected for this iteration
 
             try:
-                train_scores, valid_scores = runner.file_manager.load_scores(iteration)
-                actual_validated_scaffolds = set(valid_scores.keys())
+                scores_data = runner.file_manager.load_scores(iteration)
+                actual_validated_scaffolds = set(scores_data["valid"].keys())
 
                 assert (
                     expected_validated_scaffolds == actual_validated_scaffolds
@@ -549,7 +565,7 @@ class TestExperimentRunner:
                 for scaffold_id, expected_score in expected_validation_scores[
                     iteration
                 ].items():
-                    actual_score = valid_scores[scaffold_id]
+                    actual_score = scores_data["valid"][scaffold_id]
                     assert (
                         actual_score == expected_score
                     ), f"Iteration {iteration}, scaffold {scaffold_id}: expected score {expected_score}, got {actual_score}"
@@ -559,15 +575,6 @@ class TestExperimentRunner:
                     raise AssertionError(
                         f"Expected scoring file for iteration {iteration} with scaffolds {expected_validated_scaffolds}, but file doesn't exist"
                     )
-
-        # Print debug information for manual verification
-        print(f"Test case: {test_case['name']}")
-        for iteration in range(1, len(expected_validation_scores)):
-            try:
-                train_scores, valid_scores = runner.file_manager.load_scores(iteration)
-                print(f"Iteration {iteration} validation scores: {valid_scores}")
-            except FileNotFoundError:
-                print(f"Iteration {iteration}: No scoring file found")
 
     # Normal test cases (expect success)
     @pytest.mark.parametrize(
