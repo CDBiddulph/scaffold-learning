@@ -237,21 +237,10 @@ class TestExperimentRunner:
             # The example should be from training data
             assert run_data.example in training_data
 
-        # Check iteration 0 logs (should have validation logs for initial scaffolds)
+        # Check iteration 0 - no validation should happen in iteration 0
         iter0_logs = runner.file_manager.experiment_dir / "iterations" / "0" / "logs"
-        assert iter0_logs.exists()
-
-        # Should have logs for scaffolds 0, 1, 2
-        for scaffold_id in ["0", "1", "2"]:
-            scaffold_logs = iter0_logs / scaffold_id
-            assert scaffold_logs.exists()
-
-            # Should have 3 validation log files (one per validation example)
-            log_files = list(scaffold_logs.glob("valid_*.log"))
-            assert len(log_files) == 3
-            assert (scaffold_logs / "valid_0.log").exists()
-            assert (scaffold_logs / "valid_1.log").exists()
-            assert (scaffold_logs / "valid_2.log").exists()
+        # Iteration 0 should not have logs since no validation happens
+        assert not iter0_logs.exists() or len(list(iter0_logs.iterdir())) == 0
 
         # Check iteration 1 logs
         iter1_logs = runner.file_manager.experiment_dir / "iterations" / "1" / "logs"
@@ -391,6 +380,196 @@ class TestExperimentRunner:
         assert "prompt with" in scaffold_0.metadata.scaffolder_prompt
         assert "output for" in scaffold_0.metadata.scaffolder_output
 
+    def _run_scaffold_selection_test(self, test_case):
+        """Test that scaffold selection works correctly based on validation scores."""
+        runner = self.create_experiment_runner(
+            num_iterations=test_case["num_iterations"],
+            scaffolds_per_iter=test_case["scaffolds_per_iter"],
+            initial_scaffolds=test_case["initial_scaffolds"],
+            num_validation_examples=1,
+        )
+        training_data, validation_data = self.create_test_data()
+
+        expected_validation_scores = test_case["validation_scores"]
+
+        def mock_scoring_function(expected, scoring_data):
+            # Extract scaffold info from the execution call context
+            actual_output = scoring_data.get("solution", "")
+
+            # Parse the output which should be "scaffold_id:iteration"
+            if ":" in actual_output:
+                scaffold_id, iteration_str = actual_output.split(":", 1)
+                current_iteration = int(iteration_str)
+            else:
+                # Fallback: try to find the scaffold_id in any iteration
+                scaffold_id = actual_output
+                for iteration, iter_scores in enumerate(expected_validation_scores):
+                    if scaffold_id in iter_scores:
+                        return iter_scores[scaffold_id]
+                raise AssertionError(f"Unexpected validation request for scaffold {scaffold_id} (no iteration found)")
+
+            # Return the score for this scaffold in this specific iteration
+            if current_iteration < len(expected_validation_scores):
+                iter_scores = expected_validation_scores[current_iteration]
+                if scaffold_id in iter_scores:
+                    return iter_scores[scaffold_id]
+
+            # Fail hard if we try to validate an unexpected scaffold
+            raise AssertionError(f"Unexpected validation request for scaffold {scaffold_id} in iteration {current_iteration}")
+
+        def mock_execute_func(
+            scaffold_dir, input_string, model, logs_path, timeout=120
+        ):
+            # Extract scaffold_id from the path
+            scaffold_id = scaffold_dir.name
+
+            # Extract iteration from logs_path (e.g. .../iterations/2/logs/...)
+            logs_parts = logs_path.parts
+            iteration = None
+            for i, part in enumerate(logs_parts):
+                if part == "iterations" and i + 1 < len(logs_parts):
+                    try:
+                        iteration = int(logs_parts[i + 1])
+                        break
+                    except ValueError:
+                        pass
+
+            # Create log file
+            logs_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(logs_path, "w") as f:
+                f.write(f"=== Scaffold Execution Log ===\n")
+                f.write(f"Scaffold: {scaffold_id}\n")
+                f.write(f"Iteration: {iteration}\n")
+                f.write(f"Input: {input_string}\n")
+                f.write(f"Output: {scaffold_id}:{iteration}\n")
+
+            return ScaffoldExecutionResult(
+                output=f"{scaffold_id}:{iteration}",  # Return scaffold_id:iteration for scoring
+                stderr="",
+                exit_code=0,
+                execution_time=0.1,
+            )
+
+        def mock_generate_func(prompt, scaffolder_llm, examples):
+            return ScaffoldResult(
+                code='def process_input(input_string: str) -> str:\n    return "result"',
+                metadata=ScaffoldMetadata(
+                    created_at="2024-01-01T00:00:00",
+                    model="mock",
+                    parent_scaffold_id=None,
+                    iteration=0,
+                ),
+            )
+
+        def mock_evolve_func(run_data, scaffolder_llm):
+            return ScaffoldResult(
+                code='def process_input(input_string: str) -> str:\n    return "evolved"',
+                metadata=ScaffoldMetadata(
+                    created_at="2024-01-01T00:00:00",
+                    model="mock",
+                    parent_scaffold_id=None,
+                    iteration=1,
+                ),
+            )
+
+        # Override the runner's scoring function
+        runner.scoring_function = mock_scoring_function
+
+        mock_generate = Mock(side_effect=mock_generate_func)
+        mock_evolve = Mock(side_effect=mock_evolve_func)
+
+        with patch(
+            "scaffold_learning.core.experiment_runner.generate_scaffold",
+            mock_generate,
+        ), patch(
+            "scaffold_learning.core.experiment_runner.evolve_scaffold", mock_evolve
+        ), patch(
+            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            side_effect=mock_execute_func,
+        ):
+            runner.run()
+
+        # Now verify behavior by checking the actual output files
+        expected_new_scaffolds = test_case["expected_new_scaffolds"]
+
+        # Verify scaffold creation using file manager
+        for iteration in range(test_case["num_iterations"]):
+            if iteration < len(expected_new_scaffolds):
+                expected_scaffolds = expected_new_scaffolds[iteration]
+            else:
+                expected_scaffolds = set()  # No scaffolds expected for this iteration
+
+            # Check that all expected scaffolds exist
+            for scaffold_id in expected_scaffolds:
+                scaffold_path = runner.file_manager.get_scaffold_path(
+                    iteration, scaffold_id
+                )
+                assert (
+                    scaffold_path.exists()
+                ), f"Expected scaffold {scaffold_id} to exist in iteration {iteration} at {scaffold_path}"
+
+                # Verify scaffold.py file exists
+                scaffold_file = scaffold_path / "scaffold.py"
+                assert (
+                    scaffold_file.exists()
+                ), f"Expected scaffold.py to exist for scaffold {scaffold_id} in iteration {iteration}"
+            
+            # Check that no unexpected scaffolds exist
+            iteration_dir = runner.file_manager.experiment_dir / "iterations" / str(iteration) / "scaffolds" / "new"
+            if iteration_dir.exists():
+                actual_scaffolds = {d.name for d in iteration_dir.iterdir() if d.is_dir()}
+                assert expected_scaffolds == actual_scaffolds, f"Iteration {iteration}: expected scaffolds {sorted(expected_scaffolds)}, got {sorted(actual_scaffolds)}"
+
+        # Verify validation scores using file manager
+        # Check iteration 0 should have no validation scores
+        if len(expected_validation_scores) > 0 and expected_validation_scores[0]:
+            raise AssertionError(f"Iteration 0 should not have validation scores, got {expected_validation_scores[0]}")
+        
+        for iteration in range(
+            1, test_case["num_iterations"]
+        ):  # Skip iteration 0 (no validation)
+            if iteration < len(expected_validation_scores):
+                expected_validated_scaffolds = set(
+                    expected_validation_scores[iteration].keys()
+                )
+            else:
+                expected_validated_scaffolds = (
+                    set()
+                )  # No validation expected for this iteration
+
+            try:
+                train_scores, valid_scores = runner.file_manager.load_scores(iteration)
+                actual_validated_scaffolds = set(valid_scores.keys())
+
+                assert (
+                    expected_validated_scaffolds == actual_validated_scaffolds
+                ), f"Iteration {iteration}: expected validation for {sorted(expected_validated_scaffolds)}, got {sorted(actual_validated_scaffolds)}"
+
+                # Verify the actual scores match expectations
+                for scaffold_id, expected_score in expected_validation_scores[
+                    iteration
+                ].items():
+                    actual_score = valid_scores[scaffold_id]
+                    assert (
+                        actual_score == expected_score
+                    ), f"Iteration {iteration}, scaffold {scaffold_id}: expected score {expected_score}, got {actual_score}"
+
+            except FileNotFoundError:
+                if expected_validated_scaffolds:
+                    raise AssertionError(
+                        f"Expected scoring file for iteration {iteration} with scaffolds {expected_validated_scaffolds}, but file doesn't exist"
+                    )
+
+        # Print debug information for manual verification
+        print(f"Test case: {test_case['name']}")
+        for iteration in range(1, len(expected_validation_scores)):
+            try:
+                train_scores, valid_scores = runner.file_manager.load_scores(iteration)
+                print(f"Iteration {iteration} validation scores: {valid_scores}")
+            except FileNotFoundError:
+                print(f"Iteration {iteration}: No scoring file found")
+
+    # Normal test cases (expect success)
     @pytest.mark.parametrize(
         "test_case",
         [
@@ -415,71 +594,6 @@ class TestExperimentRunner:
                     {"0-0"},  # 0-0 is evolved from 0 in iteration 1
                     {"0-0-0"},  # 0-0-0 is evolved from 0-0 in iteration 2
                 ],
-            },
-            {
-                # This is a test that the parameterized test itself fails as expected.
-                # This is the same as the basic test, but with an extra validation call
-                # in the expectations.
-                "name": "test_fails_with_extra_validation_call",
-                "num_iterations": 3,
-                "scaffolds_per_iter": 1,
-                "initial_scaffolds": 1,
-                "validation_scores": [
-                    {},
-                    {
-                        "0": 0.3,
-                        "0-0": 0.5,  # 0-0 is not actually validated in iteration 1
-                    },
-                    {"0-0": 0.5},
-                ],
-                "expected_new_scaffolds": [
-                    {"0"},
-                    {"0-0"},
-                    {"0-0-0"},
-                ],
-                "test_should_fail_with_error": "Expected validation call for 0-0 in iteration 1",
-            },
-            {
-                # This is a test that the parameterized test itself fails as expected.
-                # This is the same as the basic test, but with a validation call missing
-                # in the expectations.
-                "name": "test_fails_with_missing_validation_call",
-                "num_iterations": 3,
-                "scaffolds_per_iter": 1,
-                "initial_scaffolds": 1,
-                # The key is the scaffold id.
-                # The value is a dictionary of iteration in which the scaffold is
-                # validated to the validation score in that iteration.
-                "validation_scores": [
-                    {},
-                    {"0": 0.3},
-                    # Missing validation call for 0-0
-                ],
-                "expected_new_scaffolds": [
-                    {"0"},
-                    {"0-0"},
-                    {"0-0-0"},
-                ],
-                "test_should_fail_with_error": "Got validation call for 0-0 in iteration 2",
-            },
-            {
-                # This is a test that the parameterized test itself fails as expected.
-                # This is the same as the basic test, but with a new scaffold missing
-                # in the expectations.
-                "name": "test_fails_with_missing_new_scaffold",
-                "num_iterations": 3,
-                "scaffolds_per_iter": 1,
-                "initial_scaffolds": 1,
-                "validation_scores": [
-                    {},
-                    {"0": 0.3},
-                    {"0-0": 0.5},
-                ],
-                "expected_new_scaffolds": [
-                    {"0"},
-                    {"0-0-0"},
-                ],
-                "test_should_fail_with_error": "Got new scaffold 0-0 in iteration 1",
             },
             {
                 # In this test, 0-0 is not one of the top two scaffolds of all time
@@ -643,7 +757,7 @@ class TestExperimentRunner:
             },
             {
                 "name": "more_iterations",
-                "num_iterations": 5,
+                "num_iterations": 6,
                 "scaffolds_per_iter": 2,
                 "initial_scaffolds": 4,
                 "validation_scores": [
@@ -674,7 +788,7 @@ class TestExperimentRunner:
                     },
                     {
                         "3-0-0-0-0": 0.95,
-                        "3-0-0-0": 0.9,
+                        "3-0-0-1": 0.9,
                         # These at least tie with all other scaffolds
                     },
                 ],
@@ -683,140 +797,137 @@ class TestExperimentRunner:
                     {"3-0", "1-0"},  # Evolved from 3 and 1
                     {"3-0-0", "1-0-0"},  # Evolved from 3-0 and 1-0
                     {"3-0-0-0", "3-0-1"},  # Evolved from 3-0-0 and 3-0
-                    {"3-0-0-0-0", "3-0-0-0"},  # Evolved from 3-0-0-0 and 3-0-0
-                    {"3-0-0-0-0-0", "3-0-0-0-1"},  # Evolved from 3-0-0-0-0 and 3-0-0-0
+                    {"3-0-0-0-0", "3-0-0-1"},  # Evolved from 3-0-0-0 and 3-0-0
+                    {"3-0-0-0-0-0", "3-0-0-1-0"},  # Evolved from 3-0-0-0-0 and 3-0-0-1
                 ],
             },
         ],
     )
     def test_scaffold_selection_based_on_scores(self, test_case):
         """Test that scaffold selection works correctly based on validation scores."""
-        runner = self.create_experiment_runner(
-            num_iterations=test_case["num_iterations"],
-            scaffolds_per_iter=test_case["scaffolds_per_iter"],
-            initial_scaffolds=test_case["initial_scaffolds"],
-            num_validation_examples=1,
-        )
-        training_data, validation_data = self.create_test_data()
+        self._run_scaffold_selection_test(test_case)
 
-        expected_validation_scores = test_case["validation_scores"]
+    # Meta-test cases (expect specific failures to validate test framework)
+    @pytest.mark.parametrize(
+        "test_case",
+        [
+            {
+                "name": "test_fails_with_extra_validation_call",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                "validation_scores": [
+                    {},
+                    {
+                        "0": 0.3,
+                        "0-0": 0.5,  # 0-0 is not actually validated in iteration 1
+                    },
+                    {"0-0": 0.5},
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0"},
+                    {"0-0-0"},
+                ],
+                "test_should_fail_with_error": "Iteration 1: expected validation for ['0', '0-0'], got ['0']",
+            },
+            {
+                "name": "test_fails_with_missing_validation_call",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                "validation_scores": [
+                    {},
+                    {"0": 0.3},
+                    # Missing validation call for 0-0
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0"},
+                    {"0-0-0"},
+                ],
+                "test_should_fail_with_error": "Unexpected validation request for scaffold 0-0 in iteration 2",
+            },
+            {
+                "name": "test_fails_with_wrong_validation_call",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                "validation_scores": [
+                    {},
+                    {"0": 0.3},
+                    {"WRONG": 0.5},  # Wrong scaffold id
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0"},
+                    {"0-0-0"},
+                ],
+                "test_should_fail_with_error": "Unexpected validation request for scaffold 0-0 in iteration 2",
+            },
+            {
+                "name": "test_fails_with_missing_new_scaffold",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                "validation_scores": [
+                    {},
+                    {"0": 0.3},
+                    {"0-0": 0.5},
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0"},
+                ],
+                "test_should_fail_with_error": "Iteration 2: expected scaffolds [], got ['0-0-0']",
+            },
+            {
+                "name": "test_fails_with_wrong_scaffold",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                "validation_scores": [
+                    {},
+                    {"0": 0.3},
+                    {"0-0": 0.5},
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0"},
+                    {"WRONG"},  # Wrong scaffold id
+                ],
+                "test_should_fail_with_error": "Expected scaffold WRONG to exist in iteration 2 at",
+            },
+            {
+                "name": "test_fails_with_iteration_0_score",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                "validation_scores": [
+                    {"WRONG": 0.0},
+                    {"0": 0.3},
+                    {"0-0": 0.5},
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0"},
+                    {"0-0-0"},
+                ],
+                "test_should_fail_with_error": "Iteration 0 should not have validation scores, got",
+            },
+        ],
+    )
+    def test_scaffold_selection_meta_validation(self, test_case):
+        """Test that the scaffold selection test framework correctly catches errors."""
+        expected_error = test_case["test_should_fail_with_error"]
+        with pytest.raises(AssertionError) as exc_info:
+            self._run_scaffold_selection_test(test_case)
 
-        def mock_scoring_function(expected, scoring_data):
-            # Extract scaffold info from the execution call context
-            actual_output = scoring_data.get("solution", "")
-            
-            # We need to determine which iteration we're in and return the appropriate score
-            # We'll look through all iterations to find a matching scaffold_id and score
-            for iteration, iter_scores in enumerate(expected_validation_scores):
-                if actual_output in iter_scores:
-                    return iter_scores[actual_output]
-            
-            # Default score if not found
-            return 0.0
-
-        def mock_execute_func(scaffold_dir, input_string, model, logs_path, timeout=120):
-            # Extract scaffold_id from the path
-            scaffold_id = scaffold_dir.name
-            
-            # Create log file
-            logs_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(logs_path, "w") as f:
-                f.write(f"=== Scaffold Execution Log ===\n")
-                f.write(f"Scaffold: {scaffold_id}\n")
-                f.write(f"Input: {input_string}\n")
-                f.write(f"Output: {scaffold_id}\n")  # Use scaffold_id as output for identification
-            
-            return ScaffoldExecutionResult(
-                output=scaffold_id,  # Return scaffold_id so scoring function can identify it
-                stderr="",
-                exit_code=0,
-                execution_time=0.1
-            )
-
-        def mock_generate_func(prompt, scaffolder_llm, examples):
-            return ScaffoldResult(
-                code='def process_input(input_string: str) -> str:\n    return "result"',
-                metadata=ScaffoldMetadata(
-                    created_at="2024-01-01T00:00:00",
-                    model="mock",
-                    parent_scaffold_id=None,
-                    iteration=0,
-                ),
-            )
-
-        def mock_evolve_func(run_data, scaffolder_llm):
-            return ScaffoldResult(
-                code='def process_input(input_string: str) -> str:\n    return "evolved"',
-                metadata=ScaffoldMetadata(
-                    created_at="2024-01-01T00:00:00",
-                    model="mock",
-                    parent_scaffold_id=None,
-                    iteration=1,
-                ),
-            )
-
-        # Override the runner's scoring function
-        runner.scoring_function = mock_scoring_function
-
-        mock_generate = Mock(side_effect=mock_generate_func)
-        mock_evolve = Mock(side_effect=mock_evolve_func)
-
-        with patch(
-            "scaffold_learning.core.experiment_runner.generate_scaffold",
-            mock_generate,
-        ), patch(
-            "scaffold_learning.core.experiment_runner.evolve_scaffold", 
-            mock_evolve
-        ), patch(
-            "scaffold_learning.core.experiment_runner.execute_scaffold",
-            side_effect=mock_execute_func,
-        ):
-            runner.run()
-
-        # Now verify behavior by checking the actual output files
-        expected_new_scaffolds = test_case["expected_new_scaffolds"]
-        
-        # Verify scaffold creation using file manager
-        for iteration in range(len(expected_new_scaffolds)):
-            expected_scaffolds = expected_new_scaffolds[iteration]
-            
-            for scaffold_id in expected_scaffolds:
-                scaffold_path = runner.file_manager.get_scaffold_path(iteration, scaffold_id)
-                assert scaffold_path.exists(), f"Expected scaffold {scaffold_id} to exist in iteration {iteration} at {scaffold_path}"
-                
-                # Verify scaffold.py file exists
-                scaffold_file = scaffold_path / "scaffold.py"
-                assert scaffold_file.exists(), f"Expected scaffold.py to exist for scaffold {scaffold_id} in iteration {iteration}"
-
-        # Verify validation scores using file manager
-        for iteration in range(1, len(expected_validation_scores)):  # Skip iteration 0 (no validation)
-            expected_validated_scaffolds = set(expected_validation_scores[iteration].keys())
-            
-            try:
-                train_scores, valid_scores = runner.file_manager.load_scores(iteration)
-                actual_validated_scaffolds = set(valid_scores.keys())
-                
-                assert expected_validated_scaffolds == actual_validated_scaffolds, \
-                    f"Iteration {iteration}: expected validation for {expected_validated_scaffolds}, got {actual_validated_scaffolds}"
-                
-                # Verify the actual scores match expectations
-                for scaffold_id, expected_score in expected_validation_scores[iteration].items():
-                    actual_score = valid_scores[scaffold_id]
-                    assert actual_score == expected_score, \
-                        f"Iteration {iteration}, scaffold {scaffold_id}: expected score {expected_score}, got {actual_score}"
-                        
-            except FileNotFoundError:
-                if expected_validated_scaffolds:
-                    raise AssertionError(f"Expected scoring file for iteration {iteration} with scaffolds {expected_validated_scaffolds}, but file doesn't exist")
-
-        # Print debug information for manual verification
-        print(f"Test case: {test_case['name']}")
-        for iteration in range(1, len(expected_validation_scores)):
-            try:
-                train_scores, valid_scores = runner.file_manager.load_scores(iteration)
-                print(f"Iteration {iteration} validation scores: {valid_scores}")
-            except FileNotFoundError:
-                print(f"Iteration {iteration}: No scoring file found")
+        # Check that the actual error message contains the expected substring
+        actual_error = str(exc_info.value)
+        assert (
+            expected_error in actual_error
+        ), f"Expected error message to contain '{expected_error}', but got: {actual_error}"
 
     def test_run_complete_experiment(self):
         runner = self.create_experiment_runner(

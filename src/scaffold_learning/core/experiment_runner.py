@@ -127,21 +127,35 @@ class ExperimentRunner:
 
             # Get scaffolds for this iteration
             if iteration == 0:
-                # For iteration 0, just create initial scaffolds
+                # For iteration 0, just create initial scaffolds - no validation
                 current_scaffold_ids = scaffold_ids
+                self.current_iteration_scores = {}
             else:
-                # For later iterations, evolve top scaffolds
+                # For later iterations, evolve top scaffolds using smart validation
                 current_scaffold_ids = self._run_evolution_iteration(
                     iteration, validation_sample
                 )
 
-            # Evaluate newly created scaffolds and track best
-            iter_best_path, iter_best_score = self._evaluate_current_scaffolds(
-                iteration, current_scaffold_ids, validation_sample
-            )
-            if iter_best_score > best_score:
-                best_score = iter_best_score
-                best_path = iter_best_path
+            # For iteration 0, we don't validate; for later iterations, validation is done in _run_evolution_iteration
+            if iteration == 0:
+                # Track best path as first scaffold for iteration 0 since we don't validate
+                if current_scaffold_ids:
+                    iter_best_path = self.file_manager.get_scaffold_path(
+                        iteration, current_scaffold_ids[0]
+                    )
+                    iter_best_score = 0.0  # We don't know the score yet
+                    best_path = iter_best_path  # Set initial best path
+                else:
+                    iter_best_path = None
+                    iter_best_score = -1.0
+            else:
+                # Find best scaffold from current iteration scores
+                iter_best_path, iter_best_score = self._find_best_scaffold_from_scores(
+                    iteration, self.current_iteration_scores
+                )
+                if iter_best_score > best_score:
+                    best_score = iter_best_score
+                    best_path = iter_best_path
 
             # Save scores and log results
             self.file_manager.save_scores(
@@ -169,7 +183,7 @@ class ExperimentRunner:
     def _run_evolution_iteration(
         self, iteration: int, validation_sample: List[DatasetExample]
     ) -> List[str]:
-        """Run one iteration of scaffold evolution.
+        """Run one iteration of scaffold evolution using smart validation.
 
         Args:
             iteration: Current iteration number
@@ -178,20 +192,22 @@ class ExperimentRunner:
         Returns:
             List of newly created scaffold IDs
         """
-        self.logger.info("Evaluating all scaffolds from previous iterations")
+        self.logger.info("Running evolution iteration with smart validation")
 
-        # Collect and evaluate previous scaffolds
+        # Collect scaffold info from previous iterations
         all_scaffold_info = self._collect_previous_scaffolds(iteration)
-        all_scaffold_scores = self._evaluate_previous_scaffolds(
-            iteration, all_scaffold_info, validation_sample
+
+        # Get most recent validation scores for ranking
+        most_recent_scores = self._get_most_recent_validation_scores(
+            all_scaffold_info, iteration
         )
 
-        # Select top scaffolds
-        top_scaffolds = self._select_top_scaffolds(
-            all_scaffold_info, all_scaffold_scores
+        # Select top scaffolds using smart validation
+        top_scaffolds = self._select_top_scaffolds_smart_validation(
+            iteration, all_scaffold_info, most_recent_scores, validation_sample
         )
 
-        # evolve selected scaffolds
+        # Evolve selected scaffolds
         return self._evolve_scaffolds(iteration, top_scaffolds)
 
     def _collect_previous_scaffolds(
@@ -208,77 +224,206 @@ class ExperimentRunner:
         all_scaffold_info = {}
 
         for prev_iter in range(current_iteration):
+            # First, try to get scaffolds from scores file (scaffolds that were validated)
             try:
                 train_scores, valid_scores = self.file_manager.load_scores(prev_iter)
                 for scaffold_id in valid_scores.keys():
                     path = self.file_manager.get_scaffold_path(prev_iter, scaffold_id)
                     if path.exists():
                         all_scaffold_info[scaffold_id] = (prev_iter, path)
+
+                # Always check directory structure to find scaffolds created in this iteration
+                # (they won't be in the scores file since they weren't validated)
+                iter_dir = (
+                    self.file_manager.experiment_dir
+                    / "iterations"
+                    / str(prev_iter)
+                    / "scaffolds"
+                )
+                if iter_dir.exists():
+                    # Check both 'new' and 'old' subdirectories
+                    for subdir_name in ["new", "old"]:
+                        subdir = iter_dir / subdir_name
+                        if subdir.exists():
+                            for scaffold_dir in subdir.iterdir():
+                                if scaffold_dir.is_dir():
+                                    scaffold_id = scaffold_dir.name
+                                    # Only add if not already found (prefer scaffolds from scores file for path accuracy)
+                                    if scaffold_id not in all_scaffold_info:
+                                        all_scaffold_info[scaffold_id] = (
+                                            prev_iter,
+                                            scaffold_dir,
+                                        )
+
+            # TODO: check whether this FileNotFoundError is needed or just a hack
             except FileNotFoundError:
-                # No scores file for this iteration
-                continue
+                # No scores file for this iteration, check directory structure instead
+                iter_dir = (
+                    self.file_manager.experiment_dir
+                    / "iterations"
+                    / str(prev_iter)
+                    / "scaffolds"
+                )
+                if iter_dir.exists():
+                    # Check both 'new' and 'old' subdirectories
+                    for subdir_name in ["new", "old"]:
+                        subdir = iter_dir / subdir_name
+                        if subdir.exists():
+                            for scaffold_dir in subdir.iterdir():
+                                if scaffold_dir.is_dir():
+                                    scaffold_id = scaffold_dir.name
+                                    all_scaffold_info[scaffold_id] = (
+                                        prev_iter,
+                                        scaffold_dir,
+                                    )
 
         return all_scaffold_info
 
-    def _evaluate_previous_scaffolds(
+    def _get_most_recent_validation_scores(
+        self, all_scaffold_info: Dict[str, Tuple[int, Path]], current_iteration: int
+    ) -> Dict[str, float]:
+        """Get the most recent validation scores for all scaffolds.
+
+        Args:
+            all_scaffold_info: Mapping of scaffold_id to (iteration, path)
+            current_iteration: Current iteration number
+
+        Returns:
+            Dictionary mapping scaffold_id to most recent validation score (None if never validated)
+        """
+        most_recent_scores = {}
+
+        # Look through all completed iterations to find most recent scores
+        for scaffold_id, (scaffold_iter, scaffold_path) in all_scaffold_info.items():
+            most_recent_scores[scaffold_id] = None
+
+            # Look through all iterations after scaffold creation to find most recent validation
+            # We need to look backwards from the current iteration to find the most recent
+
+            for check_iter in range(current_iteration - 1, scaffold_iter, -1):
+                train_scores, valid_scores = self.file_manager.load_scores(check_iter)
+                if scaffold_id in valid_scores:
+                    most_recent_scores[scaffold_id] = valid_scores[scaffold_id]
+                    break
+
+        return most_recent_scores
+
+    def _select_top_scaffolds_smart_validation(
         self,
         iteration: int,
         all_scaffold_info: Dict[str, Tuple[int, Path]],
+        most_recent_scores: Dict[str, float],
         validation_sample: List[DatasetExample],
-    ) -> Dict[str, float]:
-        """Evaluate all previous scaffolds on current validation sample.
+    ) -> List[Tuple[str, int, Path]]:
+        """Select top scaffolds using smart validation algorithm.
 
         Args:
             iteration: Current iteration number
             all_scaffold_info: Mapping of scaffold_id to (iteration, path)
-            validation_sample: Validation examples to evaluate on
-
-        Returns:
-            Dictionary mapping scaffold_id to score
-        """
-        all_scaffold_scores = {}
-
-        for scaffold_id, (scaffold_iter, scaffold_path) in all_scaffold_info.items():
-            try:
-                score = self._evaluate_scaffold(
-                    iteration=iteration,  # Log in current iteration
-                    scaffold_id=scaffold_id,
-                    validation_examples=validation_sample,
-                    source_iteration=scaffold_iter,  # Track where scaffold came from
-                )
-                all_scaffold_scores[scaffold_id] = score
-            except Exception as e:
-                self.logger.warning(f"Failed to evaluate scaffold {scaffold_id}: {e}")
-                all_scaffold_scores[scaffold_id] = 0.0
-
-        return all_scaffold_scores
-
-    def _select_top_scaffolds(
-        self,
-        all_scaffold_info: Dict[str, Tuple[int, Path]],
-        all_scaffold_scores: Dict[str, float],
-    ) -> List[Tuple[str, int, Path]]:
-        """Select top scaffolds for evolution based on scores.
-
-        Args:
-            all_scaffold_info: Mapping of scaffold_id to (iteration, path)
-            all_scaffold_scores: Mapping of scaffold_id to score
+            most_recent_scores: Most recent validation scores for each scaffold
+            validation_sample: Validation examples to use for evaluation
 
         Returns:
             List of (scaffold_id, iteration, path) tuples for top scaffolds
         """
-        sorted_scaffolds = sorted(
-            all_scaffold_scores.items(), key=lambda x: x[1], reverse=True
-        )
+        self.current_iteration_scores = {}
+        validated_scores = {}
 
-        top_scaffolds = []
-        for scaffold_id, score in sorted_scaffolds[: self.scaffolds_per_iter]:
-            if scaffold_id in all_scaffold_info:
-                scaffold_iter, path = all_scaffold_info[scaffold_id]
-                top_scaffolds.append((scaffold_id, scaffold_iter, path))
-                self.logger.info(
-                    f"Selected scaffold {scaffold_id} (score: {score:.3f}) for evolution"
+        # Step 1: Separate scaffolds into new (from previous iteration) and historical
+        new_scaffolds = []
+        historical_scaffolds = []
+
+        for scaffold_id, (scaffold_iter, scaffold_path) in all_scaffold_info.items():
+            if scaffold_iter == iteration - 1:
+                new_scaffolds.append(scaffold_id)
+            else:
+                historical_scaffolds.append(scaffold_id)
+
+        # Step 2: Validate all new scaffolds first (they have no historical scores)
+        for scaffold_id in new_scaffolds:
+            score = self._evaluate_scaffold(
+                iteration=iteration,
+                scaffold_id=scaffold_id,
+                validation_examples=validation_sample,
+                source_iteration=all_scaffold_info[scaffold_id][0],
+            )
+            validated_scores[scaffold_id] = score
+            self.current_iteration_scores[scaffold_id] = score
+
+        # Step 3: Order all scaffolds by most recent scores (new scaffolds first since they have no historical scores)
+        def get_sort_key(scaffold_id):
+            if scaffold_id in validated_scores:
+                return (
+                    2,
+                    validated_scores[scaffold_id],
+                )  # New scaffolds, highest priority, ordered by current score
+            elif most_recent_scores[scaffold_id] is not None:
+                return (
+                    1,
+                    most_recent_scores[scaffold_id],
+                )  # Historical scaffolds, medium priority, ordered by most recent score
+            else:
+                return (0, 0.0)  # Never validated scaffolds, lowest priority
+
+        all_scaffold_ids = list(all_scaffold_info.keys())
+        all_scaffold_ids.sort(key=get_sort_key, reverse=True)
+
+        # Step 4: Smart validation - validate scaffolds as needed until top K are confirmed
+        while True:
+            # Get current top K scaffolds based on available scores
+            def get_current_score(scaffold_id):
+                if scaffold_id in validated_scores:
+                    return validated_scores[scaffold_id]
+                elif most_recent_scores[scaffold_id] is not None:
+                    return most_recent_scores[scaffold_id]
+                else:
+                    return 0.0
+
+            # Sort by current best known scores
+            current_ranking = sorted(
+                all_scaffold_ids, key=get_current_score, reverse=True
+            )
+            current_top_k = current_ranking[: self.scaffolds_per_iter]
+
+            # Check if all top K are validated this iteration
+            all_top_k_validated = all(
+                scaffold_id in validated_scores for scaffold_id in current_top_k
+            )
+
+            if all_top_k_validated:
+                break
+
+            # Find next unvalidated scaffold in top K and validate it
+            next_to_validate = None
+            for scaffold_id in current_top_k:
+                if scaffold_id not in validated_scores:
+                    next_to_validate = scaffold_id
+                    break
+
+            if next_to_validate is None:
+                # This shouldn't happen given the check above, but just in case
+                raise RuntimeError(
+                    f"All top {self.scaffolds_per_iter} scaffolds are validated this iteration"
                 )
+
+            score = self._evaluate_scaffold(
+                iteration=iteration,
+                scaffold_id=next_to_validate,
+                validation_examples=validation_sample,
+                source_iteration=all_scaffold_info[next_to_validate][0],
+            )
+            validated_scores[next_to_validate] = score
+            self.current_iteration_scores[next_to_validate] = score
+
+        # Create final top scaffolds list
+        final_ranking = sorted(all_scaffold_ids, key=get_current_score, reverse=True)
+        top_scaffolds = []
+        for scaffold_id in final_ranking[: self.scaffolds_per_iter]:
+            scaffold_iter, path = all_scaffold_info[scaffold_id]
+            top_scaffolds.append((scaffold_id, scaffold_iter, path))
+            self.logger.info(
+                f"Selected scaffold {scaffold_id} (score: {get_current_score(scaffold_id):.3f}) for evolution"
+            )
 
         return top_scaffolds
 
@@ -317,71 +462,60 @@ class ExperimentRunner:
             )
 
             # Generate evolved scaffold
-            try:
-                evolved_result = evolve_scaffold(
-                    run_data=run_data, scaffolder_llm=self.scaffolder_llm
-                )
-                evolved_result.metadata.iteration = iteration
-                evolved_result.metadata.parent_scaffold_id = parent_id
+            evolved_result = evolve_scaffold(
+                run_data=run_data, scaffolder_llm=self.scaffolder_llm
+            )
+            evolved_result.metadata.iteration = iteration
+            evolved_result.metadata.parent_scaffold_id = parent_id
 
-                # Save evolved scaffold
-                self.file_manager.save_scaffold(
-                    iteration=iteration,
-                    scaffold_id=new_scaffold_id,
-                    result=evolved_result,
-                )
+            # Save evolved scaffold
+            self.file_manager.save_scaffold(
+                iteration=iteration,
+                scaffold_id=new_scaffold_id,
+                result=evolved_result,
+            )
 
-                current_scaffold_ids.append(new_scaffold_id)
-                self.logger.info(
-                    f"Created evolved scaffold {new_scaffold_id} from {parent_id}"
-                )
-
-            except Exception as e:
-                self.logger.warning(f"Failed to evolve scaffold {parent_id}: {e}")
-                # Continue with other scaffolds
-                continue
+            current_scaffold_ids.append(new_scaffold_id)
+            self.logger.info(
+                f"Created evolved scaffold {new_scaffold_id} from {parent_id}"
+            )
 
         return current_scaffold_ids
 
-    def _evaluate_current_scaffolds(
+    def _find_best_scaffold_from_scores(
         self,
         iteration: int,
-        scaffold_ids: List[str],
-        validation_sample: List[DatasetExample],
+        scores: Dict[str, float],
     ) -> Tuple[Optional[Path], float]:
-        """Evaluate newly created scaffolds in current iteration.
+        """Find the best scaffold from current iteration scores.
 
         Args:
             iteration: Current iteration number
-            scaffold_ids: List of scaffold IDs to evaluate
-            validation_sample: Validation examples to evaluate on
+            scores: Dictionary mapping scaffold_id to score
 
         Returns:
             Tuple of (best_scaffold_path, best_score) from this iteration
         """
-        self.current_iteration_scores = {}
         best_path = None
         best_score = -1.0
 
-        for scaffold_id in scaffold_ids:
-            try:
-                score = self._evaluate_scaffold(
-                    iteration=iteration,
-                    scaffold_id=scaffold_id,
-                    validation_examples=validation_sample,
+        for scaffold_id, score in scores.items():
+            if score > best_score:
+                best_score = score
+                # Check if scaffold exists in current iteration, otherwise find its source iteration
+                scaffold_path = self.file_manager.get_scaffold_path(
+                    iteration, scaffold_id
                 )
-                self.current_iteration_scores[scaffold_id] = score
-
-                # Track best scaffold
-                if score > best_score:
-                    best_score = score
-                    best_path = self.file_manager.get_scaffold_path(
-                        iteration, scaffold_id
-                    )
-
-            except Exception as e:
-                self.logger.warning(f"Failed to evaluate scaffold {scaffold_id}: {e}")
-                self.current_iteration_scores[scaffold_id] = 0.0
+                if not scaffold_path.exists():
+                    # Find the scaffold in previous iterations
+                    for prev_iter in range(iteration):
+                        prev_path = self.file_manager.get_scaffold_path(
+                            prev_iter, scaffold_id
+                        )
+                        if prev_path.exists():
+                            scaffold_path = prev_path
+                            break
+                best_path = scaffold_path
 
         return best_path, best_score
 
@@ -493,27 +627,22 @@ class ExperimentRunner:
                 iteration, scaffold_id, f"valid_{example_idx}"
             )
 
-            try:
-                # Execute scaffold
-                result = execute_scaffold(
-                    scaffold_dir=scaffold_path,
-                    input_string=example.input,
-                    model=self.executor_model,
-                    logs_path=logs_path,
+            # Execute scaffold
+            result = execute_scaffold(
+                scaffold_dir=scaffold_path,
+                input_string=example.input,
+                model=self.executor_model,
+                logs_path=logs_path,
+            )
+
+            # Calculate score
+            if result.exit_code == 0:
+                expected = example.scoring_data.get(
+                    "solution", str(example.scoring_data)
                 )
-
-                # Calculate score
-                if result.exit_code == 0:
-                    expected = example.scoring_data.get(
-                        "solution", str(example.scoring_data)
-                    )
-                    score = self.scoring_function(expected, {"solution": result.output})
-                else:
-                    score = 0.0  # Failed execution gets 0 score
-
-            except Exception as e:
-                self.logger.warning(f"Error evaluating scaffold {scaffold_id}: {e}")
-                score = 0.0
+                score = self.scoring_function(expected, {"solution": result.output})
+            else:
+                score = 0.0  # Failed execution gets 0 score
 
             scores.append(score)
 
