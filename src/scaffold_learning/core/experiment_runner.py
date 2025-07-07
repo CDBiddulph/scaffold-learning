@@ -658,7 +658,7 @@ class ExperimentRunner:
         iteration: int,
         scaffold_id: str,
         example: DatasetExample,
-        source_iteration: int = None,
+        source_iteration: Optional[int] = None,
     ) -> ScaffoldRunData:
         """Run a scaffold on a training example.
 
@@ -672,64 +672,42 @@ class ExperimentRunner:
             ScaffoldRunData with execution results and score
         """
         # Load scaffold from its source iteration
-        if source_iteration is not None:
-            scaffold_result = self.file_manager.load_scaffold(
-                source_iteration, scaffold_id
-            )
-            scaffold_path = self.file_manager.get_scaffold_path(
-                source_iteration, scaffold_id
-            )
-        else:
-            scaffold_result = self.file_manager.load_scaffold(iteration, scaffold_id)
-            scaffold_path = self.file_manager.get_scaffold_path(iteration, scaffold_id)
+        source_iteration = iteration if source_iteration is None else source_iteration
+        scaffold_result = self.file_manager.load_scaffold(source_iteration, scaffold_id)
+        scaffold_path = self.file_manager.get_scaffold_path(
+            source_iteration, scaffold_id
+        )
 
         # Get logs path
         logs_path = self.file_manager.get_logs_path(iteration, scaffold_id, "train")
 
-        try:
-            # Execute scaffold
-            execution_result = execute_scaffold(
-                scaffold_dir=scaffold_path,
-                input_string=example.input,
-                model=self.executor_model,
-                logs_path=logs_path,
+        # Execute scaffold
+        execution_result = execute_scaffold(
+            scaffold_dir=scaffold_path,
+            input_string=example.input,
+            model=self.executor_model,
+            logs_path=logs_path,
+        )
+
+        # Calculate score
+        if execution_result.exit_code == 0:
+            expected = example.scoring_data.get("solution", str(example.scoring_data))
+            score = self.scoring_function(
+                expected, {"solution": execution_result.output}
             )
+        else:
+            score = 0.0
 
-            # Calculate score
-            if execution_result.exit_code == 0:
-                expected = example.scoring_data.get(
-                    "solution", str(example.scoring_data)
-                )
-                score = self.scoring_function(
-                    expected, {"solution": execution_result.output}
-                )
-            else:
-                score = 0.0
+        # Read execution log
+        execution_log = logs_path.read_text()
 
-            # Read execution log
-            execution_log = logs_path.read_text() if logs_path.exists() else ""
+        run_data = ScaffoldRunData(
+            code=scaffold_result.code,
+            execution_log=execution_log,
+            example=example,
+            actual_output=execution_result.output,
+            score=score,
+        )
 
-            run_data = ScaffoldRunData(
-                code=scaffold_result.code,
-                execution_log=execution_log,
-                example=example,
-                actual_output=execution_result.output,
-                score=score,
-            )
-
-            self.logger.info(f"Training run {scaffold_id}: score {score:.3f}")
-            return run_data
-
-        except Exception as e:
-            self.logger.warning(
-                f"Error running training example for {scaffold_id}: {e}"
-            )
-
-            # Return failed run data
-            return ScaffoldRunData(
-                code=scaffold_result.code,
-                execution_log=f"Error: {str(e)}",
-                example=example,
-                actual_output="",
-                score=0.0,
-            )
+        self.logger.info(f"Training run {scaffold_id}: score {score:.3f}")
+        return run_data
