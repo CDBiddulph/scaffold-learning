@@ -391,6 +391,308 @@ class TestExperimentRunner:
         assert "prompt with" in scaffold_0.metadata.scaffolder_prompt
         assert "output for" in scaffold_0.metadata.scaffolder_output
 
+    @pytest.mark.parametrize(
+        "test_case",
+        [
+            {
+                "name": "basic",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                # Each entry in the list represents an iteration.
+                # The value is a dictionary of scaffold id to validation score.
+                "validation_scores": [
+                    {},  # No validation calls in iteration 0
+                    {"0": 0.3},
+                    {"0-0": 0.5},
+                    # For now, we don't score 0-0-0 at all because it doesn't
+                    # affect any future iterations
+                ],
+                # Each entry in the list is a set of scaffold ids that should be created
+                # in the corresponding iteration.
+                "expected_new_scaffolds": [
+                    {"0"},  # 0 is generated in iteration 0
+                    {"0-0"},  # 0-0 is evolved from 0 in iteration 1
+                    {"0-0-0"},  # 0-0-0 is evolved from 0-0 in iteration 2
+                ],
+            },
+            {
+                # This is a test that the parameterized test itself fails as expected.
+                # This is the same as the basic test, but with an extra validation call
+                # in the expectations.
+                "name": "test_fails_with_extra_validation_call",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                "validation_scores": [
+                    {},
+                    {
+                        "0": 0.3,
+                        "0-0": 0.5,  # 0-0 is not actually validated in iteration 1
+                    },
+                    {"0-0": 0.5},
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0"},
+                    {"0-0-0"},
+                ],
+                "test_should_fail_with_error": "Expected validation call for 0-0 in iteration 1",
+            },
+            {
+                # This is a test that the parameterized test itself fails as expected.
+                # This is the same as the basic test, but with a validation call missing
+                # in the expectations.
+                "name": "test_fails_with_missing_validation_call",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                # The key is the scaffold id.
+                # The value is a dictionary of iteration in which the scaffold is
+                # validated to the validation score in that iteration.
+                "validation_scores": [
+                    {},
+                    {"0": 0.3},
+                    # Missing validation call for 0-0
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0"},
+                    {"0-0-0"},
+                ],
+                "test_should_fail_with_error": "Got validation call for 0-0 in iteration 2",
+            },
+            {
+                # This is a test that the parameterized test itself fails as expected.
+                # This is the same as the basic test, but with a new scaffold missing
+                # in the expectations.
+                "name": "test_fails_with_missing_new_scaffold",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 1,
+                "initial_scaffolds": 1,
+                "validation_scores": [
+                    {},
+                    {"0": 0.3},
+                    {"0-0": 0.5},
+                ],
+                "expected_new_scaffolds": [
+                    {"0"},
+                    {"0-0-0"},
+                ],
+                "test_should_fail_with_error": "Got new scaffold 0-0 in iteration 1",
+            },
+            {
+                # In this test, 0-0 is not one of the top two scaffolds of all time
+                # in iteration 2, so we have to continue validating more scaffolds.
+                # Scaffold 1 does slightly worse than before, but it's still one of the
+                # top two scaffolds in iteration 2, so we choose 1 and 1-0.
+                "name": "one_evolved_scaffold_is_worse_than_past",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 2,
+                "validation_scores": [
+                    {},
+                    {"0": 0.3, "1": 0.5},
+                    {"0-0": 0.4, "1-0": 0.6, "1": 0.45},
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1"},
+                    {"0-0", "1-0"},
+                    {"1-1", "1-0-0"},  # evolved from 1 (0.45) and 1-0 (0.6)
+                ],
+            },
+            {
+                # In this test, both new scaffolds are worse than the past scaffolds.
+                # We have to run every scaffold and conclude that 0 and 1 are the best.
+                "name": "both_new_scaffolds_are_worse_than_past",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 2,
+                "validation_scores": [
+                    {},
+                    {"0": 0.3, "1": 0.5},
+                    {"0-0": 0.1, "1-0": 0.2, "1": 0.45, "0": 0.25},
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1"},
+                    {"0-0", "1-0"},
+                    {"0-1", "1-1"},  # evolved from 0 (0.25) and 1 (0.45)
+                ],
+            },
+            {
+                # In this test, both new scaffolds are worse than the past scaffolds were
+                # in the past, but when we run the past scaffolds, they actually score worse
+                # than they did in the past, so the new scaffolds are still the best.
+                "name": "past_scaffolds_both_become_worse",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 2,
+                "validation_scores": [
+                    {},
+                    {"0": 0.4, "1": 0.5},
+                    {"0-0": 0.2, "1-0": 0.3, "1": 0.0, "0": 0.1},
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1"},
+                    {"0-0", "1-0"},
+                    {"0-0-0", "1-0-0"},  # evolved from 0-0 (0.2) and 1-0 (0.3)
+                ],
+            },
+            {
+                "name": "more_initial_scaffolds",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 3,
+                "validation_scores": [
+                    {},
+                    {"0": 0.4, "1": 0.5, "2": 0.6},
+                    {"1-0": 0.55, "2-0": 0.65, "2": 0.59},
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1", "2"},
+                    {"1-0", "2-0"},
+                    {"2-0-0", "2-1"},  # evolved from 2-0 (0.65) and 2 (0.59)
+                ],
+            },
+            {
+                "name": "validation_of_top_historical_scaffolds",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 4,
+                "validation_scores": [
+                    {},
+                    {"0": 0.1, "1": 0.2, "2": 0.6, "3": 0.5},
+                    {"2-0": 0.3, "3-0": 0.4, "2": 0.35, "3": 0.45},
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1", "2", "3"},
+                    {"2-0", "3-0"},
+                    {"3-1", "3-0-0"},  # evolved from 3 (0.45) and 3-0 (0.4)
+                ],
+            },
+            {
+                "name": "extra_validation_no_effect_on_selection",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 5,
+                "validation_scores": [
+                    {},
+                    {"0": 0.1, "1": 0.2, "2": 0.8, "3": 0.7, "4": 0.6},
+                    {"2-0": 0.5, "3-0": 0.4, "2": 0.3, "3": 0.25, "4": 0.15},
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1", "2", "3", "4"},
+                    {"2-0", "3-0"},
+                    {"2-0-0", "3-0-0"},  # evolved from 2-0 (0.5) and 3-0 (0.4)
+                ],
+            },
+            {
+                "name": "extra_validation_changes_final_selection",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 5,
+                "validation_scores": [
+                    {},
+                    {"0": 0.1, "1": 0.2, "2": 0.8, "3": 0.7, "4": 0.6},
+                    {"2-0": 0.5, "3-0": 0.4, "2": 0.3, "3": 0.25, "4": 0.45},
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1", "2", "3", "4"},
+                    {"2-0", "3-0"},
+                    {"2-0-0", "4-0"},  # evolved from 2-0 (0.5) and 4 (0.45)
+                ],
+            },
+            {
+                "name": "new_scaffolds_are_better_than_all_past",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 4,
+                "validation_scores": [
+                    {},
+                    {"0": 0.4, "1": 0.5, "2": 0.6, "3": 0.7},
+                    {"3-0": 0.9, "2-0": 0.8},
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1", "2", "3"},
+                    {"3-0", "2-0"},
+                    {"3-0-0", "2-0-0"},  # evolved from 3-0 (0.9) and 2-0 (0.8)
+                ],
+            },
+            {
+                "name": "more_scaffolds_per_iter_and_all_new_scaffolds_are_worse",
+                "num_iterations": 3,
+                "scaffolds_per_iter": 3,
+                "initial_scaffolds": 6,
+                "validation_scores": [
+                    {},
+                    {"0": 0.5, "1": 0.6, "2": 0.7, "3": 0.8, "4": 0.9, "5": 0.4},
+                    {
+                        "4-0": 0.1,
+                        "3-0": 0.05,
+                        "2-0": 0.02,
+                        "4": 0.85,
+                        "3": 0.75,
+                        "2": 0.65,
+                    },
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1", "2", "3", "4", "5"},
+                    {"4-0", "3-0", "2-0"},
+                    {"4-1", "3-1", "2-1"},  # evolved from 4 (0.85), 3 (0.75), 2 (0.65)
+                ],
+            },
+            {
+                "name": "more_iterations",
+                "num_iterations": 5,
+                "scaffolds_per_iter": 2,
+                "initial_scaffolds": 4,
+                "validation_scores": [
+                    {},  # Iteration 0: Generate 4 initial scaffolds
+                    {"0": 0.3, "1": 0.6, "2": 0.4, "3": 0.7},  # 3,1 selected (top 2)
+                    {
+                        "3-0": 0.8,
+                        "1-0": 0.7,
+                        # Even though 3 and 1-0 have the same score, we refrain from
+                        # rescoring 3 because we already have our top 2.
+                    },
+                    {
+                        "3-0-0": 0.85,
+                        "1-0-0": 0.65,
+                        # Current ranking:
+                        # 3-0-0 (0.85), 3-0 (0.8), [1-0 (0.7), 3 (0.7)] (tie), 1-0-0 (0.65),
+                        # 1 (0.6), 2 (0.4), 0 (0.3)
+                        "3-0": 0.75,
+                        # Select 3-0-0 (0.85) and 3-0 (0.75)
+                    },
+                    {
+                        "3-0-0-0": 0.9,
+                        "3-0-1": 0.8,
+                        # Current ranking:
+                        # 3-0-0-0 (0.9), 3-0-0 (0.85), [3-0 (0.8), 3-0-1 (0.8)] (tie), ...
+                        "3-0-0": 0.82,
+                        # Select 3-0-0-0 (0.9) and 3-0-0 (0.82)
+                    },
+                    {
+                        "3-0-0-0-0": 0.95,
+                        "3-0-0-0": 0.9,
+                        # These at least tie with all other scaffolds
+                    },
+                ],
+                "expected_new_scaffolds": [
+                    {"0", "1", "2", "3"},
+                    {"3-0", "1-0"},  # Evolved from 3 and 1
+                    {"3-0-0", "1-0-0"},  # Evolved from 3-0 and 1-0
+                    {"3-0-0-0", "3-0-1"},  # Evolved from 3-0-0 and 3-0
+                    {"3-0-0-0-0", "3-0-0-0"},  # Evolved from 3-0-0-0 and 3-0-0
+                    {"3-0-0-0-0-0", "3-0-0-0-1"},  # Evolved from 3-0-0-0-0 and 3-0-0-0
+                ],
+            },
+        ],
+    )
+    def test_scaffold_selection_based_on_scores(self, test_case):
+        """Test that scaffold selection works correctly based on validation scores."""
+        raise NotImplementedError("Not implemented")
+
     def test_run_complete_experiment(self):
         runner = self.create_experiment_runner(
             num_iterations=1,
