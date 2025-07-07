@@ -204,10 +204,10 @@ class TestExperimentFileManager:
             manager.save_scores(1, train_scores, valid_scores)
 
             # Load them back
-            loaded_train, loaded_valid = manager.load_scores(iteration=1)
-
-            assert loaded_train == train_scores
-            assert loaded_valid == valid_scores
+            assert manager.load_scores(iteration=1) == {
+                "train": train_scores,
+                "valid": valid_scores,
+            }
 
     def test_get_logs_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:

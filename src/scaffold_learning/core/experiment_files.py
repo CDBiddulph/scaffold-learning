@@ -2,7 +2,7 @@ import json
 import shutil
 import os
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Optional, List
 from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata
 
 
@@ -123,34 +123,42 @@ class ExperimentFileManager:
 
         return ScaffoldResult(code=code, metadata=metadata)
 
+    def _get_new_scaffold_dir(self, iteration: int) -> Path:
+        """Get the directory path for the "new" scaffolds in an iteration.
+
+        Args:
+            iteration: Iteration number
+        """
+        return self.experiment_dir / "iterations" / str(iteration) / "scaffolds" / "new"
+
+    def list_scaffolds(self, iteration: int) -> List[str]:
+        """List all scaffolds for an iteration.
+
+        Args:
+            iteration: Iteration number
+
+        Returns:
+            The ID of each "new" scaffold in the iteration
+        """
+        return [
+            scaffold_dir.name
+            for scaffold_dir in self._get_new_scaffold_dir(iteration).iterdir()
+        ]
+
     def get_scaffold_path(self, iteration: int, scaffold_id: str) -> Path:
-        """Get the directory path for a scaffold.
+        """Get the directory path for a scaffold,
 
         Args:
             iteration: Iteration number
             scaffold_id: Scaffold identifier
 
         Returns:
-            Path to scaffold directory
+            Path to "new" scaffold directory
+
+        Raises:
+            FileNotFoundError: If scaffold doesn't exist in this iteration
         """
-        if iteration == 0:
-            return (
-                self.experiment_dir
-                / "iterations"
-                / "0"
-                / "scaffolds"
-                / "new"
-                / scaffold_id
-            )
-        else:
-            return (
-                self.experiment_dir
-                / "iterations"
-                / str(iteration)
-                / "scaffolds"
-                / "new"
-                / scaffold_id
-            )
+        return self._get_new_scaffold_dir(iteration) / scaffold_id
 
     def copy_scaffold(
         self, from_path: Path, to_iteration: int, to_scaffold_id: str
@@ -205,14 +213,14 @@ class ExperimentFileManager:
         with open(iteration_dir / "scoring.json", "w") as f:
             json.dump(scores_data, f, indent=2)
 
-    def load_scores(self, iteration: int) -> Tuple[Dict[str, float], Dict[str, float]]:
+    def load_scores(self, iteration: int) -> Dict[str, Dict[str, float]]:
         """Load scores from a previous iteration.
 
         Args:
             iteration: Iteration number to load
 
         Returns:
-            Tuple of (train_scores, valid_scores) dictionaries
+            Dictionary mapping "train" and "valid" to their respective scores
 
         Raises:
             FileNotFoundError: If scoring.json doesn't exist for iteration
@@ -227,7 +235,7 @@ class ExperimentFileManager:
         with open(scoring_file) as f:
             scores_data = json.load(f)
 
-        return scores_data["train"], scores_data["valid"]
+        return scores_data
 
     def get_logs_path(self, iteration: int, scaffold_id: str, run_type: str) -> Path:
         """Get path for saving execution logs.
