@@ -14,6 +14,9 @@ from typing import Optional
 from contextlib import contextmanager
 from dotenv import load_dotenv
 
+import anthropic
+import openai
+
 # Load the environment variables for the API keys
 load_dotenv()
 
@@ -71,18 +74,13 @@ class OpenAIInterface(LLMInterface):
             raise ValueError("OpenAI API key not provided")
 
     def generate_response(self, prompt: str, system_prompt: str = "") -> str:
-        try:
-            import openai
-
-            client = openai.OpenAI(api_key=self.api_key)
-            response = client.responses.create(
-                model=self.model,
-                instructions=system_prompt,
-                input=prompt,
-            )
-            return response.output[0].content[0].text
-        except ImportError:
-            raise ImportError("openai package not installed. Run: pip install openai")
+        client = openai.OpenAI(api_key=self.api_key)
+        response = client.responses.create(
+            model=self.model,
+            instructions=system_prompt,
+            input=prompt,
+        )
+        return response.output[0].content[0].text
 
     def get_model_info(self) -> str:
         return f"openai/{self.model}"
@@ -101,23 +99,37 @@ class AnthropicInterface(LLMInterface):
         if not self.api_key:
             raise ValueError("Anthropic API key not provided")
 
-    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
-        try:
-            import anthropic
-
-            with suppress_logging("httpx", "anthropic._base_client"):
-                client = anthropic.Anthropic(api_key=self.api_key)
-                response = client.messages.create(
-                    model=self.model,
-                    max_tokens=100_000,
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                return response.content[0].text
-        except ImportError:
-            raise ImportError(
-                "anthropic package not installed. Run: pip install anthropic"
+    def _get_max_tokens(self) -> int:
+        if self.model == "claude-opus-4-20250514":
+            return 32_000
+        elif self.model == "claude-sonnet-4-20250514":
+            return 64_000
+        elif self.model == "claude-3-5-haiku-20241022":
+            return 8192
+        else:
+            raise ValueError(
+                f"Unknown max_tokens for model {self.model}."
+                " Please fill in using information from"
+                " https://docs.anthropic.com/en/docs/about-claude/models/overview"
             )
+
+    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
+        # TODO: make use of streaming to get logs faster
+        # TODO: try the async client
+        client = anthropic.Anthropic(api_key=self.api_key)
+        with suppress_logging("httpx", "anthropic._base_client"):
+            stream = client.messages.create(
+                model=self.model,
+                max_tokens=self._get_max_tokens(),
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+                stream=True,
+            )
+        final_text = ""
+        for event in stream:
+            if event.type == "content_block_delta":
+                final_text += event.delta.text
+        return final_text
 
     def get_model_info(self) -> str:
         return f"anthropic/{self.model}"
