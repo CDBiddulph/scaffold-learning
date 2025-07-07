@@ -116,7 +116,7 @@ def process_input(input_string: str) -> str:
                 mock_popen.return_value = mock_process
 
                 with patch("time.time", side_effect=[0.0, 1.0]):
-                    result = execute_scaffold(
+                    execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
                         model="gpt-4o",
@@ -129,8 +129,10 @@ def process_input(input_string: str) -> str:
                 assert "docker" in call_args
                 assert "run" in call_args
                 assert "--rm" in call_args
-                assert str(scaffold_dir.absolute()) in " ".join(call_args)
-                assert str(logs_path.parent.absolute()) in " ".join(call_args)
+                assert f"{scaffold_dir.absolute()}:/workspace/scaffold:ro" in " ".join(
+                    call_args
+                )
+                assert f"{logs_path.absolute()}:/workspace/logs" in " ".join(call_args)
 
     def test_execute_scaffold_logs_saved_correctly(self):
         with tempfile.TemporaryDirectory() as temp_dir:

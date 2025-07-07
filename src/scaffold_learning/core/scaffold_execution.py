@@ -21,7 +21,7 @@ def build_docker_command(
             "--user",
             f"{os.getuid()}:{os.getgid()}",
             "-v",
-            f"{scaffold_dir.absolute()}:/workspace/scaffold",
+            f"{scaffold_dir.absolute()}:/workspace/scaffold:ro",
             "-v",
             f"{logs_dir.absolute()}:/workspace/logs",
         ]
