@@ -127,7 +127,7 @@ class ExperimentRunner:
                 # For iteration 0, just create initial scaffolds - no validation
                 current_scaffold_ids = scaffold_ids
             else:
-                # For later iterations, evolve top scaffolds using smart validation
+                # For later iterations, evolve top scaffolds
                 current_scaffold_ids, validation_scores = self._run_evolution_iteration(
                     iteration, validation_sample
                 )
@@ -180,7 +180,7 @@ class ExperimentRunner:
     def _run_evolution_iteration(
         self, iteration: int, validation_sample: List[DatasetExample]
     ) -> Tuple[List[str], Dict[str, float]]:
-        """Run one iteration of scaffold evolution using smart validation.
+        """Run one iteration of scaffold evolution.
 
         Args:
             iteration: Current iteration number
@@ -189,8 +189,6 @@ class ExperimentRunner:
         Returns:
             Tuple of (newly_created_scaffold_ids, validation_scores)
         """
-        self.logger.info("Running evolution iteration with smart validation")
-
         # Get most recent validation scores for ranking
         most_recent_scores = self._get_most_recent_validation_scores(iteration)
 

@@ -6,7 +6,7 @@ This document describes the implementation of the experiment runner feature for 
 
 The experiment runner automatically generates and evolves scaffolds through iterative learning. It:
 1. Creates initial scaffolds from training examples
-2. Efficiently evaluates scaffolds on validation data using smart validation strategies
+2. Evaluates scaffolds on validation data
 3. Selects top-performing scaffolds and evolves them based on training runs
 4. Repeats for multiple iterations to find the best scaffold
 
@@ -183,7 +183,7 @@ Key private methods that orchestrate the flow:
 - `_create_initial_scaffolds()`: Generate initial scaffolds with random examples
 - `_run_evolution_iteration()`: Main iteration logic for evolution cycles
 - `_evaluate_scaffold()`: Run on validation set
-- `_select_top_scaffolds()`: Pick best K with smart validation strategy
+- `_select_top_scaffolds()`: Pick best K scaffolds
 - `_run_training_example()`: Execute on training data
 - `_evolve_scaffolds()`: Generate evolved versions
 - `_get_next_scaffold_id()`: Generate IDs like 0, 1, 2, then 0-0, 1-0
@@ -236,7 +236,7 @@ The `ExperimentRunner` orchestrates the entire process:
 2. For each subsequent iteration:
    - Select validation subset for this iteration
    - Validate newly created scaffolds first
-   - Use smart validation strategy to select top K scaffolds:
+   - Select top K scaffolds:
      - Order scaffolds by most recent validation scores (new scaffolds first)
      - Validate scaffolds as needed until top K are all validated this iteration
    - Copy selected scaffolds to old/ directory
