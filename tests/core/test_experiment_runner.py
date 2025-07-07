@@ -691,7 +691,132 @@ class TestExperimentRunner:
     )
     def test_scaffold_selection_based_on_scores(self, test_case):
         """Test that scaffold selection works correctly based on validation scores."""
-        raise NotImplementedError("Not implemented")
+        runner = self.create_experiment_runner(
+            num_iterations=test_case["num_iterations"],
+            scaffolds_per_iter=test_case["scaffolds_per_iter"],
+            initial_scaffolds=test_case["initial_scaffolds"],
+            num_validation_examples=1,
+        )
+        training_data, validation_data = self.create_test_data()
+
+        expected_validation_scores = test_case["validation_scores"]
+
+        def mock_scoring_function(expected, scoring_data):
+            # Extract scaffold info from the execution call context
+            actual_output = scoring_data.get("solution", "")
+            
+            # We need to determine which iteration we're in and return the appropriate score
+            # We'll look through all iterations to find a matching scaffold_id and score
+            for iteration, iter_scores in enumerate(expected_validation_scores):
+                if actual_output in iter_scores:
+                    return iter_scores[actual_output]
+            
+            # Default score if not found
+            return 0.0
+
+        def mock_execute_func(scaffold_dir, input_string, model, logs_path, timeout=120):
+            # Extract scaffold_id from the path
+            scaffold_id = scaffold_dir.name
+            
+            # Create log file
+            logs_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(logs_path, "w") as f:
+                f.write(f"=== Scaffold Execution Log ===\n")
+                f.write(f"Scaffold: {scaffold_id}\n")
+                f.write(f"Input: {input_string}\n")
+                f.write(f"Output: {scaffold_id}\n")  # Use scaffold_id as output for identification
+            
+            return ScaffoldExecutionResult(
+                output=scaffold_id,  # Return scaffold_id so scoring function can identify it
+                stderr="",
+                exit_code=0,
+                execution_time=0.1
+            )
+
+        def mock_generate_func(prompt, scaffolder_llm, examples):
+            return ScaffoldResult(
+                code='def process_input(input_string: str) -> str:\n    return "result"',
+                metadata=ScaffoldMetadata(
+                    created_at="2024-01-01T00:00:00",
+                    model="mock",
+                    parent_scaffold_id=None,
+                    iteration=0,
+                ),
+            )
+
+        def mock_evolve_func(run_data, scaffolder_llm):
+            return ScaffoldResult(
+                code='def process_input(input_string: str) -> str:\n    return "evolved"',
+                metadata=ScaffoldMetadata(
+                    created_at="2024-01-01T00:00:00",
+                    model="mock",
+                    parent_scaffold_id=None,
+                    iteration=1,
+                ),
+            )
+
+        # Override the runner's scoring function
+        runner.scoring_function = mock_scoring_function
+
+        mock_generate = Mock(side_effect=mock_generate_func)
+        mock_evolve = Mock(side_effect=mock_evolve_func)
+
+        with patch(
+            "scaffold_learning.core.experiment_runner.generate_scaffold",
+            mock_generate,
+        ), patch(
+            "scaffold_learning.core.experiment_runner.evolve_scaffold", 
+            mock_evolve
+        ), patch(
+            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            side_effect=mock_execute_func,
+        ):
+            runner.run()
+
+        # Now verify behavior by checking the actual output files
+        expected_new_scaffolds = test_case["expected_new_scaffolds"]
+        
+        # Verify scaffold creation using file manager
+        for iteration in range(len(expected_new_scaffolds)):
+            expected_scaffolds = expected_new_scaffolds[iteration]
+            
+            for scaffold_id in expected_scaffolds:
+                scaffold_path = runner.file_manager.get_scaffold_path(iteration, scaffold_id)
+                assert scaffold_path.exists(), f"Expected scaffold {scaffold_id} to exist in iteration {iteration} at {scaffold_path}"
+                
+                # Verify scaffold.py file exists
+                scaffold_file = scaffold_path / "scaffold.py"
+                assert scaffold_file.exists(), f"Expected scaffold.py to exist for scaffold {scaffold_id} in iteration {iteration}"
+
+        # Verify validation scores using file manager
+        for iteration in range(1, len(expected_validation_scores)):  # Skip iteration 0 (no validation)
+            expected_validated_scaffolds = set(expected_validation_scores[iteration].keys())
+            
+            try:
+                train_scores, valid_scores = runner.file_manager.load_scores(iteration)
+                actual_validated_scaffolds = set(valid_scores.keys())
+                
+                assert expected_validated_scaffolds == actual_validated_scaffolds, \
+                    f"Iteration {iteration}: expected validation for {expected_validated_scaffolds}, got {actual_validated_scaffolds}"
+                
+                # Verify the actual scores match expectations
+                for scaffold_id, expected_score in expected_validation_scores[iteration].items():
+                    actual_score = valid_scores[scaffold_id]
+                    assert actual_score == expected_score, \
+                        f"Iteration {iteration}, scaffold {scaffold_id}: expected score {expected_score}, got {actual_score}"
+                        
+            except FileNotFoundError:
+                if expected_validated_scaffolds:
+                    raise AssertionError(f"Expected scoring file for iteration {iteration} with scaffolds {expected_validated_scaffolds}, but file doesn't exist")
+
+        # Print debug information for manual verification
+        print(f"Test case: {test_case['name']}")
+        for iteration in range(1, len(expected_validation_scores)):
+            try:
+                train_scores, valid_scores = runner.file_manager.load_scores(iteration)
+                print(f"Iteration {iteration} validation scores: {valid_scores}")
+            except FileNotFoundError:
+                print(f"Iteration {iteration}: No scoring file found")
 
     def test_run_complete_experiment(self):
         runner = self.create_experiment_runner(
