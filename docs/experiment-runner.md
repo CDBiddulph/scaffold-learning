@@ -4,10 +4,10 @@ This document describes the implementation of the experiment runner feature for 
 
 ## Overview
 
-The experiment runner automatically generates and improves scaffolds through iterative learning. It:
+The experiment runner automatically generates and evolves scaffolds through iterative learning. It:
 1. Creates initial scaffolds from training examples
-2. Evaluates scaffolds on validation data
-3. Selects top-performing scaffolds and improves them based on training runs
+2. Efficiently evaluates scaffolds on validation data using smart validation strategies
+3. Selects top-performing scaffolds and evolves them based on training runs
 4. Repeats for multiple iterations to find the best scaffold
 
 ## Key Design Decisions
@@ -48,15 +48,15 @@ experiments/
             └── scoring.json
 ```
 
-- Iterations have `scaffolds/old/` (copied from previous) and `scaffolds/new/` (improved versions)
+- Iterations have `scaffolds/old/` (copied from previous) and `scaffolds/new/` (evolved versions)
 - Logs are saved under `logs/scaffold_id/run_type.{json,log}`
 
 ### Scaffold ID System
 
 - Initial scaffolds: `0`, `1`, `2`, ...
 - Derived scaffolds: `parent-0`, `parent-1`, ...
-- Example: `2-0` is the first improvement of scaffold `2`
-- Example: `2-0-0` is the first improvement of scaffold `2-0`
+- Example: `2-0` is the first evolution of scaffold `2`
+- Example: `2-0-0` is the first evolution of scaffold `2-0`
 
 ### Data Structures
 
@@ -66,27 +66,30 @@ All shared data structures are in `src/scaffold_learning/core/data_structures.py
 - `ScaffoldMetadata`: Tracks creation time, model, parent scaffold, iteration
 - `ScaffoldResult`: Contains scaffold code and metadata
 - `ScaffoldExecutionResult`: Output, stderr, exit code, execution time
-- `ScaffoldRunData`: All data from a run needed for improvement
+- `ScaffoldRunData`: All data from a run needed for evolution
 
 ### Error Handling
 
 - Failed scaffold execution: Score of 0.0, continue experiment
 - Failed scaffold generation: Retry 3 times, then skip with warning
-- If a scaffold can't be improved, find the next best scaffold to improve
+- If a scaffold can't be evolved, find the next best scaffold to evolve
 - Structure code to yield additional top scaffolds if initial ones fail
 
-### Validation Consistency
+### Smart Validation Strategy
 
 - Randomize validation examples at the start of each iteration
 - Use the same validation subset throughout that iteration for consistency
-- This ensures fair comparison when rescoring scaffolds
+- Iteration 0: Generate initial scaffolds but don't validate them
+- Later iterations: Validate new scaffolds first, then selectively validate historical scaffolds only as needed to determine the top K
+- Use most recent validation scores for ranking scaffolds before validation begins
+- This ensures efficient validation while maintaining fair comparison
 
 ### Scaffold ID Generation Logic
 
 - Initial scaffolds get numeric IDs: "0", "1", "2", etc.
-- Improved scaffolds append "-N" to parent ID
-- First improvement of "2" becomes "2-0"
-- First improvement of "2-0" becomes "2-0-0"
+- Evolved scaffolds append "-N" to parent ID
+- First evolution of "2" becomes "2-0"
+- First evolution of "2-0" becomes "2-0-0"
 - Track next available number for each parent scaffold
 
 ### Progress Reporting
@@ -125,10 +128,10 @@ All shared data structures are in `src/scaffold_learning/core/data_structures.py
   - Parses LLM response to extract Python code
   - Creates metadata with timestamp and iteration
 
-- `improve_scaffold(run_data: ScaffoldRunData, scaffolder_llm: LLMInterface) -> ScaffoldResult`
-  - Called by: ExperimentRunner._run_iteration()
+- `evolve_scaffold(run_data: ScaffoldRunData, scaffolder_llm: LLMInterface) -> ScaffoldResult`
+  - Called by: ExperimentRunner._run_evolution_iteration()
   - Shows previous code, logs, score to LLM
-  - Asks for improvement to maximize score
+  - Asks for evolution to maximize score
   - Parses response and creates new metadata
 
 **Refactoring needed:**
@@ -178,11 +181,11 @@ Public methods:
 
 Key private methods that orchestrate the flow:
 - `_create_initial_scaffolds()`: Generate initial scaffolds with random examples
-- `_run_iteration()`: Main iteration logic
+- `_run_evolution_iteration()`: Main iteration logic for evolution cycles
 - `_evaluate_scaffold()`: Run on validation set
-- `_select_top_scaffolds()`: Pick best K with rescoring
+- `_select_top_scaffolds()`: Pick best K with smart validation strategy
 - `_run_training_example()`: Execute on training data
-- `_improve_scaffold()`: Generate improved version
+- `_evolve_scaffolds()`: Generate evolved versions
 - `_get_next_scaffold_id()`: Generate IDs like 0, 1, 2, then 0-0, 1-0
 
 #### 6. CREATE: `src/scaffold_learning/cli/run_experiment.py` (~200 lines)
@@ -215,7 +218,7 @@ The `ExperimentFileManager` class handles all file I/O:
 ### Scaffold Generation
 
 - `generate_scaffold()`: Shows task description and multiple examples to LLM
-- `improve_scaffold()`: Shows previous code, execution logs, score, and asks for improvement
+- `evolve_scaffold()`: Shows previous code, execution logs, score, and asks for evolution
 - Both return `ScaffoldResult` with code and metadata
 
 ### Scaffold Execution
@@ -229,15 +232,17 @@ The `ExperimentFileManager` class handles all file I/O:
 
 The `ExperimentRunner` orchestrates the entire process:
 
-1. Create initial scaffolds showing random training examples
-2. For each iteration:
+1. Create initial scaffolds showing random training examples (iteration 0, no validation)
+2. For each subsequent iteration:
    - Select validation subset for this iteration
-   - Evaluate all new scaffolds on validation
-   - Select top K scaffolds, rescoring if needed
-   - Copy top scaffolds to old/ directory
+   - Validate newly created scaffolds first
+   - Use smart validation strategy to select top K scaffolds:
+     - Order scaffolds by most recent validation scores (new scaffolds first)
+     - Validate scaffolds as needed until top K are all validated this iteration
+   - Copy selected scaffolds to old/ directory
    - Run each on a training example
-   - Generate improvements based on training performance
-   - Save new scaffolds to new/ directory
+   - Generate evolved versions based on training performance
+   - Save evolved scaffolds to new/ directory
 
 ### CLI Interface
 
@@ -388,47 +393,9 @@ The `ExperimentRunner` orchestrates the entire process:
 
 The documentation above includes the key public methods. Here are additional details:
 
-**generate_scaffold function**:
-```python
-def generate_scaffold(
-    prompt: str,
-    scaffolder_llm: LLMInterface,
-    examples: List[DatasetExample]
-) -> ScaffoldResult:
-    """Generate a new scaffold by prompting the scaffolder LLM.
-    
-    Args:
-        prompt: Task description for what the scaffold should do
-        scaffolder_llm: LLM interface to use for generating the scaffold
-        examples: Training examples to show the scaffolder
-    
-    Returns:
-        ScaffoldResult containing code and metadata
-    
-    Raises:
-        ValueError: If LLM response doesn't contain valid Python code
-    """
-```
-
-**improve_scaffold function**:
-```python
-def improve_scaffold(
-    run_data: ScaffoldRunData,
-    scaffolder_llm: LLMInterface
-) -> ScaffoldResult:
-    """Generate an improved version of a scaffold based on execution feedback.
-    
-    Args:
-        run_data: Data from previous scaffold execution including logs and score
-        scaffolder_llm: LLM interface to use for generation
-    
-    Returns:
-        ScaffoldResult containing improved code and metadata
-    
-    Raises:
-        ValueError: If LLM response doesn't contain valid Python code
-    """
-```
+**Key functions**:
+- `generate_scaffold()`: Creates new scaffolds by showing task description and training examples to the scaffolder LLM
+- `evolve_scaffold()`: Creates evolved versions by showing previous code, execution logs, and scores to the scaffolder LLM
 
 ### Prompt Construction Details
 
@@ -437,12 +404,12 @@ For generate_scaffold:
 - For each example, show "Input:" and "Expected output:"
 - Ask LLM to write a scaffold.py that processes inputs
 
-For improve_scaffold:
+For evolve_scaffold:
 - Show the previous scaffold code
 - Show the execution logs
 - Show input, actual output, expected output
 - Show the score
-- Ask LLM to improve the scaffold to maximize the score
+- Ask LLM to evolve the scaffold to maximize the score
 
 ### JSONL Data Loading
 
@@ -453,36 +420,23 @@ When loading train/valid data:
 
 ### Scoring Function Wrapper
 
-In run_experiment.py:
-```python
-# Wrap crosswords score function to match expected signature
-scoring_function = lambda expected, scoring_data: score(
-    json.dumps({"solution": expected}),
-    scoring_data.get("solution", "")
-)
-```
+The crosswords score function needs to be wrapped to match the expected signature of `(expected, scoring_data) -> float`.
 
-### Top-K Selection Algorithm
+### Smart Validation Strategy
 
-1. Get all scaffolds from current and previous iterations
-2. Sort by most recent validation score
-3. For each scaffold in order:
-   - If not scored this iteration, rescore it
-   - Update its position based on new score
-   - Keep selecting until we have K scaffolds all scored this iteration
+The algorithm efficiently selects the top K scaffolds by validating only as needed:
+
+1. **Initial ordering**: New scaffolds (never validated) first, then historical scaffolds by most recent validation score
+2. **Validation loop**: 
+   - Check if top K scaffolds are all validated this iteration
+   - If not, validate the highest-ranked scaffold that hasn't been validated this iteration
+   - Resort the list with the new score
+   - Repeat until top K are all validated this iteration
+3. **Early termination**: If new scaffolds are excellent, historical scaffolds may never need validation
 
 ### Retry Logic for Generation
 
-```python
-for attempt in range(3):
-    try:
-        result = generate_scaffold(...)
-        break
-    except ValueError as e:
-        if attempt == 2:
-            logging.warning(f"Failed to generate scaffold after 3 attempts: {e}")
-            continue  # Skip this scaffold
-```
+Failed scaffold generation is retried up to 3 times before skipping the scaffold with a warning.
 
 ## Configuration
 
@@ -509,7 +463,7 @@ python -m src.scaffold_learning.cli.run_experiment \
 This will:
 1. Create 10 initial scaffolds
 2. Run 3 iterations
-3. Improve top 5 scaffolds each iteration
+3. Evolve top 5 scaffolds each iteration
 4. Use 20 validation examples for scoring
 5. Use GPT-4o for scaffold generation
 
@@ -546,34 +500,13 @@ Default paths for crossword domain:
 
 These should be configurable via CLI arguments in the future.
 
-## Detailed Algorithm for Top-K Selection
+## Smart Validation Algorithm Details
 
-```python
-def _select_top_scaffolds(self, k: int) -> List[Tuple[str, Path]]:
-    """Select top K scaffolds, rescoring as needed."""
-    selected = []
-    candidates = self._get_all_scaffold_scores()  # Returns [(scaffold_id, path, score)]
-    
-    while len(selected) < k and candidates:
-        # Sort by score descending
-        candidates.sort(key=lambda x: x[2], reverse=True)
-        
-        # Take the top candidate
-        scaffold_id, path, old_score = candidates.pop(0)
-        
-        # Check if already scored this iteration
-        if scaffold_id in self.current_iteration_scores:
-            selected.append((scaffold_id, path))
-        else:
-            # Rescore it
-            new_score = self._evaluate_scaffold(scaffold_id)
-            self.current_iteration_scores[scaffold_id] = new_score
-            
-            # Re-insert with new score
-            candidates.append((scaffold_id, path, new_score))
-    
-    return selected
-```
+The scaffold selection algorithm efficiently determines the top K scaffolds by validating only as needed:
+
+1. **Initial ordering**: Create a list with new scaffolds first (they have no historical scores), followed by historical scaffolds ordered by their most recent validation scores
+2. **Validation loop**: Check if the top K scaffolds have all been validated this iteration. If not, validate the highest-ranked scaffold that hasn't been validated this iteration, then resort the list with the new score
+3. **Termination**: Continue until the top K scaffolds are all validated this iteration
 
 ## Complete List of Files in Each Scaffold Directory
 
@@ -609,7 +542,7 @@ From the original specification:
 
 4. **Failed generation handling**:
    - Retry 3 times before giving up
-   - If scaffold can't be improved, continue with next best scaffold
+   - If scaffold can't be evolved, continue with next best scaffold
    - Structure code to easily yield additional top scaffolds
 
 5. **Validation sampling**:
@@ -640,8 +573,8 @@ From the original specification:
 
 For run_experiment.py:
 - `--experiment-name` (required): Name for the experiment
-- `--num-iterations` (default: 5): Number of improvement iterations
-- `--scaffolds-per-iter` (default: 3): Top scaffolds to improve each iteration
+- `--num-iterations` (default: 5): Number of evolution iterations
+- `--scaffolds-per-iter` (default: 3): Top scaffolds to evolve each iteration
 - `--initial-scaffolds` (default: 5): Number of initial scaffolds to create
 - `--num-validation-examples` (default: 10): Validation examples per iteration
 - `--scaffolder-model` (required): LLM model for scaffold generation
