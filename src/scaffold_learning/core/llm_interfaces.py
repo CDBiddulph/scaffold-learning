@@ -104,7 +104,7 @@ class AnthropicInterface(LLMInterface):
             return 32_000
         elif self.model == "claude-sonnet-4-20250514":
             return 64_000
-        elif self.model == "claude-3-5-haiku-20241022":
+        elif self.model in ["claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"]:
             return 8192
         else:
             raise ValueError(
