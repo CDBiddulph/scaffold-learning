@@ -71,29 +71,7 @@ class ExperimentFileManager:
         with open(scaffold_dir / "metadata.json", "w") as f:
             json.dump(result.metadata.to_dict(), f, indent=2)
 
-        # Copy support files
-        self._copy_support_files(scaffold_dir)
-
         return scaffold_dir
-
-    def _copy_support_files(self, scaffold_dir: Path) -> None:
-        """Copy llm_executor.py and llm_interfaces.py to scaffold directory."""
-        # Get paths to source files
-        base_dir = Path(__file__).parent.parent
-        runtime_dir = base_dir / "runtime"
-        core_dir = base_dir / "core"
-
-        # Copy llm_executor.py from runtime
-        if (runtime_dir / "llm_executor.py").exists():
-            shutil.copy2(
-                runtime_dir / "llm_executor.py", scaffold_dir / "llm_executor.py"
-            )
-
-        # Copy llm_interfaces.py from core
-        if (core_dir / "llm_interfaces.py").exists():
-            shutil.copy2(
-                core_dir / "llm_interfaces.py", scaffold_dir / "llm_interfaces.py"
-            )
 
     def load_scaffold(self, iteration: int, scaffold_id: str) -> ScaffoldResult:
         """Load a scaffold from disk.

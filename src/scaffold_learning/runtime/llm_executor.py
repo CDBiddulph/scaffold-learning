@@ -5,6 +5,7 @@ This module provides access to the executor LLM for generated scripts running in
 """
 
 import os
+from scaffold_learning.core.llm_interfaces import LLMFactory, suppress_logging
 
 
 def execute_llm(prompt: str, system_prompt: str = "") -> str:
@@ -18,23 +19,17 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
     Returns:
         The LLM's response as a string
     """
-    # Import the LLM factory and logging suppression
-    try:
-        # Try relative import first (when running in copied scaffold directory)
-        from llm_interfaces import LLMFactory, suppress_logging
-    except ImportError:
-        # Fall back to absolute import (when running in development)
-        from scaffold_learning.core.llm_interfaces import LLMFactory, suppress_logging
 
     # Get executor specification from environment variable
     executor_model_spec = os.environ.get("EXECUTOR_MODEL_SPEC", "haiku")
 
     # Create LLM instance
-    with suppress_logging("httpx", "anthropic._base_client"):
-        executor_llm = LLMFactory.create_llm(
-            model_spec=executor_model_spec,
-            openai_api_key=os.environ.get("OPENAI_API_KEY"),
-            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
-        )
+    executor_llm = LLMFactory.create_llm(
+        model_spec=executor_model_spec,
+        openai_api_key=os.environ.get("OPENAI_API_KEY"),
+        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+    )
 
+    # Generate response
+    with suppress_logging("httpx", "anthropic._base_client"):
         return executor_llm.generate_response(prompt, system_prompt)

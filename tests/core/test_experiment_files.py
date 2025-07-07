@@ -60,8 +60,6 @@ class TestExperimentFileManager:
             # Check files exist
             assert (scaffold_path / "scaffold.py").exists()
             assert (scaffold_path / "metadata.json").exists()
-            assert (scaffold_path / "llm_executor.py").exists()
-            assert (scaffold_path / "llm_interfaces.py").exists()
 
             # Check content
             assert (scaffold_path / "scaffold.py").read_text() == result.code
@@ -253,13 +251,11 @@ class TestExperimentFileManager:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            # Create a complete scaffold with all support files
+            # Create a complete scaffold
             source_dir = experiment_dir / "iterations" / "0" / "scaffolds" / "new" / "0"
             source_dir.mkdir(parents=True)
             (source_dir / "scaffold.py").write_text("code")
             (source_dir / "metadata.json").write_text("{}")
-            (source_dir / "llm_executor.py").write_text("executor")
-            (source_dir / "llm_interfaces.py").write_text("interfaces")
 
             # Copy scaffold
             target_path = manager.copy_scaffold(
@@ -269,8 +265,6 @@ class TestExperimentFileManager:
             # Verify all files were copied
             assert (target_path / "scaffold.py").read_text() == "code"
             assert (target_path / "metadata.json").read_text() == "{}"
-            assert (target_path / "llm_executor.py").read_text() == "executor"
-            assert (target_path / "llm_interfaces.py").read_text() == "interfaces"
 
     def test_list_scaffolds(self):
         with tempfile.TemporaryDirectory() as temp_dir:

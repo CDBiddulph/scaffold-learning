@@ -107,17 +107,6 @@ def main() -> None:
         with open(scaffold_file, "w") as f:
             f.write(generated_script)
 
-        # Copy support files
-        runtime_dir = os.path.join(os.path.dirname(__file__), "..", "runtime")
-        shutil.copy2(
-            os.path.join(runtime_dir, "llm_executor.py"),
-            os.path.join(output_dir, "llm_executor.py"),
-        )
-        shutil.copy2(
-            os.path.join(os.path.dirname(__file__), "..", "core", "llm_interfaces.py"),
-            os.path.join(output_dir, "llm_interfaces.py"),
-        )
-
         # Create metadata file with executor configuration
         metadata = {
             "executor_model_spec": executor_model_spec,
