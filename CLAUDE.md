@@ -33,11 +33,14 @@ This is a research project for LLM-generated script execution, using a "scaffold
 - Don't duplicate code - remember DRY
     - Guideline: if ~3 lines of code appear twice, you should probably fix it
     - If your new feature would result in duplicate code, factor the logic into a shared function
-- Python scripts should simply pass errors up the call stack most of the time
-    - This makes our code much simpler
-    - Don't catch errors and continue silently, as this can hide bugs
-        - Even when it would be too disruptive to fail entirely, you should often log a warning
-    - Don't return exit codes in Python CLI scripts, just raise an error
+- Python scripts should simply pass exceptions up the call stack
+    - NEVER catch exceptions, as this can hide bugs
+        - Because this is a research project, it doesn't matter if our experiments crash
+            - It is far more valuable to see that there is an error, even if we sometimes get false positives
+        - Occasionally, it's actually appropriate to catch an exception and log a clear warning
+            - However, if you feel like you actually should do this, you MUST STOP and ask for my explicit approval
+    - Don't return exit codes in Python CLI scripts, only raise an error
+        - This is simpler and more Pythonic
 - Flags should use --hyphens-between-words-like-this.
     - Even if I accidentally tell you to make a --flag_like_this, turn it into a --flag-like-this
 - Lean towards using dataclasses rather than tuples or dictionaries, especially for public interfaces 
