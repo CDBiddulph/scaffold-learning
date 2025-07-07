@@ -139,11 +139,45 @@ class ExperimentFileManager:
 
         Returns:
             The ID of each "new" scaffold in the iteration
+
+        Raises:
+            FileNotFoundError: If iteration directory does not exist
         """
+        new_dir = self._get_new_scaffold_dir(iteration)
+        if not new_dir.exists():
+            raise FileNotFoundError(f"Iteration {iteration} not found")
         return [
             scaffold_dir.name
-            for scaffold_dir in self._get_new_scaffold_dir(iteration).iterdir()
+            for scaffold_dir in new_dir.iterdir()
+            if scaffold_dir.is_dir()
         ]
+
+    def find_scaffold_iteration(self, scaffold_id: str) -> int:
+        """Find which iteration created a scaffold.
+
+        Args:
+            scaffold_id: Scaffold identifier to search for
+
+        Returns:
+            The iteration number where this scaffold was first created
+
+        Raises:
+            FileNotFoundError: If scaffold is not found in any iteration
+        """
+        # Check each iteration's new/ directory
+        iteration = 0
+        while True:
+            new_dir = self._get_new_scaffold_dir(iteration)
+            if not new_dir.exists():
+                break
+
+            scaffold_path = new_dir / scaffold_id
+            if scaffold_path.exists() and scaffold_path.is_dir():
+                return iteration
+
+            iteration += 1
+
+        raise FileNotFoundError(f"Scaffold {scaffold_id} not found in any iteration")
 
     def get_scaffold_path(self, iteration: int, scaffold_id: str) -> Path:
         """Get the directory path for a scaffold,

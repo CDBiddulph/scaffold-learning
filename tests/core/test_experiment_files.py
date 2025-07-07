@@ -271,3 +271,69 @@ class TestExperimentFileManager:
             assert (target_path / "metadata.json").read_text() == "{}"
             assert (target_path / "llm_executor.py").read_text() == "executor"
             assert (target_path / "llm_interfaces.py").read_text() == "interfaces"
+
+    def test_list_scaffolds(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiment_dir = Path(temp_dir) / "test_experiment"
+            manager = ExperimentFileManager(experiment_dir)
+
+            # Create some scaffolds
+            new_dir = experiment_dir / "iterations" / "0" / "scaffolds" / "new"
+            new_dir.mkdir(parents=True)
+            (new_dir / "0").mkdir()
+            (new_dir / "1").mkdir()
+            (new_dir / "2").mkdir()
+            (new_dir / "not_a_dir.txt").write_text("file")  # Should be ignored
+
+            # Test listing
+            scaffolds = manager.list_scaffolds(0)
+            assert set(scaffolds) == {"0", "1", "2"}
+
+            # Test another iteration
+            new_dir_1 = experiment_dir / "iterations" / "1" / "scaffolds" / "new"
+            new_dir_1.mkdir(parents=True)
+            (new_dir_1 / "0-0").mkdir()
+            (new_dir_1 / "1-0").mkdir()
+
+            scaffolds_1 = manager.list_scaffolds(1)
+            assert set(scaffolds_1) == {"0-0", "1-0"}
+
+    def test_list_scaffolds_missing_directory_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiment_dir = Path(temp_dir) / "test_experiment"
+            manager = ExperimentFileManager(experiment_dir)
+            with pytest.raises(FileNotFoundError):
+                assert manager.list_scaffolds(0) == []
+
+    def test_find_scaffold_iteration(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiment_dir = Path(temp_dir) / "test_experiment"
+            manager = ExperimentFileManager(experiment_dir)
+
+            # Create scaffolds in different iterations
+            iter0_dir = experiment_dir / "iterations" / "0" / "scaffolds" / "new"
+            iter0_dir.mkdir(parents=True)
+            (iter0_dir / "0").mkdir()
+            (iter0_dir / "1").mkdir()
+
+            iter1_dir = experiment_dir / "iterations" / "1" / "scaffolds" / "new"
+            iter1_dir.mkdir(parents=True)
+            (iter1_dir / "0-0").mkdir()
+            (iter1_dir / "1-0").mkdir()
+
+            iter2_dir = experiment_dir / "iterations" / "2" / "scaffolds" / "new"
+            iter2_dir.mkdir(parents=True)
+            (iter2_dir / "0-0-0").mkdir()
+
+            # Test finding scaffolds
+            assert manager.find_scaffold_iteration("0") == 0
+            assert manager.find_scaffold_iteration("1") == 0
+            assert manager.find_scaffold_iteration("0-0") == 1
+            assert manager.find_scaffold_iteration("1-0") == 1
+            assert manager.find_scaffold_iteration("0-0-0") == 2
+
+            # Test nonexistent scaffold
+            with pytest.raises(
+                FileNotFoundError, match="Scaffold nonexistent not found"
+            ):
+                manager.find_scaffold_iteration("nonexistent")
