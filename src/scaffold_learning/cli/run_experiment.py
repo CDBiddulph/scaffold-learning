@@ -180,21 +180,14 @@ def main():
 
     # Run experiment
     print("Starting experiment...")
-    best_scaffold_path = runner.run()
+    best_scaffold_path, best_score = runner.run()
 
     # Print results
     print("\n" + "=" * 50)
     print("EXPERIMENT COMPLETE")
     print("=" * 50)
     print(f"Best scaffold path: {best_scaffold_path}")
-
-    # Get the final score from scoring files
-    final_iteration = args.num_iterations - 1
-    valid_scores = runner.file_manager.load_scores(final_iteration)["valid"]
-    if valid_scores:
-        best_score = max(valid_scores.values())
-        print(f"Best score: {best_score:.3f}")
-
+    print(f"Best score: {best_score:.3f}")
     print("=" * 50)
 
 
