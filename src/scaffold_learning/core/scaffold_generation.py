@@ -35,7 +35,7 @@ def extract_python_code(response: str) -> str:
     return code
 
 
-def build_generation_prompt(prompt: str, examples: List[DatasetExample]) -> str:
+def _build_generation_prompt(examples: List[DatasetExample]) -> str:
     """Build the full prompt for scaffold generation.
 
     Args:
@@ -45,21 +45,31 @@ def build_generation_prompt(prompt: str, examples: List[DatasetExample]) -> str:
     Returns:
         Complete prompt for the scaffolder LLM
     """
-    full_prompt = f"{prompt}\n\n"
+    full_prompt = ""
 
+    if not examples:
+        raise ValueError("No examples provided")
     for i, example in enumerate(examples, 1):
-        full_prompt += f"Example {i}:\n"
-        full_prompt += f"Input: {example.input}\n"
-        full_prompt += f"Expected output: {example.scoring_data.get('solution', str(example.scoring_data))}\n\n"
+        full_prompt += f"""=== Example {i}/{len(examples)} ===
 
-    full_prompt += "Write a scaffold.py that implements process_input() to handle inputs like these examples."
-    # TODO: make the timeout warning configurable
-    full_prompt += "\nYour code will timeout and get a score of 0 if it takes any more than 2 minutes to run, so you may want to implement measures to ensure that it stops before that point."
+Input:
+{example.input}
+
+Expected output:
+{example.scoring_data.get('solution', str(example.scoring_data))}
+
+"""
+
+    full_prompt += """
+=== Instructions ===
+Write a scaffold.py that implements process_input() to handle inputs like these examples.
+The output of process_input() should be a string in the exact format as in the examples.
+Your code will timeout and get a score of 0 if it takes any more than 2 minutes to run, so you may want to implement measures to ensure that it stops before that point."""
 
     return full_prompt
 
 
-def get_scaffolder_system_prompt() -> str:
+def _get_scaffolder_system_prompt() -> str:
     """Get the system prompt for the scaffolder LLM."""
     current_file = Path(__file__)
     # TODO: make this less hacky
@@ -71,12 +81,11 @@ def get_scaffolder_system_prompt() -> str:
 
 
 def generate_scaffold(
-    prompt: str, scaffolder_llm: LLMInterface, examples: List[DatasetExample]
+    scaffolder_llm: LLMInterface, examples: List[DatasetExample]
 ) -> ScaffoldResult:
     """Generate a new scaffold by prompting the scaffolder LLM.
 
     Args:
-        prompt: Task description for what the scaffold should do
         scaffolder_llm: LLM interface to use for generating the scaffold
         examples: Training examples to show the scaffolder
 
@@ -86,8 +95,8 @@ def generate_scaffold(
     Raises:
         ValueError: If LLM response doesn't contain valid Python code
     """
-    full_prompt = build_generation_prompt(prompt, examples)
-    system_prompt = get_scaffolder_system_prompt()
+    full_prompt = _build_generation_prompt(examples)
+    system_prompt = _get_scaffolder_system_prompt()
 
     response = scaffolder_llm.generate_response(full_prompt, system_prompt)
     code = extract_python_code(response)
@@ -142,7 +151,7 @@ Score: {run_data.score}
 Please improve the scaffold to maximize the score. Focus on producing the expected output.
 Write the complete improved scaffold.py code."""
 
-    system_prompt = get_scaffolder_system_prompt()
+    system_prompt = _get_scaffolder_system_prompt()
     response = scaffolder_llm.generate_response(prompt, system_prompt)
     code = extract_python_code(response)
 

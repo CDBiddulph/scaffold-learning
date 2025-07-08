@@ -15,7 +15,6 @@ from typing import Dict, Any
 from scaffold_learning.core.llm_interfaces import LLMFactory
 from scaffold_learning.core.scaffold_generation import (
     generate_scaffold,
-    extract_python_code,
 )
 from scaffold_learning.core.data_structures import DatasetExample
 import shutil
@@ -32,10 +31,6 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(
         description="Generate Python scripts using a scaffolder LLM"
-    )
-    parser.add_argument(
-        "scaffolder_prompt",
-        help="Prompt describing what the generated script should do",
     )
     parser.add_argument(
         "--scaffold-name",
@@ -85,13 +80,11 @@ def main() -> None:
         logger.info(f"Output Directory: {output_dir}")
         logger.info(f"Scaffolder LLM: {scaffolder_model_spec}")
         logger.info(f"Executor LLM: {executor_model_spec}")
-        logger.info(f"Generating script based on prompt: {args.scaffolder_prompt}")
 
         # Generate the script using the new module
         # For now, create an empty example list (no examples provided via CLI)
         examples = []
         result = generate_scaffold(
-            prompt=args.scaffolder_prompt,
             scaffolder_llm=scaffolder_llm,
             examples=examples,
         )
@@ -111,7 +104,6 @@ def main() -> None:
         metadata = {
             "executor_model_spec": executor_model_spec,
             "scaffolder_model_spec": scaffolder_model_spec,
-            "prompt": args.scaffolder_prompt,
             "created": datetime.now().isoformat(),
         }
 
