@@ -169,7 +169,7 @@ class TestExperimentRunner:
         training_data, validation_data = self.create_test_data()
 
         # Create mocks to track calls
-        def mock_generate_func(prompt, scaffolder_llm, examples):
+        def mock_generate_func(examples, scaffolder_llm):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
                 metadata=ScaffoldMetadata(
@@ -213,10 +213,6 @@ class TestExperimentRunner:
 
         for call in mock_generate.call_args_list:
             _, kwargs = call
-            assert (
-                kwargs["prompt"]
-                == "Generate a Python script that solves crossword clues"
-            )
             assert kwargs["scaffolder_llm"] == runner.scaffolder_llm
             assert len(kwargs["examples"]) == 1  # Each gets one random training example
             assert kwargs["examples"][0] in training_data
@@ -227,8 +223,11 @@ class TestExperimentRunner:
         # Check that evolve_scaffold receives proper ScaffoldRunData
         for call in mock_evolve.call_args_list:
             _, kwargs = call
-            run_data = kwargs["run_data"]
+            run_data_list = kwargs["run_data"]
             assert kwargs["scaffolder_llm"] == runner.scaffolder_llm
+            assert isinstance(run_data_list, list)
+            assert len(run_data_list) == 1
+            run_data = run_data_list[0]
             assert hasattr(run_data, "code")
             assert hasattr(run_data, "execution_log")
             assert hasattr(run_data, "example")
@@ -294,7 +293,7 @@ class TestExperimentRunner:
         )
 
         # Create mocks that track calls automatically
-        def mock_generate_func(prompt, scaffolder_llm, examples):
+        def mock_generate_func(examples, scaffolder_llm):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
                 metadata=ScaffoldMetadata(
@@ -308,15 +307,17 @@ class TestExperimentRunner:
             )
 
         def mock_evolve_func(run_data, scaffolder_llm):
+            # run_data is a list of ScaffoldRunData objects
+            first_run_data = run_data[0]
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
                 metadata=ScaffoldMetadata(
                     created_at="2024-01-01T00:00:00",
                     model="mock",
-                    parent_scaffold_id=run_data.example.id,  # Use example id to track
+                    parent_scaffold_id=first_run_data.example.id,  # Use example id to track
                     iteration=1,
-                    scaffolder_prompt=f"evolve prompt for {run_data.example.input}",
-                    scaffolder_output=f"evolved output for {run_data.example.input}",
+                    scaffolder_prompt=f"evolve prompt for {first_run_data.example.input}",
+                    scaffolder_output=f"evolved output for {first_run_data.example.input}",
                 ),
             )
 
@@ -343,10 +344,6 @@ class TestExperimentRunner:
         # Check each call's arguments
         for call in mock_generate.call_args_list:
             _, kwargs = call
-            assert (
-                "Generate a Python script that solves crossword clues"
-                in kwargs["prompt"]
-            )
             assert kwargs["scaffolder_llm"] == runner.scaffolder_llm
             assert len(kwargs["examples"]) == 1
             assert kwargs["examples"][0] in training_data
@@ -356,8 +353,13 @@ class TestExperimentRunner:
 
         # Get the arguments from the first (and only) call
         _, kwargs = mock_evolve.call_args
-        run_data = kwargs["run_data"]
+        run_data_list = kwargs["run_data"]
         scaffolder_llm = kwargs["scaffolder_llm"]
+
+        # Verify run_data is a list with one ScaffoldRunData
+        assert isinstance(run_data_list, list)
+        assert len(run_data_list) == 1
+        run_data = run_data_list[0]
 
         # Verify ScaffoldRunData structure
         assert isinstance(run_data.code, str)
@@ -454,7 +456,7 @@ class TestExperimentRunner:
                 execution_time=0.1,
             )
 
-        def mock_generate_func(prompt, scaffolder_llm, examples):
+        def mock_generate_func(examples, scaffolder_llm):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
                 metadata=ScaffoldMetadata(

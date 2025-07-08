@@ -1,6 +1,5 @@
-from typing import List
+from typing import Any, Dict, List
 from datetime import datetime
-from pathlib import Path
 
 from scaffold_learning.core.data_structures import (
     DatasetExample,
@@ -10,8 +9,46 @@ from scaffold_learning.core.data_structures import (
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 
+_SCAFFOLDER_INSTRUCTIONS = """Your task is to write a Python scaffold that maximizes its score on held-out examples.
 
-def extract_python_code(response: str) -> str:
+Basic code template:
+```python
+import logging
+from llm_executor import execute_llm
+
+def process_input(input_string: str) -> str:
+    logging.info("Starting to process input")
+    
+    try:
+        # Your logic here - you can call execute_llm() as needed
+        return execute_llm("Your prompt here")
+    except Exception as e:
+        logging.error(f"Error occurred: {str(e)}", exc_info=True)
+        raise
+```
+
+Tips:
+1. Your script must implement a function called `process_input(input_string: str) -> str`
+2. You have access to an executor LLM through a library called `llm_executor`
+3. The llm_executor has a function: execute_llm(prompt: str, system_prompt: Optional[str] = None) -> str
+4. Your script should be self-contained and runnable
+5. Avoid bloated or disorganized code
+6. Include proper error handling
+7. Make sure your error messages include all information that would help debug the error
+8. Use Python's logging module for logging important events, errors, and debug information
+9. Enclose your code in ```python tags
+
+Based on the scaffold's output, you will get a score from 0 to 1.
+In the example(s) above, returning <expected-output> would get you a score of 1.
+Your code will automatically get a score of 0 if it takes any more than <timeout> seconds to run, so you may want to implement measures to ensure that it stops before that point."""
+
+_EVOLUTION_EXTRA_INSTRUCTIONS = """There is an attempted Python scaffold in <code>.
+You can use this scaffold as a reference or write something completely different.
+You can see the output of <code> in <actual-output> and its execution log in <execution-log>.
+Finally, you can see the score assigned to <actual-output> in <score>."""
+
+
+def _extract_python_code(response: str) -> str:
     """Extract Python code from LLM response.
 
     Args:
@@ -27,61 +64,113 @@ def extract_python_code(response: str) -> str:
         code = response.split("```python")[1].split("```")[0].strip()
     elif "```" in response:
         code = response.split("```")[1].split("```")[0].strip()
-    elif "def process_input" in response:
-        # Looks like raw Python code (e.g., from mock interface)
-        code = response.strip()
     else:
         raise ValueError("LLM response doesn't contain valid Python code")
     return code
 
 
-def _build_generation_prompt(examples: List[DatasetExample]) -> str:
-    """Build the full prompt for scaffold generation.
+def _get_xml(root_tag: str, inner_tags: Dict[str, str]) -> str:
+    middle = "\n".join(
+        [f"    <{tag}>{value}</{tag}>" for tag, value in inner_tags.items()]
+    )
+    return f"<{root_tag}>\n{middle}\n</{root_tag}>"
+
+
+def _get_expected_output(scoring_data: Dict[str, Any]) -> str:
+    # TODO: make printing scoring data vary depending on the domain
+    # Possibly just have this as a fixed field in the jsonl for simplicity
+    return scoring_data["solution"]
+
+
+def _get_example_xml(example: DatasetExample | ScaffoldRunData, idx: int) -> str:
+    if isinstance(example, ScaffoldRunData):
+        xml_dict = {
+            "input": example.example.input,
+            "expected_output": _get_expected_output(example.example.scoring_data),
+            "actual_output": example.actual_output,
+            "execution_log": example.execution_log,
+            "score": example.score,
+        }
+    else:
+        xml_dict = {
+            "input": example.input,
+            "expected_output": _get_expected_output(example.scoring_data),
+        }
+
+    return _get_xml(f"example-{idx}", xml_dict)
+
+
+def _get_examples_xml(examples: List[DatasetExample | ScaffoldRunData]) -> str:
+    if not examples:
+        raise ValueError("No examples provided")
+
+    return "\n".join(
+        [_get_example_xml(example, i) for i, example in enumerate(examples, 1)]
+    )
+
+
+def _build_prompt(
+    examples: List[DatasetExample | ScaffoldRunData], is_evolution: bool
+) -> str:
+    """Build the full prompt for scaffold generation or evolution.
 
     Args:
-        prompt: Task description
-        examples: Training examples to include
+        examples: List of DatasetExample or ScaffoldRunData objects
+        is_evolution: If True, the prompt will be for evolution, otherwise it will be for generation
 
     Returns:
         Complete prompt for the scaffolder LLM
     """
     full_prompt = ""
 
-    if not examples:
-        raise ValueError("No examples provided")
-    for i, example in enumerate(examples, 1):
-        full_prompt += f"""=== Example {i}/{len(examples)} ===
+    # If evolving an existing scaffold, include the code in the prompt
+    if is_evolution:
+        if not examples or not isinstance(examples[0], ScaffoldRunData):
+            raise ValueError("Evolution requires a list of ScaffoldRunData objects")
+        code = examples[0].code
+        full_prompt = f"<code>```python\n{code}\n```</code>\n"
 
-Input:
-{example.input}
+    # Include the timeout
+    timeout_seconds = 120  # TODO: make this configurable
+    full_prompt += f"<timeout>{timeout_seconds}</timeout>\n"
 
-Expected output:
-{example.scoring_data.get('solution', str(example.scoring_data))}
+    # Include the example data for each example
+    full_prompt += _get_examples_xml(examples)
 
-"""
+    # Add the shared instructions
+    full_prompt += f"\n\n{_SCAFFOLDER_INSTRUCTIONS}"
 
-    full_prompt += """
-=== Instructions ===
-Write a scaffold.py that implements process_input() to handle inputs like these examples.
-The output of process_input() should be a string in the exact format as in the examples.
-Your code will timeout and get a score of 0 if it takes any more than 2 minutes to run, so you may want to implement measures to ensure that it stops before that point."""
+    # Add the instructions that are specific to evolution
+    if is_evolution:
+        full_prompt += f"\n{_EVOLUTION_EXTRA_INSTRUCTIONS}"
 
     return full_prompt
 
 
-def _get_scaffolder_system_prompt() -> str:
-    """Get the system prompt for the scaffolder LLM."""
-    current_file = Path(__file__)
-    # TODO: make this less hacky
-    repo_root = current_file.parent.parent.parent.parent
-    prompt_file = repo_root / "prompts" / "scaffolder_system_prompt.txt"
+def _generate_or_evolve_scaffold(
+    scaffolder_llm: LLMInterface,
+    examples: List[DatasetExample | ScaffoldRunData],
+    is_evolution: bool,
+) -> ScaffoldResult:
+    prompt = _build_prompt(examples, is_evolution)
 
-    with open(prompt_file, "r") as f:
-        return f.read()
+    response = scaffolder_llm.generate_response(prompt)
+    code = _extract_python_code(response)
+
+    metadata = ScaffoldMetadata(
+        created_at=datetime.now().isoformat(),
+        model=None,  # Will be set by the runner
+        parent_scaffold_id=None,  # Will be set by the runner
+        iteration=0,
+        scaffolder_prompt=prompt,
+        scaffolder_output=response,
+    )
+
+    return ScaffoldResult(code=code, metadata=metadata)
 
 
 def generate_scaffold(
-    scaffolder_llm: LLMInterface, examples: List[DatasetExample]
+    examples: List[DatasetExample], scaffolder_llm: LLMInterface
 ) -> ScaffoldResult:
     """Generate a new scaffold by prompting the scaffolder LLM.
 
@@ -95,31 +184,17 @@ def generate_scaffold(
     Raises:
         ValueError: If LLM response doesn't contain valid Python code
     """
-    full_prompt = _build_generation_prompt(examples)
-    system_prompt = _get_scaffolder_system_prompt()
-
-    response = scaffolder_llm.generate_response(full_prompt, system_prompt)
-    code = extract_python_code(response)
-
-    metadata = ScaffoldMetadata(
-        created_at=datetime.now().isoformat(),
-        model=None,  # Will be set by the runner
-        parent_scaffold_id=None,
-        iteration=0,
-        scaffolder_prompt=full_prompt,
-        scaffolder_output=response,
-    )
-
-    return ScaffoldResult(code=code, metadata=metadata)
+    return _generate_or_evolve_scaffold(scaffolder_llm, examples, is_evolution=False)
 
 
 def evolve_scaffold(
-    run_data: ScaffoldRunData, scaffolder_llm: LLMInterface
+    run_data: List[ScaffoldRunData], scaffolder_llm: LLMInterface
 ) -> ScaffoldResult:
     """Generate an evolved version of a scaffold based on execution feedback.
 
     Args:
-        run_data: Data from previous scaffold execution including logs and score
+        run_data: List of ScaffoldRunData objects, each containing data from a
+        previous scaffold execution including logs and score
         scaffolder_llm: LLM interface to use for generation
 
     Returns:
@@ -128,40 +203,4 @@ def evolve_scaffold(
     Raises:
         ValueError: If LLM response doesn't contain valid Python code
     """
-    prompt = f"""I have a scaffold that needs improvement. Here's the current code:
-
-```python
-{run_data.code}
-```
-
-When run with this input:
-{run_data.example.input}
-
-Expected output:
-{run_data.example.scoring_data.get('solution', str(run_data.example.scoring_data))}
-
-The scaffold produced:
-{run_data.actual_output}
-
-Execution logs:
-{run_data.execution_log}
-
-Score: {run_data.score}
-
-Please improve the scaffold to maximize the score. Focus on producing the expected output.
-Write the complete improved scaffold.py code."""
-
-    system_prompt = _get_scaffolder_system_prompt()
-    response = scaffolder_llm.generate_response(prompt, system_prompt)
-    code = extract_python_code(response)
-
-    metadata = ScaffoldMetadata(
-        created_at=datetime.now().isoformat(),
-        model=None,  # Will be set by the runner
-        parent_scaffold_id=None,  # Will be set by the runner
-        iteration=1,  # Will be set properly by the runner
-        scaffolder_prompt=prompt,
-        scaffolder_output=response,
-    )
-
-    return ScaffoldResult(code=code, metadata=metadata)
+    return _generate_or_evolve_scaffold(scaffolder_llm, run_data, is_evolution=True)

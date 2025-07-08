@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import List, Dict, Optional, Callable, Tuple
 from scaffold_learning.core.data_structures import (
     DatasetExample,
-    ScaffoldResult,
     ScaffoldRunData,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
@@ -359,7 +358,7 @@ class ExperimentRunner:
 
             # Generate evolved scaffold
             evolved_result = evolve_scaffold(
-                run_data=run_data, scaffolder_llm=self.scaffolder_llm
+                run_data=[run_data], scaffolder_llm=self.scaffolder_llm
             )
             evolved_result.metadata.iteration = iteration
             evolved_result.metadata.parent_scaffold_id = parent_id
@@ -471,9 +470,8 @@ class ExperimentRunner:
 
             # Generate scaffold
             result = generate_scaffold(
-                prompt=prompt,
-                scaffolder_llm=self.scaffolder_llm,
                 examples=[example],  # Show one example for now
+                scaffolder_llm=self.scaffolder_llm,
             )
 
             # Update metadata

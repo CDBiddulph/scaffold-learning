@@ -3,9 +3,8 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
 from scaffold_learning.core.data_structures import DatasetExample
 from scaffold_learning.core.experiment_runner import ExperimentRunner
@@ -27,39 +26,30 @@ def load_dataset(dataset_path: Path) -> List[DatasetExample]:
 
     with open(dataset_path, "r") as f:
         for line_num, line in enumerate(f, 1):
-            try:
-                data = json.loads(line.strip())
+            data = json.loads(line.strip())
 
-                # Extract required fields
-                example_id = data.get("id", f"example_{line_num}")
-                input_text = data.get("input", "")
-                scoring_data = data.get("scoring_data", {})
+            # Extract required fields
+            example_id = data.get("id", f"example_{line_num}")
+            input_text = data.get("input", "")
+            scoring_data = data.get("scoring_data", {})
 
-                # TODO: make this less hacky by making solution always come from scoring_data
-                # Handle crossword dataset format where solution is at top level
-                if "solution" in data and "solution" not in scoring_data:
-                    scoring_data["solution"] = data["solution"]
+            # TODO: make this less hacky by making solution always come from scoring_data
+            # Handle crossword dataset format where solution is at top level
+            if "solution" in data and "solution" not in scoring_data:
+                scoring_data["solution"] = data["solution"]
 
-                if not input_text:
-                    print(f"Warning: Example {example_id} has empty input, skipping")
-                    continue
+            if not input_text:
+                print(f"Warning: Example {example_id} has empty input, skipping")
+                continue
 
-                examples.append(
-                    DatasetExample(
-                        id=example_id, input=input_text, scoring_data=scoring_data
-                    )
+            examples.append(
+                DatasetExample(
+                    id=example_id, input=input_text, scoring_data=scoring_data
                 )
-
-            except json.JSONDecodeError as e:
-                print(f"Error parsing line {line_num}: {e}")
-                sys.exit(1)
-            except Exception as e:
-                print(f"Error processing line {line_num}: {e}")
-                sys.exit(1)
+            )
 
     if not examples:
-        print(f"Error: No valid examples found in {dataset_path}")
-        sys.exit(1)
+        raise ValueError(f"No valid examples found in {dataset_path}")
 
     print(f"Loaded {len(examples)} examples from {dataset_path}")
     return examples
@@ -155,16 +145,15 @@ def main():
 
     # Validate arguments
     if not args.training_data.exists():
-        print(f"Error: Training data file not found: {args.training_data}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Training data file not found: {args.training_data}")
 
     if not args.validation_data.exists():
-        print(f"Error: Validation data file not found: {args.validation_data}")
-        sys.exit(1)
+        raise FileNotFoundError(
+            f"Validation data file not found: {args.validation_data}"
+        )
 
     if args.scaffolds_per_iter > args.initial_scaffolds:
-        print("Error: scaffolds-per-iter cannot be greater than initial-scaffolds")
-        sys.exit(1)
+        raise ValueError("scaffolds-per-iter cannot be greater than initial-scaffolds")
 
     # Load datasets
     print("Loading datasets...")
@@ -177,11 +166,7 @@ def main():
 
     # Create scaffolder LLM
     print(f"Initializing scaffolder model: {args.scaffolder_model}")
-    try:
-        scaffolder_llm = LLMFactory.create_llm(args.scaffolder_model)
-    except Exception as e:
-        print(f"Error creating LLM: {e}")
-        sys.exit(1)
+    scaffolder_llm = LLMFactory.create_llm(args.scaffolder_model)
 
     # Create experiment runner
     print("Initializing experiment runner...")
@@ -201,33 +186,22 @@ def main():
 
     # Run experiment
     print("Starting experiment...")
-    try:
-        best_scaffold_path = runner.run()
+    best_scaffold_path = runner.run()
 
-        # Print results
-        print("\n" + "=" * 50)
-        print("EXPERIMENT COMPLETE")
-        print("=" * 50)
-        print(f"Best scaffold path: {best_scaffold_path}")
+    # Print results
+    print("\n" + "=" * 50)
+    print("EXPERIMENT COMPLETE")
+    print("=" * 50)
+    print(f"Best scaffold path: {best_scaffold_path}")
 
-        # Try to get the final score from scoring files
-        try:
-            final_iteration = args.num_iterations
-            train_scores, valid_scores = runner.file_manager.load_scores(
-                final_iteration
-            )
-            if valid_scores:
-                best_score = max(valid_scores.values())
-                print(f"Best score: {best_score:.3f}")
-        except:
-            # If we can't load scores, that's okay
-            pass
+    # Get the final score from scoring files
+    final_iteration = args.num_iterations
+    train_scores, valid_scores = runner.file_manager.load_scores(final_iteration)
+    if valid_scores:
+        best_score = max(valid_scores.values())
+        print(f"Best score: {best_score:.3f}")
 
-        print("=" * 50)
-
-    except Exception as e:
-        print(f"Error running experiment: {e}")
-        sys.exit(1)
+    print("=" * 50)
 
 
 if __name__ == "__main__":
