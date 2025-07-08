@@ -37,6 +37,9 @@ Tips:
 7. Make sure your error messages include all information that would help debug the error
 8. Use Python's logging module for logging important events, errors, and debug information
 9. Enclose your code in ```python tags
+10. The best solutions often involve calling the executor LLM several times
+11. You can break down the problem to give the LLM more manageable problems
+12. Be creative! Don't get stuck in a local optimum
 
 Based on the scaffold's output, you will get a score from 0 to 1.
 In the example(s) above, returning <expected-output> would get you a score of 1.
