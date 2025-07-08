@@ -105,53 +105,29 @@ class ExperimentRunner:
         """
         self.logger.info("Starting experiment run")
 
-        # Create initial scaffolds
-        prompt = (
-            "Generate a Python script that solves crossword clues"  # Default prompt
-        )
-        scaffold_ids = self._create_initial_scaffolds(prompt)
+        self.logger.info("Creating initial scaffolds for iteration 0")
+        self._create_initial_scaffolds()
 
         best_path = None
         best_score = -1.0
 
         # Run iterations
-        for iteration in range(self.num_iterations):
+        for iteration in range(1, self.num_iterations):
             self.logger.info(f"Starting iteration {iteration}")
 
             # Use one set of validation examples within an iteration for consistency
             validation_sample = self._sample_validation_examples()
+            validation_scores = self._run_evolution_iteration(
+                iteration, validation_sample
+            )
 
-            # Get scaffolds for this iteration
-            if iteration == 0:
-                # For iteration 0, just create initial scaffolds - no validation
-                current_scaffold_ids = scaffold_ids
-            else:
-                # For later iterations, evolve top scaffolds
-                current_scaffold_ids, validation_scores = self._run_evolution_iteration(
-                    iteration, validation_sample
-                )
-
-            # For iteration 0, we don't validate; for later iterations, validation is done in _run_evolution_iteration
-            if iteration == 0:
-                # Track best path as first scaffold for iteration 0 since we don't validate
-                if current_scaffold_ids:
-                    iter_best_path = self.file_manager.get_scaffold_path(
-                        iteration, current_scaffold_ids[0]
-                    )
-                    iter_best_score = 0.0  # We don't know the score yet
-                    best_path = iter_best_path  # Set initial best path
-                else:
-                    iter_best_path = None
-                    iter_best_score = -1.0
-                validation_scores = {}  # No validation in iteration 0
-            else:
-                # Find best scaffold from current iteration scores
-                iter_best_path, iter_best_score = self._find_best_scaffold_from_scores(
-                    iteration, validation_scores
-                )
-                if iter_best_score > best_score:
-                    best_score = iter_best_score
-                    best_path = iter_best_path
+            # Find best scaffold from current iteration scores
+            iter_best_path, iter_best_score = self._find_best_scaffold_from_scores(
+                iteration, validation_scores
+            )
+            if iter_best_score > best_score:
+                best_score = iter_best_score
+                best_path = iter_best_path
 
             # Save scores and log results
             self.file_manager.save_scores(
@@ -162,11 +138,11 @@ class ExperimentRunner:
             self._log_iteration_results(iteration, validation_scores)
 
         if best_path is None:
-            raise RuntimeError("No valid scaffolds were created during the experiment")
-
-        self.logger.info(
-            f"Experiment complete. Best scaffold: {best_path} (score: {best_score:.3f})"
-        )
+            self.logger.warning("No scaffolds were scored during the experiment.")
+        else:
+            self.logger.info(
+                f"Experiment complete. Best scaffold: {best_path} (score: {best_score:.3f})"
+            )
         return best_path
 
     def _sample_validation_examples(self) -> List[DatasetExample]:
@@ -178,7 +154,7 @@ class ExperimentRunner:
 
     def _run_evolution_iteration(
         self, iteration: int, validation_sample: List[DatasetExample]
-    ) -> Tuple[List[str], Dict[str, float]]:
+    ) -> Dict[str, float]:
         """Run one iteration of scaffold evolution.
 
         Args:
@@ -186,7 +162,7 @@ class ExperimentRunner:
             validation_sample: Validation examples to use for evaluation
 
         Returns:
-            Tuple of (newly_created_scaffold_ids, validation_scores)
+            Dictionary mapping scaffold_id to validation score
         """
         # Get most recent validation scores for ranking
         most_recent_scores = self._get_most_recent_validation_scores(iteration)
@@ -197,9 +173,9 @@ class ExperimentRunner:
         )
 
         # Evolve selected scaffolds
-        new_scaffold_ids = self._evolve_scaffolds(iteration, top_scaffold_ids)
+        self._evolve_scaffolds(iteration, top_scaffold_ids)
 
-        return new_scaffold_ids, validation_scores
+        return validation_scores
 
     def _get_most_recent_validation_scores(
         self, current_iteration: int
@@ -449,11 +425,8 @@ class ExperimentRunner:
 
             return f"{parent_id}-{counter}"
 
-    def _create_initial_scaffolds(self, prompt: str) -> List[str]:
+    def _create_initial_scaffolds(self) -> None:
         """Create initial scaffolds using random training examples.
-
-        Args:
-            prompt: Task description for the scaffolds
 
         Returns:
             List of scaffold IDs created

@@ -189,8 +189,8 @@ def main():
     print(f"Best scaffold path: {best_scaffold_path}")
 
     # Get the final score from scoring files
-    final_iteration = args.num_iterations
-    train_scores, valid_scores = runner.file_manager.load_scores(final_iteration)
+    final_iteration = args.num_iterations - 1
+    valid_scores = runner.file_manager.load_scores(final_iteration)["valid"]
     if valid_scores:
         best_score = max(valid_scores.values())
         print(f"Best score: {best_score:.3f}")

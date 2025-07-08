@@ -940,6 +940,43 @@ class TestExperimentRunner:
 
     def test_run_complete_experiment(self):
         runner = self.create_experiment_runner(
+            num_iterations=2,
+            scaffolds_per_iter=1,
+            initial_scaffolds=2,
+            num_validation_examples=1,
+        )
+
+        # Mock scaffold generation using helper methods
+        mock_scaffold_result = self.create_mock_scaffold_result(
+            code="def process_input(s): return 'SEA'"
+        )
+
+        with patch(
+            "scaffold_learning.core.experiment_runner.generate_scaffold",
+            return_value=mock_scaffold_result,
+        ), patch(
+            "scaffold_learning.core.experiment_runner.evolve_scaffold",
+            return_value=mock_scaffold_result,
+        ), patch(
+            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            side_effect=self.create_mock_execute_function(),
+        ), patch.object(
+            runner.file_manager,
+            "load_scaffold",
+            return_value=mock_scaffold_result,
+        ):
+            best_path = runner.run()
+
+        # Should return a valid path
+        assert best_path is not None
+        assert isinstance(best_path, Path)
+
+        # Should have created experiment directory structure
+        assert (runner.file_manager.experiment_dir / "iterations" / "0").exists()
+        assert (runner.file_manager.experiment_dir / "metadata.json").exists()
+
+    def test_run_complete_experiment_1_iter_has_no_best(self):
+        runner = self.create_experiment_runner(
             num_iterations=1,
             scaffolds_per_iter=1,
             initial_scaffolds=2,
@@ -950,7 +987,6 @@ class TestExperimentRunner:
         mock_scaffold_result = self.create_mock_scaffold_result(
             code="def process_input(s): return 'SEA'"
         )
-        mock_execution_result = self.create_mock_execution_result()
 
         with patch(
             "scaffold_learning.core.experiment_runner.generate_scaffold",
@@ -960,7 +996,7 @@ class TestExperimentRunner:
             return_value=mock_scaffold_result,
         ), patch(
             "scaffold_learning.core.experiment_runner.execute_scaffold",
-            return_value=mock_execution_result,
+            side_effect=self.create_mock_execute_function(),
         ), patch.object(
             runner.file_manager,
             "load_scaffold",
@@ -968,10 +1004,5 @@ class TestExperimentRunner:
         ):
             best_path = runner.run()
 
-            # Should return a valid path
-            assert best_path is not None
-            assert isinstance(best_path, Path)
-
-            # Should have created experiment directory structure
-            assert (runner.file_manager.experiment_dir / "iterations" / "0").exists()
-            assert (runner.file_manager.experiment_dir / "metadata.json").exists()
+        # Should return None since no scaffolds were scored
+        assert best_path is None
