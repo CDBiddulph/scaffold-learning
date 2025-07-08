@@ -245,7 +245,7 @@ Whenever I ask you to implement a new feature, consider whether you can use TDD,
 - **Run scaffold**: `run-scaffold scaffold-name "input string"`
 - **Run scaffold with file input**: `run-scaffold scaffold-name --file input.txt`
 - **Override model**: `run-scaffold scaffold-name "input" --model gpt-4o`
-- **Run experiment**: `run-experiment experiment-name train.jsonl valid.jsonl --domain crosswords --scaffolder-model gpt-4o --executor-model gpt-4 --num-iterations 3`
+- **Run experiment**: `run-experiment experiment-name data_dir --domain crosswords --scaffolder-model gpt-4o --executor-model gpt-4 --num-iterations 3`
 
 ### Crossword Domain Commands
 - **Download puzzles**: `python -m src.scaffold_learning.domains.crosswords.download_puz output_dir -n 10`

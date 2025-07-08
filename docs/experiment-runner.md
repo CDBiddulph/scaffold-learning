@@ -495,10 +495,9 @@ No external libraries needed - using only Python standard library:
 ## Data Paths
 
 Default paths for crossword domain:
-- Training data: `src/scaffold_learning/domains/crosswords/data/train.jsonl`
-- Validation data: `src/scaffold_learning/domains/crosswords/data/valid.jsonl`
-
-These should be configurable via CLI arguments in the future.
+- Data directory: Contains `train.jsonl` and `valid.jsonl` files
+- Training data: `{data_dir}/train.jsonl`
+- Validation data: `{data_dir}/valid.jsonl`
 
 ## Smart Validation Algorithm Details
 
@@ -582,6 +581,4 @@ For run_experiment.py:
 - `--task-prompt` (required): Description of what the scaffold should do
 
 Note: In the future, will add:
-- `--train-data`: Path to training JSONL
-- `--valid-data`: Path to validation JSONL
 - `--domain`: Which domain to use (currently hardcoded to crosswords)

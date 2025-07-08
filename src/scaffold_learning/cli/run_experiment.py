@@ -86,10 +86,9 @@ def main():
     # Required arguments
     parser.add_argument("experiment_name", help="Name for this experiment run")
     parser.add_argument(
-        "training_data", type=Path, help="Path to training dataset (JSONL format)"
-    )
-    parser.add_argument(
-        "validation_data", type=Path, help="Path to validation dataset (JSONL format)"
+        "data_dir",
+        type=Path,
+        help="Directory containing train.jsonl and valid.jsonl files",
     )
 
     # Domain and model
@@ -144,21 +143,16 @@ def main():
     args = parser.parse_args()
 
     # Validate arguments
-    if not args.training_data.exists():
-        raise FileNotFoundError(f"Training data file not found: {args.training_data}")
-
-    if not args.validation_data.exists():
-        raise FileNotFoundError(
-            f"Validation data file not found: {args.validation_data}"
-        )
+    if not args.data_dir.exists() or not args.data_dir.is_dir():
+        raise FileNotFoundError(f"Data directory not found: {args.data_dir}")
 
     if args.scaffolds_per_iter > args.initial_scaffolds:
         raise ValueError("scaffolds-per-iter cannot be greater than initial-scaffolds")
 
     # Load datasets
     print("Loading datasets...")
-    training_data = load_dataset(args.training_data)
-    validation_data = load_dataset(args.validation_data)
+    training_data = load_dataset(args.data_dir / "train.jsonl")
+    validation_data = load_dataset(args.data_dir / "valid.jsonl")
 
     # Create scoring function
     print(f"Setting up {args.domain} domain...")
