@@ -32,13 +32,13 @@ Tips:
 2. You have access to an executor LLM through a library called `llm_executor`
 3. The llm_executor has a function: execute_llm(prompt: str, system_prompt: Optional[str] = None) -> str
 4. Your script should be self-contained and runnable
-5. Avoid bloated or disorganized code
+5. Make sure your code is well-organized and easy to understand
 6. Include proper error handling
 7. Make sure your error messages include all information that would help debug the error
 8. Use Python's logging module for logging important events, errors, and debug information
 9. Enclose your code in ```python tags
 10. The best solutions often involve calling the executor LLM several times
-11. You can break down the problem to give the LLM more manageable problems
+11. Combine the flexibility and knowledge of an LLM with the determinism and predictability of code
 12. Be creative! Don't get stuck in a local optimum
 
 Based on the scaffold's output, you will get a score from 0 to 1.
