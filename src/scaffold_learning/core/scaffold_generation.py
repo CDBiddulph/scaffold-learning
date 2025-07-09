@@ -10,37 +10,43 @@ from scaffold_learning.core.data_structures import (
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 
-_COMMON_INSTRUCTIONS = """Your task is to write a Python scaffold.
+_COMMON_INSTRUCTIONS = r"""Your task is to write a Python scaffold. Your script must implement a function called `process_input(input_string: str) -> str`.
 
-Basic code template:
+Basic code example:
 ```python
 import logging
 from llm_executor import execute_llm
 
 def process_input(input_string: str) -> str:
-    logging.info("Starting to process input")
-    
+    # Suppose the input string is a poem
     try:
-        # Your logic here - you can call execute_llm() as needed
-        return execute_llm("Your prompt here")
+        # TODO
     except Exception as e:
         logging.error(f"Error occurred: {str(e)}", exc_info=True)
         raise
 ```
 
-Tips:
-1. Your script must implement a function called `process_input(input_string: str) -> str`
-2. You have access to an executor LLM through a library called `llm_executor`
-3. The llm_executor has a function: execute_llm(prompt: str, system_prompt: Optional[str] = None) -> str
-4. Your script should be self-contained and runnable
-5. Make sure your code is well-organized and easy to understand
-6. Include proper error handling
-7. Make sure your error messages include all information that would help debug the error
-8. Use Python's logging module for logging important events, errors, and debug information
-9. Enclose your code in ```python tags
-10. The best solutions often involve calling the executor LLM several times
-11. Combine the flexibility and knowledge of an LLM with the determinism and predictability of code
-12. Be creative! Don't get stuck in a local optimum"""
+Tips:"""
+
+_COMMON_TIPS = """- Your script must implement a function called `process_input(input_string: str) -> str`
+- You have access to an executor LLM through a library called `llm_executor`
+- The llm_executor has a function: execute_llm(prompt: str, system_prompt: Optional[str] = None) -> str
+- Include proper error handling.
+- Make sure your error messages include all information that would help debug the error.
+- Use Python's logging module for logging important events, errors, and debug information. If you feel confused about why your code is failing, you should consider adding more logging so that you'll understand better next time.
+- Enclose your code in ```python tags.
+- The best solutions often involve calling the LLM several times.
+- Combine the flexibility and knowledge of an LLM with the determinism and predictability of code
+- Keep in mind that LLMs are good at understanding the meaning of text but bad at counting characters or reading unusual formats. You may have to reformat things in a way they can understand.
+- LLMs are also bad at keeping track of many things in their heads. However, code is great at this. You should offload memory and problems with lots of moving parts to code whenever possible
+- Only use the LLM when it makes sense, when you need the intuition and knowledge that only an LLM would have. If it's at all possible to do something with code, strongly consider doing so, because code is much faster and more reliable
+- When prompting the LLM, break things down into the smallest possible pieces. Give it only the smallest amount of information it needs to complete that subtask. Otherwise it will tend to get confused and overwhelmed. Less is more
+- Keep in mind that the LLM has ALL of the general knowledge you do, so giving it commonsense tips is probably going to do nothing. You should only tell it information that is truly surprising or couldn't be derived from first principles
+- BE CREATIVE! The best solutions will have a spark of creative genius. Do something brave and daring that's never been done before"""
+
+_EVOLUTION_TIPS = """- Identify strategies that AREN'T working rather than always adding more. Consider what you can delete - for any piece of code, you should be able to look at the logs and see it enabling critically-important progress on the task that would have otherwise been impossible. If not, either you need more logs or the code isn't worth keeping. You should generally add about as much code as you remove
+- Changing the high-level structure of the code in a big way is generally much more effective than changing small details. Ask yourself, "what's the one sentence summary of my code?" If it's about the same as the old one-sentence summary, you're probably not making progress
+- If you've already tried something that doesn't work, try something else"""
 
 _TASK_DESCRIPTION_INSTRUCTIONS = "The scaffold should do the following task:"
 
@@ -158,9 +164,11 @@ def _build_prompt(
     # Add the shared instructions
     full_prompt += f"\n\n{_COMMON_INSTRUCTIONS}"
 
-    # Add the instructions to follow the task description
+    # Add the instructions to follow the task description or use the examples
     if task_description:
         full_prompt += f"\n\n{_TASK_DESCRIPTION_INSTRUCTIONS} {task_description}"
+    else:
+        full_prompt += f"\n\n{_EXAMPLES_INSTRUCTIONS}"
 
     # Add the instructions that are specific to evolution
     if evolve_examples:
