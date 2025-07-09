@@ -99,9 +99,7 @@ def main() -> None:
         logger.info(f"Generated script saved to: {scaffold_file}")
         logger.info(f"Metadata saved to: {metadata_file}")
         print(f"\nGeneration complete! To run the generated script:")
-        print(
-            f"  python run_scaffold.py {args.scaffold_name} 'your input string' --model haiku"
-        )
+        print(f"  run-scaffold {args.scaffold_name} 'your input string' --model haiku")
 
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
