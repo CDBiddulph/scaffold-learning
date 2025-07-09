@@ -171,8 +171,14 @@ class TestExperimentFileManager:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            train_scores = {"0": 0.8, "1": 0.6}
-            valid_scores = {"0": 0.75, "1": 0.65}
+            train_scores = {
+                "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
+                "1": {"mean_score": 0.6, "scores": [0.6, 0.6]}
+            }
+            valid_scores = {
+                "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
+                "1": {"mean_score": 0.65, "scores": [0.7, 0.6]}
+            }
 
             manager.save_scores(
                 iteration=1, train_scores=train_scores, valid_scores=valid_scores
@@ -193,8 +199,14 @@ class TestExperimentFileManager:
             manager = ExperimentFileManager(experiment_dir)
 
             # Save scores first
-            train_scores = {"0": 0.8, "1": 0.6}
-            valid_scores = {"0": 0.75, "1": 0.65}
+            train_scores = {
+                "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
+                "1": {"mean_score": 0.6, "scores": [0.6, 0.6]}
+            }
+            valid_scores = {
+                "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
+                "1": {"mean_score": 0.65, "scores": [0.7, 0.6]}
+            }
             manager.save_scores(1, train_scores, valid_scores)
 
             # Load them back

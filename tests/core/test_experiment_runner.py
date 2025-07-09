@@ -395,32 +395,60 @@ class TestExperimentRunner:
 
         for scaffold_id in ["0", "1", "2"]:
             assert scaffold_id in scores_data["valid"]
-        assert abs(scores_data["valid"]["0"] - 1.0) < 0.001
-        assert abs(scores_data["valid"]["1"] - 1 / 3) < 0.001
-        assert abs(scores_data["valid"]["2"] - 0.0) < 0.001
+            # Check new format with mean_score and scores array
+            assert "mean_score" in scores_data["valid"][scaffold_id]
+            assert "scores" in scores_data["valid"][scaffold_id]
+            assert isinstance(scores_data["valid"][scaffold_id]["scores"], list)
+            assert (
+                len(scores_data["valid"][scaffold_id]["scores"]) == 3
+            )  # 3 validation examples
+
+        # Check scaffold "0" validation scores (always correct)
+        assert abs(scores_data["valid"]["0"]["mean_score"] - 1.0) < 0.001
+        assert scores_data["valid"]["0"]["scores"] == [1.0, 1.0, 1.0]
+
+        # Check scaffold "1" validation scores (correct for valid_1 only)
+        assert abs(scores_data["valid"]["1"]["mean_score"] - 1 / 3) < 0.001
+        # Should have exactly one 1.0 and two 0.0 scores (order may vary)
+        scores_1 = scores_data["valid"]["1"]["scores"]
+        assert sorted(scores_1) == [0.0, 0.0, 1.0]
+
+        # Check scaffold "2" validation scores (never correct)
+        assert abs(scores_data["valid"]["2"]["mean_score"] - 0.0) < 0.001
+        assert scores_data["valid"]["2"]["scores"] == [0.0, 0.0, 0.0]
 
         # For training: only top 2 scaffolds get training runs
         # The specific scaffolds and their scores depend on which training examples they receive
         # Since examples are randomly assigned, we just verify:
         # 1. Exactly 2 scaffolds have training scores
-        # 2. The scores are between 0 and 1
-        # 3. The scores represent correct averages (multiples of 0.5 for 2 examples)
+        # 2. The scores are in the new format with mean_score and scores array
+        # 3. The scores represent correct values (0.0 or 1.0 for each example)
         assert len(scores_data["train"]) == 2  # Only top 2 scaffolds
 
-        # Verify scores are valid averages for 2 examples (0.0, 0.5, or 1.0)
-        for scaffold_id, score in scores_data["train"].items():
-            if scaffold_id == "0":
-                assert score == 1.0
-            elif scaffold_id == "1":
+        # Verify scores are in new format with correct structure
+        for scaffold_id, score_data in scores_data["train"].items():
+            assert "mean_score" in score_data
+            assert "scores" in score_data
+            assert isinstance(score_data["scores"], list)
+            assert len(score_data["scores"]) == 2  # 2 training examples
+
+            # Verify individual scores are 0.0 or 1.0
+            for score in score_data["scores"]:
                 assert score in [
                     0.0,
-                    0.5,
                     1.0,
-                ], f"Invalid average score {score} for scaffold {scaffold_id}"
+                ], f"Invalid score {score} for scaffold {scaffold_id}"
+
+            # Verify mean is correct
+            expected_mean = sum(score_data["scores"]) / len(score_data["scores"])
+            assert abs(score_data["mean_score"] - expected_mean) < 0.001
+
+            if scaffold_id == "0":
+                assert score_data["mean_score"] == 1.0
+                assert score_data["scores"] == [1.0, 1.0]
 
         # Verify that scaffold "0" is in training (it should be top performer)
         assert "0" in scores_data["train"]
-        assert scores_data["train"]["0"] == 1.0  # Scaffold 0 always gets perfect score
 
     def test_generate_and_evolve_inputs(self):
         """Test that generate_scaffold and evolve_scaffold receive correct inputs."""
@@ -724,7 +752,7 @@ class TestExperimentRunner:
                 for scaffold_id, expected_score in expected_validation_scores[
                     iteration
                 ].items():
-                    actual_score = scores_data["valid"][scaffold_id]
+                    actual_score = scores_data["valid"][scaffold_id]["mean_score"]
                     assert (
                         actual_score == expected_score
                     ), f"Iteration {iteration}, scaffold {scaffold_id}: expected score {expected_score}, got {actual_score}"
