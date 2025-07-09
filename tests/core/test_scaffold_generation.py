@@ -2,7 +2,6 @@ import pytest
 from unittest.mock import Mock, patch
 from scaffold_learning.core.data_structures import (
     DatasetExample,
-    ScaffoldMetadata,
     ScaffoldResult,
 )
 from scaffold_learning.core.scaffold_generation import (
@@ -11,11 +10,15 @@ from scaffold_learning.core.scaffold_generation import (
     ScaffoldRunData,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
+from scaffold_learning.core.data_structures import LLMResponse
 
 
 # Short test versions of the instructions
-TEST_COMMON_INSTRUCTIONS = "Write a scaffold.py that implements process_input()."
+TEST_COMMON_INSTRUCTIONS = "Write a scaffold that implements process_input().\n\nTips:"
+TEST_EXAMPLES_INSTRUCTIONS = "Use the examples above."
 TEST_EVOLUTION_INSTRUCTIONS = "Improve the existing scaffold."
+TEST_COMMON_TIPS = "- Common tip 1\n- Common tip 2"
+TEST_EVOLUTION_TIPS = "- Evolution tip 1\n- Evolution tip 2"
 
 
 class TestScaffoldGeneration:
@@ -24,22 +27,27 @@ class TestScaffoldGeneration:
         TEST_COMMON_INSTRUCTIONS,
     )
     @patch(
+        "scaffold_learning.core.scaffold_generation._EXAMPLES_INSTRUCTIONS",
+        TEST_EXAMPLES_INSTRUCTIONS,
+    )
+    @patch(
         "scaffold_learning.core.scaffold_generation._EVOLUTION_INSTRUCTIONS",
         TEST_EVOLUTION_INSTRUCTIONS,
     )
+    @patch(
+        "scaffold_learning.core.scaffold_generation._COMMON_TIPS",
+        TEST_COMMON_TIPS,
+    )
+    @patch(
+        "scaffold_learning.core.scaffold_generation._EVOLUTION_TIPS",
+        TEST_EVOLUTION_TIPS,
+    )
     @pytest.mark.parametrize(
-        "test_case",
+        "method,test_case",
         [
             pytest.param(
+                "generate_scaffold",
                 {
-                    "llm_response": """Here's the scaffold:
-
-```python
-def process_input(input_string: str) -> str:
-    return "LION"
-```
-
-This will solve the crossword clue.""",
                     "examples": [
                         DatasetExample(
                             id="0-1-2-3",
@@ -47,26 +55,25 @@ This will solve the crossword clue.""",
                             scoring_data={"solution": "LION"},
                         )
                     ],
-                    "expected_code": 'def process_input(input_string: str) -> str:\n    return "LION"',
-                    "expected_error": None,
                     "expected_prompt": """<timeout>120</timeout>
 <example-1>
     <input>5 across: Large feline (4)</input>
     <expected_output>LION</expected_output>
 </example-1>
 
-Write a scaffold.py that implements process_input().""",
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+
+Use the examples above.""",
                 },
-                id="single_example",
+                id="generate_scaffold_single_example",
             ),
             pytest.param(
+                "generate_scaffold",
                 {
-                    "llm_response": """```python
-def process_input(input_string: str) -> str:
-    clues = parse_clues(input_string)
-    answers = solve_clues(clues)
-    return format_answers(answers)
-```""",
                     "examples": [
                         DatasetExample(
                             id="0-1-2-3",
@@ -79,11 +86,6 @@ def process_input(input_string: str) -> str:
                             scoring_data={"solution": "BAT"},
                         ),
                     ],
-                    "expected_code": """def process_input(input_string: str) -> str:
-    clues = parse_clues(input_string)
-    answers = solve_clues(clues)
-    return format_answers(answers)""",
-                    "expected_error": None,
                     "expected_prompt": """<timeout>120</timeout>
 <example-1>
     <input>5 across: Large feline (4)</input>
@@ -94,33 +96,26 @@ def process_input(input_string: str) -> str:
     <expected_output>BAT</expected_output>
 </example-2>
 
-Write a scaffold.py that implements process_input().""",
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+
+Use the examples above.""",
                 },
-                id="multiple_examples",
+                id="generate_scaffold_multiple_examples",
             ),
             pytest.param(
+                "generate_scaffold",
                 {
                     "llm_response": "I don't know how to write code.",
-                    "examples": [
-                        DatasetExample(
-                            id="0-1-2-3",
-                            input="test",
-                            scoring_data={"solution": "test"},
-                        )
-                    ],
-                    "expected_code": None,
                     "expected_error": "LLM response doesn't contain valid Python code",
-                    "expected_prompt": """<timeout>120</timeout>
-<example-1>
-    <input>test</input>
-    <expected_output>test</expected_output>
-</example-1>
-
-Write a scaffold.py that implements process_input().""",
                 },
-                id="no_code_block_raises_error",
+                id="generate_scaffold_no_code_block_raises_error",
             ),
             pytest.param(
+                "generate_scaffold",
                 {
                     "llm_response": """Some explanation text
 
@@ -131,68 +126,14 @@ def process_input(input_string: str) -> str:
 ```
 
 More explanation""",
-                    "examples": [
-                        DatasetExample(
-                            id="0-1-2-3",
-                            input="test",
-                            scoring_data={"solution": "test"},
-                        )
-                    ],
                     "expected_code": """def process_input(input_string: str) -> str:
     # Implementation here
     return "result\"""",
-                    "expected_error": None,
-                    "expected_prompt": """<timeout>120</timeout>
-<example-1>
-    <input>test</input>
-    <expected_output>test</expected_output>
-</example-1>
-
-Write a scaffold.py that implements process_input().""",
                 },
-                id="extracts_code_from_markdown",
+                id="generate_scaffold_extracts_code_from_markdown",
             ),
-        ],
-    )
-    def test_generate_scaffold(self, test_case):
-        mock_llm = Mock(spec=LLMInterface)
-        mock_llm.generate_response.return_value = test_case["llm_response"]
-
-        if test_case["expected_error"]:
-            with pytest.raises(ValueError, match=test_case["expected_error"]):
-                generate_scaffold(
-                    examples=test_case["examples"],
-                    scaffolder_llm=mock_llm,
-                    iteration=0,
-                )
-        else:
-            result = generate_scaffold(
-                examples=test_case["examples"],
-                scaffolder_llm=mock_llm,
-                iteration=0,
-            )
-            assert isinstance(result, ScaffoldResult)
-            assert result.code == test_case["expected_code"]
-            assert result.metadata.parent_scaffold_id is None
-            assert result.metadata.iteration == 0
-
-        # Always check the prompt
-        assert (
-            mock_llm.generate_response.call_args[0][0] == test_case["expected_prompt"]
-        )
-
-    @patch(
-        "scaffold_learning.core.scaffold_generation._COMMON_INSTRUCTIONS",
-        TEST_COMMON_INSTRUCTIONS,
-    )
-    @patch(
-        "scaffold_learning.core.scaffold_generation._EVOLUTION_INSTRUCTIONS",
-        TEST_EVOLUTION_INSTRUCTIONS,
-    )
-    @pytest.mark.parametrize(
-        "test_case",
-        [
             pytest.param(
+                "evolve_scaffold",
                 {
                     "llm_response": """```python
 def process_input(input_string: str) -> str:
@@ -226,66 +167,82 @@ Returned: TIGER</execution_log>
     <score>0.0</score>
 </example-1>
 
-Write a scaffold.py that implements process_input().
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+- Evolution tip 1
+- Evolution tip 2
+
+Use the examples above.
+
 Improve the existing scaffold.""",
                 },
                 id="evolve_scaffold_correct_prompt",
             ),
-            pytest.param(
-                {
-                    "llm_response": """```python
-def process_input(input_string: str) -> str:
-    return "evolved"
-```""",
-                    "run_data": [
-                        ScaffoldRunData(
-                            code="old code",
-                            execution_log="logs",
-                            example=DatasetExample(
-                                id="0-1-2-3",
-                                input="test",
-                                scoring_data={"solution": "test"},
-                            ),
-                            actual_output="wrong",
-                            score=0.5,
-                        )
-                    ],
-                    "expected_code": 'def process_input(input_string: str) -> str:\n    return "evolved"',
-                    "expected_prompt": """<code>```python
-old code
-```</code>
-<timeout>120</timeout>
-<example-1>
-    <input>test</input>
-    <expected_output>test</expected_output>
-    <actual_output>wrong</actual_output>
-    <execution_log>logs</execution_log>
-    <score>0.5</score>
-</example-1>
-
-Write a scaffold.py that implements process_input().
-Improve the existing scaffold.""",
-                },
-                id="evolve_scaffold_sets_parent_scaffold_id",
-            ),
         ],
     )
-    def test_evolve_scaffold(self, test_case):
+    def test_scaffold_generation(self, method, test_case):
         mock_llm = Mock(spec=LLMInterface)
-        mock_llm.generate_response.return_value = test_case["llm_response"]
+        response_text = test_case.get("llm_response", "```\nUnused response text\n```")
+        llm_response = LLMResponse(content=response_text)
+        mock_llm.generate_response.return_value = llm_response
 
-        result = evolve_scaffold(
-            run_data=test_case["run_data"],
-            scaffolder_llm=mock_llm,
-            iteration=1,
-            parent_scaffold_id="test-parent",
-        )
+        if method == "generate_scaffold":
+            examples = test_case.get(
+                "examples",
+                [
+                    DatasetExample(
+                        id="0-1-2-3",
+                        input="test",
+                        scoring_data={"solution": "test"},
+                    )
+                ],
+            )
 
-        assert result.code == test_case["expected_code"]
-        assert (
-            mock_llm.generate_response.call_args[0][0] == test_case["expected_prompt"]
-        )
+        # Check that the error is raised if expected
+        if test_case.get("expected_error", None):
+            with pytest.raises(ValueError, match=test_case["expected_error"]):
+                if method == "generate_scaffold":
+                    generate_scaffold(
+                        examples=examples,
+                        scaffolder_llm=mock_llm,
+                        iteration=0,
+                    )
+                else:  # evolve_scaffold
+                    evolve_scaffold(
+                        run_data=test_case["run_data"],
+                        scaffolder_llm=mock_llm,
+                        iteration=1,
+                        parent_scaffold_id="test-parent",
+                    )
+            return
 
-        # Check that parent_scaffold_id is now set correctly
-        assert result.metadata.parent_scaffold_id == "test-parent"
-        assert result.metadata.iteration == 1
+        if method == "generate_scaffold":
+            result = generate_scaffold(
+                examples=examples,
+                scaffolder_llm=mock_llm,
+                iteration=0,
+            )
+            assert result.metadata.parent_scaffold_id is None
+            assert result.metadata.iteration == 0
+        else:  # evolve_scaffold
+            result = evolve_scaffold(
+                run_data=test_case["run_data"],
+                scaffolder_llm=mock_llm,
+                iteration=1,
+                parent_scaffold_id="test-parent",
+            )
+            assert result.metadata.parent_scaffold_id == "test-parent"
+            assert result.metadata.iteration == 1
+
+        assert isinstance(result, ScaffoldResult)
+        if test_case.get("expected_code", None):
+            assert result.code == test_case["expected_code"]
+        if test_case.get("expected_prompt", None):
+            assert result.metadata.scaffolder_prompt == test_case["expected_prompt"]
+            assert (
+                mock_llm.generate_response.call_args[0][0]
+                == test_case["expected_prompt"]
+            )

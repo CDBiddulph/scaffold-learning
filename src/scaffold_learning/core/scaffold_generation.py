@@ -163,6 +163,10 @@ def _build_prompt(
 
     # Add the shared instructions
     full_prompt += f"\n\n{_COMMON_INSTRUCTIONS}"
+    full_prompt += f"\n{_COMMON_TIPS}"
+
+    if evolve_examples:
+        full_prompt += f"\n{_EVOLUTION_TIPS}"
 
     # Add the instructions to follow the task description or use the examples
     if task_description:
@@ -172,7 +176,7 @@ def _build_prompt(
 
     # Add the instructions that are specific to evolution
     if evolve_examples:
-        full_prompt += f"\n{_EVOLUTION_INSTRUCTIONS}"
+        full_prompt += f"\n\n{_EVOLUTION_INSTRUCTIONS}"
 
     return full_prompt
 
