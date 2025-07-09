@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from scaffold_learning.core.data_structures import (
@@ -9,7 +9,7 @@ from scaffold_learning.core.data_structures import (
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 
-_SCAFFOLDER_INSTRUCTIONS = """Your task is to write a Python scaffold that maximizes its score on held-out examples.
+_COMMON_INSTRUCTIONS = """Your task is to write a Python scaffold.
 
 Basic code template:
 ```python
@@ -39,13 +39,16 @@ Tips:
 9. Enclose your code in ```python tags
 10. The best solutions often involve calling the executor LLM several times
 11. Combine the flexibility and knowledge of an LLM with the determinism and predictability of code
-12. Be creative! Don't get stuck in a local optimum
+12. Be creative! Don't get stuck in a local optimum"""
 
+_TASK_DESCRIPTION_INSTRUCTIONS = "The scaffold should do the following task:"
+
+_EXAMPLES_INSTRUCTIONS = """Your goal is for your scaffold to maximize its score on held-out examples.
 Based on the scaffold's output, you will get a score from 0 to 1.
 In the example(s) above, returning <expected-output> would get you a score of 1.
 Your code will automatically get a score of 0 if it takes any more than <timeout> seconds to run, so you may want to implement measures to ensure that it stops before that point."""
 
-_EVOLUTION_EXTRA_INSTRUCTIONS = """There is an attempted Python scaffold in <code>.
+_EVOLUTION_INSTRUCTIONS = """There is an attempted Python scaffold in <code>.
 You can use this scaffold as a reference or write something completely different.
 You can see the output of <code> in <actual-output> and its execution log in <execution-log>.
 Finally, you can see the score assigned to <actual-output> in <score>."""
@@ -113,7 +116,9 @@ def _get_examples_xml(examples: List[DatasetExample | ScaffoldRunData]) -> str:
 
 
 def _build_prompt(
-    examples: List[DatasetExample | ScaffoldRunData], is_evolution: bool
+    generate_examples: Optional[List[DatasetExample]] = None,
+    evolve_examples: Optional[List[ScaffoldRunData]] = None,
+    task_description: Optional[str] = None,
 ) -> str:
     """Build the full prompt for scaffold generation or evolution.
 
@@ -124,13 +129,19 @@ def _build_prompt(
     Returns:
         Complete prompt for the scaffolder LLM
     """
+    num_input_types = sum(
+        [bool(generate_examples), bool(evolve_examples), bool(task_description)]
+    )
+    if num_input_types != 1:
+        raise ValueError(
+            "Exactly one of generate_examples, evolve_examples, or task_description must be provided"
+        )
+
     full_prompt = ""
 
     # If evolving an existing scaffold, include the code in the prompt
-    if is_evolution:
-        if not examples or not isinstance(examples[0], ScaffoldRunData):
-            raise ValueError("Evolution requires a list of ScaffoldRunData objects")
-        code = examples[0].code
+    if evolve_examples:
+        code = evolve_examples[0].code
         full_prompt = f"<code>```python\n{code}\n```</code>\n"
 
     # Include the timeout
@@ -138,33 +149,41 @@ def _build_prompt(
     full_prompt += f"<timeout>{timeout_seconds}</timeout>\n"
 
     # Include the example data for each example
-    full_prompt += _get_examples_xml(examples)
+    examples = generate_examples or evolve_examples
+    if examples:
+        full_prompt += _get_examples_xml(examples)
 
     # Add the shared instructions
-    full_prompt += f"\n\n{_SCAFFOLDER_INSTRUCTIONS}"
+    full_prompt += f"\n\n{_COMMON_INSTRUCTIONS}"
+
+    # Add the instructions to follow the task description
+    if task_description:
+        full_prompt += f"\n\n{_TASK_DESCRIPTION_INSTRUCTIONS} {task_description}"
 
     # Add the instructions that are specific to evolution
-    if is_evolution:
-        full_prompt += f"\n{_EVOLUTION_EXTRA_INSTRUCTIONS}"
+    if evolve_examples:
+        full_prompt += f"\n{_EVOLUTION_INSTRUCTIONS}"
 
     return full_prompt
 
 
 def _generate_or_evolve_scaffold(
     scaffolder_llm: LLMInterface,
-    examples: List[DatasetExample | ScaffoldRunData],
-    is_evolution: bool,
+    generate_examples: Optional[List[DatasetExample]] = None,
+    evolve_examples: Optional[List[ScaffoldRunData]] = None,
+    task_description: Optional[str] = None,
+    iteration: Optional[int] = None,
+    parent_scaffold_id: Optional[str] = None,
 ) -> ScaffoldResult:
-    prompt = _build_prompt(examples, is_evolution)
+    prompt = _build_prompt(generate_examples, evolve_examples, task_description)
 
     response = scaffolder_llm.generate_response(prompt)
     code = _extract_python_code(response)
 
     metadata = ScaffoldMetadata(
         created_at=datetime.now().isoformat(),
-        model=None,  # Will be set by the runner
-        parent_scaffold_id=None,  # Will be set by the runner
-        iteration=0,
+        parent_scaffold_id=parent_scaffold_id,
+        iteration=iteration,
         scaffolder_prompt=prompt,
         scaffolder_output=response,
     )
@@ -173,13 +192,20 @@ def _generate_or_evolve_scaffold(
 
 
 def generate_scaffold(
-    examples: List[DatasetExample], scaffolder_llm: LLMInterface
+    scaffolder_llm: LLMInterface,
+    examples: Optional[List[DatasetExample]] = None,
+    task_description: Optional[str] = None,
+    iteration: Optional[int] = None,
 ) -> ScaffoldResult:
     """Generate a new scaffold by prompting the scaffolder LLM.
+
+    Exactly one of examples and task_description should be provided.
 
     Args:
         scaffolder_llm: LLM interface to use for generating the scaffold
         examples: Training examples to show the scaffolder
+        task_description: Description of the task to be performed by the scaffold
+        iteration: Iteration number for this scaffold
 
     Returns:
         ScaffoldResult containing code and metadata
@@ -187,11 +213,19 @@ def generate_scaffold(
     Raises:
         ValueError: If LLM response doesn't contain valid Python code
     """
-    return _generate_or_evolve_scaffold(scaffolder_llm, examples, is_evolution=False)
+    return _generate_or_evolve_scaffold(
+        scaffolder_llm,
+        generate_examples=examples,
+        task_description=task_description,
+        iteration=iteration,
+    )
 
 
 def evolve_scaffold(
-    run_data: List[ScaffoldRunData], scaffolder_llm: LLMInterface
+    scaffolder_llm: LLMInterface,
+    run_data: List[ScaffoldRunData],
+    iteration: Optional[int] = None,
+    parent_scaffold_id: Optional[str] = None,
 ) -> ScaffoldResult:
     """Generate an evolved version of a scaffold based on execution feedback.
 
@@ -199,6 +233,8 @@ def evolve_scaffold(
         run_data: List of ScaffoldRunData objects, each containing data from a
         previous scaffold execution including logs and score
         scaffolder_llm: LLM interface to use for generation
+        iteration: Iteration number for this scaffold
+        parent_scaffold_id: ID of the parent scaffold being evolved
 
     Returns:
         ScaffoldResult containing evolved code and metadata
@@ -206,4 +242,9 @@ def evolve_scaffold(
     Raises:
         ValueError: If LLM response doesn't contain valid Python code
     """
-    return _generate_or_evolve_scaffold(scaffolder_llm, run_data, is_evolution=True)
+    return _generate_or_evolve_scaffold(
+        scaffolder_llm,
+        evolve_examples=run_data,
+        iteration=iteration,
+        parent_scaffold_id=parent_scaffold_id,
+    )

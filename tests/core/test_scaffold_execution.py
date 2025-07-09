@@ -40,7 +40,7 @@ def process_input(input_string: str) -> str:
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
-                        model="gpt-4",
+                        model="test-model",
                         logs_path=logs_path / "test.log",
                         timeout=120,
                     )
@@ -69,7 +69,7 @@ def process_input(input_string: str) -> str:
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
-                        model="gpt-4",
+                        model="test-model",
                         logs_path=logs_path / "test.log",
                         timeout=60,
                     )
@@ -94,7 +94,7 @@ def process_input(input_string: str) -> str:
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
-                        model="gpt-4",
+                        model="test-model",
                         logs_path=logs_path / "test.log",
                     )
 
@@ -151,7 +151,7 @@ def process_input(input_string: str) -> str:
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
-                        model="gpt-4",
+                        model="test-model",
                         logs_path=logs_path,
                     )
 
@@ -181,7 +181,7 @@ def process_input(input_string: str) -> str:
                         result = execute_scaffold(
                             scaffold_dir=scaffold_dir,
                             input_string="test input",
-                            model="gpt-4",
+                            model="test-model",
                             logs_path=logs_path / "test.log",
                         )
 
@@ -207,7 +207,7 @@ def process_input(input_string: str) -> str:
                     result = execute_scaffold(
                         scaffold_dir=scaffold_dir,
                         input_string="test input",
-                        model="gpt-4",
+                        model="test-model",
                         logs_path=logs_path / "test.log",
                         timeout=600,  # 10 minutes
                     )

@@ -14,18 +14,18 @@ from scaffold_learning.core.llm_interfaces import LLMInterface
 
 
 # Short test versions of the instructions
-TEST_SCAFFOLDER_INSTRUCTIONS = "Write a scaffold.py that implements process_input()."
-TEST_EVOLUTION_EXTRA_INSTRUCTIONS = "Improve the existing scaffold."
+TEST_COMMON_INSTRUCTIONS = "Write a scaffold.py that implements process_input()."
+TEST_EVOLUTION_INSTRUCTIONS = "Improve the existing scaffold."
 
 
 class TestScaffoldGeneration:
     @patch(
-        "scaffold_learning.core.scaffold_generation._SCAFFOLDER_INSTRUCTIONS",
-        TEST_SCAFFOLDER_INSTRUCTIONS,
+        "scaffold_learning.core.scaffold_generation._COMMON_INSTRUCTIONS",
+        TEST_COMMON_INSTRUCTIONS,
     )
     @patch(
-        "scaffold_learning.core.scaffold_generation._EVOLUTION_EXTRA_INSTRUCTIONS",
-        TEST_EVOLUTION_EXTRA_INSTRUCTIONS,
+        "scaffold_learning.core.scaffold_generation._EVOLUTION_INSTRUCTIONS",
+        TEST_EVOLUTION_INSTRUCTIONS,
     )
     @pytest.mark.parametrize(
         "test_case",
@@ -161,15 +161,18 @@ Write a scaffold.py that implements process_input().""",
         if test_case["expected_error"]:
             with pytest.raises(ValueError, match=test_case["expected_error"]):
                 generate_scaffold(
-                    scaffolder_llm=mock_llm, examples=test_case["examples"]
+                    examples=test_case["examples"],
+                    scaffolder_llm=mock_llm,
+                    iteration=0,
                 )
         else:
             result = generate_scaffold(
-                scaffolder_llm=mock_llm, examples=test_case["examples"]
+                examples=test_case["examples"],
+                scaffolder_llm=mock_llm,
+                iteration=0,
             )
             assert isinstance(result, ScaffoldResult)
             assert result.code == test_case["expected_code"]
-            assert result.metadata.model is None
             assert result.metadata.parent_scaffold_id is None
             assert result.metadata.iteration == 0
 
@@ -179,12 +182,12 @@ Write a scaffold.py that implements process_input().""",
         )
 
     @patch(
-        "scaffold_learning.core.scaffold_generation._SCAFFOLDER_INSTRUCTIONS",
-        TEST_SCAFFOLDER_INSTRUCTIONS,
+        "scaffold_learning.core.scaffold_generation._COMMON_INSTRUCTIONS",
+        TEST_COMMON_INSTRUCTIONS,
     )
     @patch(
-        "scaffold_learning.core.scaffold_generation._EVOLUTION_EXTRA_INSTRUCTIONS",
-        TEST_EVOLUTION_EXTRA_INSTRUCTIONS,
+        "scaffold_learning.core.scaffold_generation._EVOLUTION_INSTRUCTIONS",
+        TEST_EVOLUTION_INSTRUCTIONS,
     )
     @pytest.mark.parametrize(
         "test_case",
@@ -271,12 +274,18 @@ Improve the existing scaffold.""",
         mock_llm = Mock(spec=LLMInterface)
         mock_llm.generate_response.return_value = test_case["llm_response"]
 
-        result = evolve_scaffold(test_case["run_data"], mock_llm)
+        result = evolve_scaffold(
+            run_data=test_case["run_data"],
+            scaffolder_llm=mock_llm,
+            iteration=1,
+            parent_scaffold_id="test-parent",
+        )
 
         assert result.code == test_case["expected_code"]
         assert (
             mock_llm.generate_response.call_args[0][0] == test_case["expected_prompt"]
         )
 
-        # TODO: parent_scaffold_id test will be handled separately
-        assert result.metadata.parent_scaffold_id is None
+        # Check that parent_scaffold_id is now set correctly
+        assert result.metadata.parent_scaffold_id == "test-parent"
+        assert result.metadata.iteration == 1

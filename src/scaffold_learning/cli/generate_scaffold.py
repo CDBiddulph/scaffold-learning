@@ -33,6 +33,10 @@ def main() -> None:
         description="Generate Python scripts using a scaffolder LLM"
     )
     parser.add_argument(
+        "task_description",
+        help="Description of the task to be performed by the scaffold",
+    )
+    parser.add_argument(
         "--scaffold-name",
         help="Name for the scaffold",
     )
@@ -41,35 +45,18 @@ def main() -> None:
         default="scaffold-scripts",
         help="Base directory for scaffold scripts",
     )
-
-    # LLM configuration
     parser.add_argument(
         "--scaffolder-model",
         default="gpt-4.1-nano",
         help="Scaffolder LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')",
     )
-    parser.add_argument(
-        "--executor-model",
-        default="gpt-4.1-nano",
-        help="Executor LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')",
-    )
-
-    # API Keys
-    parser.add_argument("--openai-api-key", help="OpenAI API key")
-    parser.add_argument("--anthropic-api-key", help="Anthropic API key")
 
     args = parser.parse_args()
 
     try:
         # Create LLM instances using new consolidated model specification
-        scaffolder_llm = LLMFactory.create_llm(
-            model_spec=args.scaffolder_model,
-            openai_api_key=args.openai_api_key,
-            anthropic_api_key=args.anthropic_api_key,
-        )
-
+        scaffolder_llm = LLMFactory.create_llm(model_spec=args.scaffolder_model)
         scaffolder_model_spec = LLMFactory.resolve_model_spec(args.scaffolder_model)
-        executor_model_spec = LLMFactory.resolve_model_spec(args.executor_model)
 
         # Construct output directory path
         output_dir = os.path.join(args.scaffold_dir, args.scaffold_name)
@@ -77,16 +64,15 @@ def main() -> None:
         # Log configuration summary
         logger.info("Configuration Summary:")
         logger.info(f"Scaffold Name: {args.scaffold_name}")
+        logger.info(f"Task Description: {args.task_description}")
         logger.info(f"Output Directory: {output_dir}")
         logger.info(f"Scaffolder LLM: {scaffolder_model_spec}")
-        logger.info(f"Executor LLM: {executor_model_spec}")
 
         # Generate the script using the new module
-        # For now, create an empty example list (no examples provided via CLI)
-        examples = []
         result = generate_scaffold(
             scaffolder_llm=scaffolder_llm,
-            examples=examples,
+            task_description=args.task_description,
+            iteration=0,
         )
         generated_script = result.code
 
@@ -100,9 +86,8 @@ def main() -> None:
         with open(scaffold_file, "w") as f:
             f.write(generated_script)
 
-        # Create metadata file with executor configuration
+        # Create metadata file
         metadata = {
-            "executor_model_spec": executor_model_spec,
             "scaffolder_model_spec": scaffolder_model_spec,
             "created": datetime.now().isoformat(),
         }
@@ -114,9 +99,8 @@ def main() -> None:
         logger.info(f"Generated script saved to: {scaffold_file}")
         logger.info(f"Metadata saved to: {metadata_file}")
         print(f"\nGeneration complete! To run the generated script:")
-        print(f"  python run_scaffold.py {args.scaffold_name} 'your input string'")
         print(
-            f"  python run_scaffold.py {args.scaffold_name} 'your input string' --log-level DEBUG --model claude-3-5-sonnet-latest"
+            f"  python run_scaffold.py {args.scaffold_name} 'your input string' --model haiku"
         )
 
     except Exception as e:

@@ -334,10 +334,11 @@ class ExperimentRunner:
 
             # Generate evolved scaffold
             evolved_result = evolve_scaffold(
-                run_data=[run_data], scaffolder_llm=self.scaffolder_llm
+                run_data=[run_data],  # TODO: show multiple examples
+                scaffolder_llm=self.scaffolder_llm,
+                iteration=iteration,
+                parent_scaffold_id=parent_id,
             )
-            evolved_result.metadata.iteration = iteration
-            evolved_result.metadata.parent_scaffold_id = parent_id
 
             # Save evolved scaffold
             self.file_manager.save_scaffold(
@@ -435,7 +436,7 @@ class ExperimentRunner:
 
         self.logger.info(f"Creating {self.initial_scaffolds} initial scaffolds")
 
-        for i in range(self.initial_scaffolds):
+        for _ in range(self.initial_scaffolds):
             scaffold_id = self._get_next_scaffold_id()
 
             # Select random training example
@@ -443,12 +444,10 @@ class ExperimentRunner:
 
             # Generate scaffold
             result = generate_scaffold(
-                examples=[example],  # Show one example for now
+                examples=[example],  # TODO: show multiple examples
                 scaffolder_llm=self.scaffolder_llm,
+                iteration=0,
             )
-
-            # Update metadata
-            result.metadata.iteration = 0
 
             # Save scaffold
             self.file_manager.save_scaffold(

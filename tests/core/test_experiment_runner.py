@@ -98,7 +98,6 @@ class TestExperimentRunner:
             code=code,
             metadata=ScaffoldMetadata(
                 created_at="2024-01-01T00:00:00",
-                model="mock",
                 parent_scaffold_id=None,
                 iteration=iteration,
             ),
@@ -169,25 +168,23 @@ class TestExperimentRunner:
         training_data, validation_data = self.create_test_data()
 
         # Create mocks to track calls
-        def mock_generate_func(examples, scaffolder_llm):
+        def mock_generate_func(examples, scaffolder_llm, iteration):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
                 metadata=ScaffoldMetadata(
                     created_at="2024-01-01T00:00:00",
-                    model="mock",
                     parent_scaffold_id=None,
-                    iteration=0,
+                    iteration=iteration,
                 ),
             )
 
-        def mock_evolve_func(run_data, scaffolder_llm):
+        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
                 metadata=ScaffoldMetadata(
                     created_at="2024-01-01T00:00:00",
-                    model="mock",
-                    parent_scaffold_id=None,
-                    iteration=1,
+                    parent_scaffold_id=parent_scaffold_id,
+                    iteration=iteration,
                 ),
             )
 
@@ -293,29 +290,27 @@ class TestExperimentRunner:
         )
 
         # Create mocks that track calls automatically
-        def mock_generate_func(examples, scaffolder_llm):
+        def mock_generate_func(examples, scaffolder_llm, iteration):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
                 metadata=ScaffoldMetadata(
                     created_at="2024-01-01T00:00:00",
-                    model="mock",
                     parent_scaffold_id=None,
-                    iteration=0,
+                    iteration=iteration,
                     scaffolder_prompt=f"prompt with {examples[0].input}",
                     scaffolder_output=f"output for {examples[0].input}",
                 ),
             )
 
-        def mock_evolve_func(run_data, scaffolder_llm):
+        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
             # run_data is a list of ScaffoldRunData objects
             first_run_data = run_data[0]
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
                 metadata=ScaffoldMetadata(
                     created_at="2024-01-01T00:00:00",
-                    model="mock",
-                    parent_scaffold_id=first_run_data.example.id,  # Use example id to track
-                    iteration=1,
+                    parent_scaffold_id=parent_scaffold_id,
+                    iteration=iteration,
                     scaffolder_prompt=f"evolve prompt for {first_run_data.example.input}",
                     scaffolder_output=f"evolved output for {first_run_data.example.input}",
                 ),
@@ -456,25 +451,23 @@ class TestExperimentRunner:
                 execution_time=0.1,
             )
 
-        def mock_generate_func(examples, scaffolder_llm):
+        def mock_generate_func(examples, scaffolder_llm, iteration):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
                 metadata=ScaffoldMetadata(
                     created_at="2024-01-01T00:00:00",
-                    model="mock",
                     parent_scaffold_id=None,
-                    iteration=0,
+                    iteration=iteration,
                 ),
             )
 
-        def mock_evolve_func(run_data, scaffolder_llm):
+        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
                 metadata=ScaffoldMetadata(
                     created_at="2024-01-01T00:00:00",
-                    model="mock",
-                    parent_scaffold_id=None,
-                    iteration=1,
+                    parent_scaffold_id=parent_scaffold_id,
+                    iteration=iteration,
                 ),
             )
 

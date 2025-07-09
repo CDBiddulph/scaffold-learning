@@ -270,7 +270,7 @@ Whenever I ask you to implement a new feature, consider whether you can use TDD,
 - Supports both LLM and human executors with different execution modes
 - Logs all executions with structured JSON + text format in `logs/scaffold_name/`
 
-**Script Generation** (`src/scaffold_learning/cli/generate_scaffold_script.py`):
+**Script Generation** (`src/scaffold_learning/cli/generate_scaffold.py`):
 - Uses scaffolder LLM to generate Python scripts based on prompts
 - Creates scaffold directories with `scaffold.py`, `llm_executor.py`, `llm_interfaces.py`, and `metadata.json`
 - Supports model overrides and API key configuration

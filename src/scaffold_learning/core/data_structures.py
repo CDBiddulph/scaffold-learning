@@ -23,7 +23,6 @@ class ScaffoldMetadata:
 
     Attributes:
         created_at: Timestamp of creation
-        model: Executor model name (if specified)
         parent_scaffold_id: ID of scaffold this was derived from (if applicable)
         iteration: Iteration number when created
         scaffolder_prompt: Prompt that was sent to the scaffolder LLM
@@ -31,9 +30,8 @@ class ScaffoldMetadata:
     """
 
     created_at: str
-    model: Optional[str]
     parent_scaffold_id: Optional[str]
-    iteration: int
+    iteration: Optional[int]
     scaffolder_prompt: Optional[str] = None
     scaffolder_output: Optional[str] = None
 

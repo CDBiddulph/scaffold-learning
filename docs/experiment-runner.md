@@ -135,7 +135,7 @@ All shared data structures are in `src/scaffold_learning/core/data_structures.py
   - Parses response and creates new metadata
 
 **Refactoring needed:**
-- Extract prompt construction from generate_scaffold_script.py
+- Extract prompt construction from generate_scaffold.py
 - Extract code parsing logic (finding ```python blocks)
 - Make functions return values instead of writing files
 
@@ -198,7 +198,7 @@ Key private methods that orchestrate the flow:
   - Create ExperimentRunner and call run()
   - Print best scaffold path and score
 
-#### 7. MODIFY: `src/scaffold_learning/cli/generate_scaffold_script.py` (250 → 100 lines)
+#### 7. MODIFY: `src/scaffold_learning/cli/generate_scaffold.py` (250 → 100 lines)
 - Extract prompt generation and code parsing to scaffold_generation.py
 - Update main() to call new functions
 - Handle optional model argument (can be None now)
@@ -276,7 +276,7 @@ The `ExperimentRunner` orchestrates the entire process:
 
 ## What Existing Code to Reuse
 
-### From `generate_scaffold_script.py`:
+### From `generate_scaffold.py`:
 - **Where**: scaffold_generation.py
 - **What**: Prompt construction, LLM response parsing for ```python blocks
 - **How**: Extract functions, make them accept examples list, return values instead of writing files
@@ -360,8 +360,8 @@ The `ExperimentRunner` orchestrates the entire process:
 ### Milestone 2: Refactor scaffold generation
 - Write tests for prompt construction with examples
 - Write tests for code extraction from LLM responses
-- Extract and refactor code from `generate_scaffold_script.py`
-- Update `generate_scaffold_script.py` to use new functions
+- Extract and refactor code from `generate_scaffold.py`
+- Update `generate_scaffold.py` to use new functions
 
 ### Milestone 3: Refactor scaffold execution  
 - Write tests for Docker execution with custom logs path
@@ -533,7 +533,7 @@ From the original specification:
 
 2. **Model argument in generate_scaffold**:
    - Not needed - scaffolder doesn't need to know executor model
-   - Existing generate_scaffold_script.py will need to handle optional model
+   - Existing generate_scaffold.py will need to handle optional model
 
 3. **Scaffold copying**:
    - Needed to carry forward top scaffolds between iterations

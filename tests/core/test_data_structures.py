@@ -22,14 +22,12 @@ class TestDataStructures:
     def test_scaffold_metadata_creation(self):
         metadata = ScaffoldMetadata(
             created_at="2024-01-01T12:00:00",
-            model="gpt-4",
             parent_scaffold_id="2-0",
             iteration=3,
             scaffolder_prompt="prompt",
             scaffolder_output="output",
         )
         assert metadata.created_at == "2024-01-01T12:00:00"
-        assert metadata.model == "gpt-4"
         assert metadata.parent_scaffold_id == "2-0"
         assert metadata.iteration == 3
         assert metadata.scaffolder_prompt == "prompt"
@@ -38,19 +36,16 @@ class TestDataStructures:
     def test_scaffold_metadata_optional_fields(self):
         metadata = ScaffoldMetadata(
             created_at="2024-01-01T12:00:00",
-            model=None,
             parent_scaffold_id=None,
             iteration=0,
             scaffolder_prompt="prompt",
             scaffolder_output="output",
         )
-        assert metadata.model is None
         assert metadata.parent_scaffold_id is None
 
     def test_scaffold_metadata_to_dict(self):
         metadata = ScaffoldMetadata(
             created_at="2024-01-01T12:00:00",
-            model="gpt-4",
             parent_scaffold_id="2-0",
             iteration=3,
             scaffolder_prompt="prompt",
@@ -59,7 +54,6 @@ class TestDataStructures:
         metadata_dict = metadata.to_dict()
         assert metadata_dict == {
             "created_at": "2024-01-01T12:00:00",
-            "model": "gpt-4",
             "parent_scaffold_id": "2-0",
             "iteration": 3,
             "scaffolder_prompt": "prompt",
@@ -72,7 +66,6 @@ class TestDataStructures:
     def test_scaffold_metadata_from_dict(self):
         data = {
             "created_at": "2024-01-01T12:00:00",
-            "model": "gpt-4",
             "parent_scaffold_id": "2-0",
             "iteration": 3,
             "scaffolder_prompt": "prompt",
@@ -80,7 +73,6 @@ class TestDataStructures:
         }
         metadata = ScaffoldMetadata.from_dict(data)
         assert metadata.created_at == "2024-01-01T12:00:00"
-        assert metadata.model == "gpt-4"
         assert metadata.parent_scaffold_id == "2-0"
         assert metadata.iteration == 3
         assert metadata.scaffolder_prompt == "prompt"
@@ -89,7 +81,6 @@ class TestDataStructures:
     def test_scaffold_result_creation(self):
         metadata = ScaffoldMetadata(
             created_at="2024-01-01T12:00:00",
-            model=None,
             parent_scaffold_id=None,
             iteration=0,
         )

@@ -38,8 +38,7 @@ class TestExperimentFileManager:
 
             metadata = ScaffoldMetadata(
                 created_at="2024-01-01T12:00:00",
-                model="gpt-4",
-                parent_scaffold_id=None,
+                                parent_scaffold_id=None,
                 iteration=0,
             )
             result = ScaffoldResult(
@@ -75,8 +74,7 @@ class TestExperimentFileManager:
 
             metadata = ScaffoldMetadata(
                 created_at="2024-01-01T12:00:00",
-                model="gpt-4",
-                parent_scaffold_id="0",
+                                parent_scaffold_id="0",
                 iteration=1,
             )
             result = ScaffoldResult(
@@ -102,8 +100,7 @@ class TestExperimentFileManager:
             # First save a scaffold
             metadata = ScaffoldMetadata(
                 created_at="2024-01-01T12:00:00",
-                model="gpt-4",
-                parent_scaffold_id=None,
+                                parent_scaffold_id=None,
                 iteration=0,
             )
             original_result = ScaffoldResult(
@@ -117,7 +114,6 @@ class TestExperimentFileManager:
 
             assert loaded_result.code == original_result.code
             assert loaded_result.metadata.created_at == metadata.created_at
-            assert loaded_result.metadata.model == metadata.model
             assert (
                 loaded_result.metadata.parent_scaffold_id == metadata.parent_scaffold_id
             )
