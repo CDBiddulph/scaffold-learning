@@ -131,6 +131,12 @@ def main():
         default=10,
         help="Number of validation examples to use for scoring",
     )
+    parser.add_argument(
+        "--num-training-examples",
+        type=int,
+        default=1,
+        help="Number of training examples to show when evolving scaffolds",
+    )
 
     # Output
     parser.add_argument(
@@ -174,6 +180,7 @@ def main():
         scaffolds_per_iter=args.scaffolds_per_iter,
         initial_scaffolds=args.initial_scaffolds,
         num_validation_examples=args.num_validation_examples,
+        num_training_examples=args.num_training_examples,
         base_dir=args.base_dir,
         executor_model=args.executor_model,
     )

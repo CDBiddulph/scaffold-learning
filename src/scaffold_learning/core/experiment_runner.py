@@ -29,6 +29,7 @@ class ExperimentRunner:
         num_iterations: int,
         scaffolds_per_iter: int,
         initial_scaffolds: int,
+        num_training_examples: int,
         num_validation_examples: int,
         base_dir: Path = Path("experiments"),
         executor_model: str = "gpt-4",
@@ -44,6 +45,7 @@ class ExperimentRunner:
             num_iterations: Number of evolution iterations to run
             scaffolds_per_iter: Number of top scaffolds to evolve each iteration
             initial_scaffolds: Number of scaffolds to create initially
+            num_training_examples: Number of training examples to use for demonstration
             num_validation_examples: Number of validation examples to use for scoring
             base_dir: Base directory for all experiments
             executor_model: Model name to use for executing scaffolds
@@ -62,6 +64,7 @@ class ExperimentRunner:
         self.num_iterations = num_iterations
         self.scaffolds_per_iter = scaffolds_per_iter
         self.initial_scaffolds = initial_scaffolds
+        self.num_training_examples = num_training_examples
         self.num_validation_examples = num_validation_examples
         self.executor_model = executor_model
 
@@ -85,6 +88,7 @@ class ExperimentRunner:
             "num_iterations": num_iterations,
             "scaffolds_per_iter": scaffolds_per_iter,
             "initial_scaffolds": initial_scaffolds,
+            "num_training_examples": num_training_examples,
             "num_validation_examples": num_validation_examples,
             "random_seed": random.randint(0, 1000000),
         }
@@ -94,14 +98,14 @@ class ExperimentRunner:
         self.logger.info(f"Initialized experiment: {experiment_name}")
         self.logger.info(f"Random seed: {metadata['random_seed']}")
 
-    def run(self) -> Path:
+    def run(self) -> Tuple[Optional[Path], float]:
         """Run the complete experiment.
 
         Creates initial scaffolds, runs iterations of evaluation and evolution,
         and returns the best performing scaffold.
 
         Returns:
-            Path to the best performing scaffold directory
+            Tuple of (best_scaffold_path, best_score)
         """
         self.logger.info("Starting experiment run")
 
@@ -117,7 +121,7 @@ class ExperimentRunner:
 
             # Use one set of validation examples within an iteration for consistency
             validation_sample = self._sample_validation_examples()
-            validation_scores = self._run_evolution_iteration(
+            training_scores, validation_scores = self._run_evolution_iteration(
                 iteration, validation_sample
             )
 
@@ -132,7 +136,7 @@ class ExperimentRunner:
             # Save scores and log results
             self.file_manager.save_scores(
                 iteration=iteration,
-                train_scores={},  # Not tracking training scores currently
+                train_scores=training_scores,
                 valid_scores=validation_scores,
             )
             self._log_iteration_results(iteration, validation_scores)
@@ -143,7 +147,7 @@ class ExperimentRunner:
             self.logger.info(
                 f"Experiment complete. Best scaffold: {best_path} (score: {best_score:.3f})"
             )
-        return best_path
+        return best_path, best_score
 
     def _sample_validation_examples(self) -> List[DatasetExample]:
         """Sample validation examples for consistent evaluation within an iteration."""
@@ -153,8 +157,10 @@ class ExperimentRunner:
         )
 
     def _run_evolution_iteration(
-        self, iteration: int, validation_sample: List[DatasetExample]
-    ) -> Dict[str, float]:
+        self,
+        iteration: int,
+        validation_sample: List[DatasetExample],
+    ) -> Tuple[Dict[str, float], Dict[str, float]]:
         """Run one iteration of scaffold evolution.
 
         Args:
@@ -162,7 +168,7 @@ class ExperimentRunner:
             validation_sample: Validation examples to use for evaluation
 
         Returns:
-            Dictionary mapping scaffold_id to validation score
+            Tuple of (training_scores, validation_scores) - dictionaries mapping scaffold_id to score
         """
         # Get most recent validation scores for ranking
         most_recent_scores = self._get_most_recent_validation_scores(iteration)
@@ -172,10 +178,23 @@ class ExperimentRunner:
             iteration, most_recent_scores, validation_sample
         )
 
-        # Evolve selected scaffolds
-        self._evolve_scaffolds(iteration, top_scaffold_ids)
+        # Run training examples for top scaffolds
+        top_scaffold_runs = self._run_training(
+            iteration=iteration,
+            scaffold_ids=top_scaffold_ids,
+        )
 
-        return validation_scores
+        # Calculate average training scores for each scaffold
+        # TODO: include individual scores in logs
+        training_scores = {}
+        for scaffold_id, run_data_list in top_scaffold_runs.items():
+            scores = [run_data.score for run_data in run_data_list]
+            training_scores[scaffold_id] = sum(scores) / len(scores) if scores else 0.0
+
+        # Evolve selected scaffolds
+        self._evolve_scaffolds(iteration, top_scaffold_runs)
+
+        return training_scores, validation_scores
 
     def _get_most_recent_validation_scores(
         self, current_iteration: int
@@ -269,16 +288,10 @@ class ExperimentRunner:
             if next_to_validate is None:
                 break
 
-            # Find the source iteration for this scaffold
-            source_iteration = self.file_manager.find_scaffold_iteration(
-                next_to_validate
-            )
-
             score = self._evaluate_scaffold(
                 iteration=iteration,
                 scaffold_id=next_to_validate,
                 validation_examples=validation_sample,
-                source_iteration=source_iteration,
             )
             validated_scores[next_to_validate] = score
 
@@ -294,20 +307,22 @@ class ExperimentRunner:
         return top_k_ids, validated_scores
 
     def _evolve_scaffolds(
-        self, iteration: int, top_scaffold_ids: List[str]
+        self,
+        iteration: int,
+        top_scaffold_runs: Dict[str, List[ScaffoldRunData]],
     ) -> List[str]:
         """Evolve selected scaffolds by running on training data and generating new versions.
 
         Args:
             iteration: Current iteration number
-            top_scaffold_ids: List of scaffold_ids for top scaffolds
+            top_scaffold_runs: Dict of scaffold_id to list of ScaffoldRunData for top scaffolds
 
         Returns:
             List of newly created scaffold IDs
         """
         current_scaffold_ids = []
 
-        for parent_id in top_scaffold_ids:
+        for parent_id, run_data_list in top_scaffold_runs.items():
             # Copy to old directory
             # TODO: consider moving some of this logic into the file manager
             parent_iteration = self.file_manager.find_scaffold_iteration(parent_id)
@@ -320,27 +335,15 @@ class ExperimentRunner:
                 to_scaffold_id=parent_id,
             )
 
-            # Generate evolved scaffold
-            new_scaffold_id = self._get_next_scaffold_id(parent_id)
-
-            # Run a training example to get feedback
-            training_example = random.choice(self.training_data)
-            run_data = self._run_training_example(
-                iteration=iteration,  # Log training in current iteration
-                scaffold_id=parent_id,
-                example=training_example,
-                source_iteration=parent_iteration,
-            )
-
-            # Generate evolved scaffold
             evolved_result = evolve_scaffold(
-                run_data=[run_data],  # TODO: show multiple examples
+                run_data=run_data_list,
                 scaffolder_llm=self.scaffolder_llm,
                 iteration=iteration,
                 parent_scaffold_id=parent_id,
             )
 
             # Save evolved scaffold
+            new_scaffold_id = self._get_next_scaffold_id(parent_id)
             self.file_manager.save_scaffold(
                 iteration=iteration,
                 scaffold_id=new_scaffold_id,
@@ -464,7 +467,6 @@ class ExperimentRunner:
         iteration: int,
         scaffold_id: str,
         validation_examples: List[DatasetExample],
-        source_iteration: Optional[int] = None,
     ) -> float:
         """Evaluate a scaffold on validation examples.
 
@@ -472,18 +474,15 @@ class ExperimentRunner:
             iteration: Current iteration number (where to save logs)
             scaffold_id: ID of scaffold to evaluate
             validation_examples: Examples to test the scaffold on
-            source_iteration: Iteration where the scaffold was created (if different from iteration)
 
         Returns:
             Average score across all validation examples
         """
         # Get scaffold from its source iteration
-        if source_iteration is not None:
-            scaffold_path = self.file_manager.get_scaffold_path(
-                source_iteration, scaffold_id
-            )
-        else:
-            scaffold_path = self.file_manager.get_scaffold_path(iteration, scaffold_id)
+        source_iteration = self.file_manager.find_scaffold_iteration(scaffold_id)
+        scaffold_path = self.file_manager.get_scaffold_path(
+            source_iteration, scaffold_id
+        )
 
         scores = []
 
@@ -519,61 +518,93 @@ class ExperimentRunner:
 
         return average_score
 
-    def _run_training_example(
+    # TODO: add test cases that check that this works
+    # (don't test directly, since it's private)
+    def _get_training_examples(
+        self, scaffold_ids: List[str]
+    ) -> Dict[str, List[DatasetExample]]:
+        """Randomly sample training examples, minimizing duplicates."""
+        n = len(scaffold_ids) * self.num_training_examples
+        flat_examples = (
+            self.training_data * (n // len(self.training_data))
+        ) + random.sample(self.training_data, n % len(self.training_data))
+        random.shuffle(flat_examples)
+        examples_by_scaffold = {}
+        i = 0
+        for scaffold_id in scaffold_ids:
+            examples_by_scaffold[scaffold_id] = flat_examples[
+                i : i + self.num_training_examples
+            ]
+            i += self.num_training_examples
+        return examples_by_scaffold
+
+    # TODO: deduplicate with _evaluate_scaffold
+    def _run_training(
         self,
         iteration: int,
-        scaffold_id: str,
-        example: DatasetExample,
-        source_iteration: Optional[int] = None,
-    ) -> ScaffoldRunData:
-        """Run a scaffold on a training example.
+        scaffold_ids: List[str],
+    ) -> Dict[str, List[ScaffoldRunData]]:
+        """Run scaffolds on training examples.
 
         Args:
             iteration: Current iteration number (where to save logs)
-            scaffold_id: ID of scaffold to run
-            example: Training example to process
-            source_iteration: Iteration where the scaffold was created (if different from iteration)
+            scaffold_ids: List of scaffold IDs to run
 
         Returns:
-            ScaffoldRunData with execution results and score
+            Dictionary mapping scaffold_id to list of ScaffoldRunData
         """
-        # Load scaffold from its source iteration
-        source_iteration = iteration if source_iteration is None else source_iteration
-        scaffold_result = self.file_manager.load_scaffold(source_iteration, scaffold_id)
-        scaffold_path = self.file_manager.get_scaffold_path(
-            source_iteration, scaffold_id
-        )
+        examples_by_scaffold = self._get_training_examples(scaffold_ids)
+        training_runs = {}
+        for scaffold_id, examples in examples_by_scaffold.items():
+            training_runs[scaffold_id] = []
+            for i, example in enumerate(examples):
+                # Load scaffold from its source iteration
+                source_iteration = self.file_manager.find_scaffold_iteration(
+                    scaffold_id
+                )
+                scaffold_result = self.file_manager.load_scaffold(
+                    source_iteration, scaffold_id
+                )
+                scaffold_path = self.file_manager.get_scaffold_path(
+                    source_iteration, scaffold_id
+                )
 
-        # Get logs path
-        logs_path = self.file_manager.get_logs_path(iteration, scaffold_id, "train")
+                # Get logs path
+                logs_path = self.file_manager.get_logs_path(
+                    iteration, scaffold_id, f"train_{i}"
+                )
 
-        # Execute scaffold
-        execution_result = execute_scaffold(
-            scaffold_dir=scaffold_path,
-            input_string=example.input,
-            model=self.executor_model,
-            logs_path=logs_path,
-        )
+                # Execute scaffold
+                execution_result = execute_scaffold(
+                    scaffold_dir=scaffold_path,
+                    input_string=example.input,
+                    model=self.executor_model,
+                    logs_path=logs_path,
+                )
 
-        # Calculate score
-        if execution_result.exit_code == 0:
-            expected = example.scoring_data.get("solution", str(example.scoring_data))
-            score = self.scoring_function(
-                expected, {"solution": execution_result.output}
-            )
-        else:
-            score = 0.0
+                # Calculate score
+                if execution_result.exit_code == 0:
+                    expected = example.scoring_data.get(
+                        "solution", str(example.scoring_data)
+                    )
+                    score = self.scoring_function(
+                        expected, {"solution": execution_result.output}
+                    )
+                else:
+                    score = 0.0
 
-        # Read execution log
-        execution_log = logs_path.read_text()
+                # Read execution log
+                execution_log = logs_path.read_text()
 
-        run_data = ScaffoldRunData(
-            code=scaffold_result.code,
-            execution_log=execution_log,
-            example=example,
-            actual_output=execution_result.output,
-            score=score,
-        )
+                training_runs[scaffold_id].append(
+                    ScaffoldRunData(
+                        code=scaffold_result.code,
+                        execution_log=execution_log,
+                        example=example,
+                        actual_output=execution_result.output,
+                        score=score,
+                    )
+                )
 
-        self.logger.info(f"Training run {scaffold_id}: score {score:.3f}")
-        return run_data
+                self.logger.info(f"Training run {scaffold_id}: score {score:.3f}")
+        return training_runs

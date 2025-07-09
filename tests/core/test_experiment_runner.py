@@ -1,5 +1,6 @@
 import pytest
 import tempfile
+import json
 from unittest.mock import Mock, patch
 from pathlib import Path
 from scaffold_learning.core.experiment_runner import ExperimentRunner
@@ -69,6 +70,7 @@ class TestExperimentRunner:
         num_iterations=1,
         scaffolds_per_iter=2,
         initial_scaffolds=3,
+        num_training_examples=1,
         num_validation_examples=2,
         experiment_name="test_experiment",
     ):
@@ -86,6 +88,7 @@ class TestExperimentRunner:
             num_iterations=num_iterations,
             scaffolds_per_iter=scaffolds_per_iter,
             initial_scaffolds=initial_scaffolds,
+            num_training_examples=num_training_examples,
             num_validation_examples=num_validation_examples,
             base_dir=Path(self.temp_dir),
         )
@@ -156,14 +159,17 @@ class TestExperimentRunner:
                 num_iterations=1,
                 scaffolds_per_iter=5,  # Too many
                 initial_scaffolds=3,
+                num_training_examples=1,
                 num_validation_examples=2,
                 base_dir=Path(self.temp_dir),
             )
 
-    def test_validation_log_structure(self):
-        """Test that validation logs are created correctly for multiple examples."""
+    def test_log_structure(self):
+        """Test that validation and training logs are created correctly."""
         runner = self.create_experiment_runner(
-            num_iterations=2, num_validation_examples=3
+            num_iterations=2,
+            num_training_examples=2,
+            num_validation_examples=3,
         )
         training_data, validation_data = self.create_test_data()
 
@@ -223,15 +229,17 @@ class TestExperimentRunner:
             run_data_list = kwargs["run_data"]
             assert kwargs["scaffolder_llm"] == runner.scaffolder_llm
             assert isinstance(run_data_list, list)
-            assert len(run_data_list) == 1
-            run_data = run_data_list[0]
-            assert hasattr(run_data, "code")
-            assert hasattr(run_data, "execution_log")
-            assert hasattr(run_data, "example")
-            assert hasattr(run_data, "actual_output")
-            assert hasattr(run_data, "score")
-            # The example should be from training data
-            assert run_data.example in training_data
+            assert len(run_data_list) == 2  # Now expecting 2 training examples
+
+            # Check each run_data item
+            for run_data in run_data_list:
+                assert hasattr(run_data, "code")
+                assert hasattr(run_data, "execution_log")
+                assert hasattr(run_data, "example")
+                assert hasattr(run_data, "actual_output")
+                assert hasattr(run_data, "score")
+                # The example should be from training data
+                assert run_data.example in training_data
 
         # Check iteration 0 - no validation should happen in iteration 0
         iter0_logs = runner.file_manager.experiment_dir / "iterations" / "0" / "logs"
@@ -251,14 +259,168 @@ class TestExperimentRunner:
             log_files = list(scaffold_logs.glob("valid_*.log"))
             assert len(log_files) == 3
 
-        # Should also have training logs for evolved scaffolds
-        # The evolved scaffolds will have IDs like "0-0", "1-0" (from top 2 scaffolds)
-        training_logs_found = False
-        for scaffold_dir in iter1_logs.iterdir():
-            if (scaffold_dir / "train.log").exists():
-                training_logs_found = True
-                break
-        assert training_logs_found
+        # Check training logs for scaffolds that were evolved (parent scaffolds)
+        # With num_training_examples=2, we should have train_0.log and train_1.log
+        training_logs_found = 0
+        for scaffold_id in ["0", "1"]:  # These are the top 2 scaffolds that get evolved
+            scaffold_logs = iter1_logs / scaffold_id
+            if scaffold_logs.exists():
+                # Should have 2 training log files with indices
+                train_logs = list(scaffold_logs.glob("train_*.log"))
+                if train_logs:
+                    training_logs_found += 1
+                    assert (
+                        len(train_logs) == 2
+                    ), f"Expected 2 training logs for scaffold {scaffold_id}"
+                    assert (scaffold_logs / "train_0.log").exists()
+                    assert (scaffold_logs / "train_1.log").exists()
+
+        # At least one scaffold should have training logs
+        assert training_logs_found > 0, "No training logs found for any scaffold"
+
+    def test_scoring_is_correct(self):
+        """Test that scoring.json contains correct average scores."""
+        runner = self.create_experiment_runner(
+            num_iterations=2,
+            num_training_examples=2,
+            num_validation_examples=3,
+        )
+
+        # Create mocks for scaffold generation and evolution
+        def mock_generate_func(examples, scaffolder_llm, iteration):
+            return ScaffoldResult(
+                code='def process_input(input_string: str) -> str:\n    return "result"',
+                metadata=ScaffoldMetadata(
+                    created_at="2024-01-01T00:00:00",
+                    parent_scaffold_id=None,
+                    iteration=iteration,
+                ),
+            )
+
+        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
+            return ScaffoldResult(
+                code='def process_input(input_string: str) -> str:\n    return "evolved"',
+                metadata=ScaffoldMetadata(
+                    created_at="2024-01-01T00:00:00",
+                    parent_scaffold_id=parent_scaffold_id,
+                    iteration=iteration,
+                ),
+            )
+
+        # Create a custom mock execute that returns different outputs based on scaffold_id
+        # This will help us test averaging of scores
+        def mock_execute_custom(
+            scaffold_dir, input_string, model, logs_path, timeout=120
+        ):
+            scaffold_id = scaffold_dir.name
+
+            # For scaffold "0": always return correct answer
+            # For scaffold "1": return correct answer 50% of the time
+            # For scaffold "2": never return correct answer
+
+            if scaffold_id == "0":
+                # Always correct - check for clues in input
+                if "Ocean" in input_string:
+                    output = "SEA"
+                elif "Canine" in input_string:
+                    output = "DOG"
+                elif "Feline" in input_string and "Large" not in input_string:
+                    output = "CAT"
+                elif "Large feline" in input_string:
+                    output = "LION"
+                elif "Flying mammal" in input_string:
+                    output = "BAT"
+                else:
+                    output = "correct"
+            elif scaffold_id == "1":
+                # Sometimes correct (for specific examples)
+                if "Ocean" in input_string or "Flying mammal" in input_string:
+                    # Correct for valid_1 and train_2
+                    if "Ocean" in input_string:
+                        output = "SEA"
+                    else:
+                        output = "BAT"
+                else:
+                    output = "wrong"
+            else:
+                # scaffold "2" - always wrong
+                output = "wrong"
+
+            # Create log file
+            logs_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(logs_path, "w") as f:
+                f.write("=== Scaffold Execution Log ===\n")
+                f.write(f"Model: {model}\n")
+                f.write(f"Input: {input_string}\n")
+                f.write(f"Output: {output}\n")
+
+            return ScaffoldExecutionResult(
+                output=output,
+                stderr="",
+                exit_code=0,
+                execution_time=0.1,
+            )
+
+        # Run the experiment with our mocks
+        with patch(
+            "scaffold_learning.core.experiment_runner.generate_scaffold",
+            side_effect=mock_generate_func,
+        ), patch(
+            "scaffold_learning.core.experiment_runner.evolve_scaffold",
+            side_effect=mock_evolve_func,
+        ), patch(
+            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            side_effect=mock_execute_custom,
+        ):
+            runner.run()
+
+        # Check scoring.json contains correct average scores
+        scoring_file = (
+            runner.file_manager.experiment_dir / "iterations" / "1" / "scoring.json"
+        )
+        assert scoring_file.exists()
+
+        with open(scoring_file) as f:
+            scores_data = json.load(f)
+
+        # Verify structure
+        assert "train" in scores_data
+        assert "valid" in scores_data
+
+        # Check validation scores based on our custom mock
+        # From create_test_data: valid_1 expects "SEA", valid_2 expects "DOG", valid_3 expects "CAT"
+        # Scaffold "0": always correct, so 3/3 = 1.0
+        # Scaffold "1": correct for valid_1 only, so 1/3 = 0.333...
+        # Scaffold "2": never correct, so 0/3 = 0.0
+
+        for scaffold_id in ["0", "1", "2"]:
+            assert scaffold_id in scores_data["valid"]
+        assert abs(scores_data["valid"]["0"] - 1.0) < 0.001
+        assert abs(scores_data["valid"]["1"] - 1 / 3) < 0.001
+        assert abs(scores_data["valid"]["2"] - 0.0) < 0.001
+
+        # For training: only top 2 scaffolds get training runs
+        # The specific scaffolds and their scores depend on which training examples they receive
+        # Since examples are randomly assigned, we just verify:
+        # 1. Exactly 2 scaffolds have training scores
+        # 2. The scores are between 0 and 1
+        # 3. The scores represent correct averages (multiples of 0.5 for 2 examples)
+        assert len(scores_data["train"]) == 2  # Only top 2 scaffolds
+
+        # Verify scores are valid averages for 2 examples (0.0, 0.5, or 1.0)
+        for scaffold_id, score in scores_data["train"].items():
+            if scaffold_id == "0":
+                assert score == 1.0
+            elif scaffold_id == "1":
+                assert score in [
+                    0.0,
+                    0.5,
+                    1.0,
+                ], f"Invalid average score {score} for scaffold {scaffold_id}"
+
+        # Verify that scaffold "0" is in training (it should be top performer)
+        assert "0" in scores_data["train"]
+        assert scores_data["train"]["0"] == 1.0  # Scaffold 0 always gets perfect score
 
     def test_generate_and_evolve_inputs(self):
         """Test that generate_scaffold and evolve_scaffold receive correct inputs."""
@@ -285,6 +447,7 @@ class TestExperimentRunner:
             num_iterations=2,
             scaffolds_per_iter=1,
             initial_scaffolds=2,
+            num_training_examples=1,
             num_validation_examples=1,
             base_dir=Path(self.temp_dir),
         )
@@ -383,6 +546,7 @@ class TestExperimentRunner:
             num_iterations=test_case["num_iterations"],
             scaffolds_per_iter=test_case["scaffolds_per_iter"],
             initial_scaffolds=test_case["initial_scaffolds"],
+            num_training_examples=1,
             num_validation_examples=1,
         )
         training_data, validation_data = self.create_test_data()
@@ -936,6 +1100,7 @@ class TestExperimentRunner:
             num_iterations=2,
             scaffolds_per_iter=1,
             initial_scaffolds=2,
+            num_training_examples=1,
             num_validation_examples=1,
         )
 
@@ -958,11 +1123,12 @@ class TestExperimentRunner:
             "load_scaffold",
             return_value=mock_scaffold_result,
         ):
-            best_path = runner.run()
+            best_path, best_score = runner.run()
 
-        # Should return a valid path
+        # Should return a valid path and score
         assert best_path is not None
         assert isinstance(best_path, Path)
+        assert isinstance(best_score, float)
 
         # Should have created experiment directory structure
         assert (runner.file_manager.experiment_dir / "iterations" / "0").exists()
@@ -995,7 +1161,8 @@ class TestExperimentRunner:
             "load_scaffold",
             return_value=mock_scaffold_result,
         ):
-            best_path = runner.run()
+            best_path, best_score = runner.run()
 
-        # Should return None since no scaffolds were scored
+        # Should return None and -1.0 since no scaffolds were scored
         assert best_path is None
+        assert best_score == -1.0
