@@ -17,7 +17,7 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
         system_prompt: Optional system prompt for context
 
     Returns:
-        The LLM's response as a string
+        The LLM's response as a LLMResponse object
     """
 
     # Get executor specification from environment variable
@@ -28,8 +28,9 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
         model_spec=executor_model_spec,
         openai_api_key=os.environ.get("OPENAI_API_KEY"),
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+        thinking_budget_tokens=0,
     )
 
     # Generate response
     with suppress_logging("httpx", "anthropic._base_client"):
-        return executor_llm.generate_response(prompt, system_prompt)
+        return executor_llm.generate_response(prompt, system_prompt).content

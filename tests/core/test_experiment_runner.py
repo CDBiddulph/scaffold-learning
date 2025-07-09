@@ -489,7 +489,7 @@ class TestExperimentRunner:
                     parent_scaffold_id=None,
                     iteration=iteration,
                     scaffolder_prompt=f"prompt with {examples[0].input}",
-                    scaffolder_output=f"output for {examples[0].input}",
+                    scaffolder_response=f"output for {examples[0].input}",
                 ),
             )
 
@@ -503,7 +503,7 @@ class TestExperimentRunner:
                     parent_scaffold_id=parent_scaffold_id,
                     iteration=iteration,
                     scaffolder_prompt=f"evolve prompt for {first_run_data.example.input}",
-                    scaffolder_output=f"evolved output for {first_run_data.example.input}",
+                    scaffolder_response=f"evolved output for {first_run_data.example.input}",
                 ),
             )
 
@@ -564,9 +564,9 @@ class TestExperimentRunner:
         # Verify metadata was saved correctly
         scaffold_0 = runner.file_manager.load_scaffold(0, "0")
         assert scaffold_0.metadata.scaffolder_prompt is not None
-        assert scaffold_0.metadata.scaffolder_output is not None
+        assert scaffold_0.metadata.scaffolder_response is not None
         assert "prompt with" in scaffold_0.metadata.scaffolder_prompt
-        assert "output for" in scaffold_0.metadata.scaffolder_output
+        assert "output for" in scaffold_0.metadata.scaffolder_response
 
     def _run_scaffold_selection_test(self, test_case):
         """Test that scaffold selection works correctly based on validation scores."""

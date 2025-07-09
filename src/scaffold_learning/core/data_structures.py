@@ -18,6 +18,28 @@ class DatasetExample:
 
 
 @dataclass
+class LLMResponse:
+    """Contains a response from an LLM.
+
+    Attributes:
+        content: The content output from the LLM
+        thinking: The thinking output from the LLM
+    """
+
+    content: str
+    thinking: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert response to dictionary for JSON serialization."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "LLMResponse":
+        """Create response from dictionary."""
+        return cls(**data)
+
+
+@dataclass
 class ScaffoldMetadata:
     """Metadata for a generated scaffold.
 
@@ -26,14 +48,14 @@ class ScaffoldMetadata:
         parent_scaffold_id: ID of scaffold this was derived from (if applicable)
         iteration: Iteration number when created
         scaffolder_prompt: Prompt that was sent to the scaffolder LLM
-        scaffolder_output: Full response from the scaffolder LLM
+        scaffolder_response: Full response from the scaffolder LLM
     """
 
     created_at: str
     parent_scaffold_id: Optional[str]
     iteration: Optional[int]
     scaffolder_prompt: Optional[str] = None
-    scaffolder_output: Optional[str] = None
+    scaffolder_response: Optional[LLMResponse] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert metadata to dictionary for JSON serialization.

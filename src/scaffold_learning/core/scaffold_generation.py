@@ -6,6 +6,7 @@ from scaffold_learning.core.data_structures import (
     ScaffoldResult,
     ScaffoldRunData,
     ScaffoldMetadata,
+    LLMResponse,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 
@@ -54,7 +55,7 @@ You can see the output of <code> in <actual-output> and its execution log in <ex
 Finally, you can see the score assigned to <actual-output> in <score>."""
 
 
-def _extract_python_code(response: str) -> str:
+def _extract_python_code(response: LLMResponse) -> str:
     """Extract Python code from LLM response.
 
     Args:
@@ -66,10 +67,11 @@ def _extract_python_code(response: str) -> str:
     Raises:
         ValueError: If no Python code block is found
     """
-    if "```python" in response:
-        code = response.split("```python")[1].split("```")[0].strip()
-    elif "```" in response:
-        code = response.split("```")[1].split("```")[0].strip()
+    content = response.content
+    if "```python" in content:
+        code = content.split("```python")[1].split("```")[0].strip()
+    elif "```" in content:
+        code = content.split("```")[1].split("```")[0].strip()
     else:
         raise ValueError("LLM response doesn't contain valid Python code")
     return code
@@ -185,7 +187,7 @@ def _generate_or_evolve_scaffold(
         parent_scaffold_id=parent_scaffold_id,
         iteration=iteration,
         scaffolder_prompt=prompt,
-        scaffolder_output=response,
+        scaffolder_response=response,
     )
 
     return ScaffoldResult(code=code, metadata=metadata)

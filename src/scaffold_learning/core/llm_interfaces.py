@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from contextlib import contextmanager
 from dotenv import load_dotenv
+from scaffold_learning.core.data_structures import LLMResponse
 
 import anthropic
 import openai
@@ -52,7 +53,7 @@ class LLMInterface(ABC):
     """Abstract base class for LLM interfaces"""
 
     @abstractmethod
-    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
+    def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         """Generate a response from the LLM"""
         pass
 
@@ -73,14 +74,14 @@ class OpenAIInterface(LLMInterface):
         if not self.api_key:
             raise ValueError("OpenAI API key not provided")
 
-    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
+    def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         client = openai.OpenAI(api_key=self.api_key)
         response = client.responses.create(
             model=self.model,
             instructions=system_prompt,
             input=prompt,
         )
-        return response.output[0].content[0].text
+        return LLMResponse(content=response.output[0].content[0].text)
 
     def get_model_info(self) -> str:
         return f"openai/{self.model}"
@@ -89,22 +90,28 @@ class OpenAIInterface(LLMInterface):
 class AnthropicInterface(LLMInterface):
     """Interface for Anthropic Claude models"""
 
+    _OPUS_NAME = "claude-opus-4-20250514"
+    _SONNET_NAME = "claude-sonnet-4-20250514"
+    _HAIKU_NAMES = ["claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"]
+
     def __init__(
         self,
         model: str = LLMConfig.DEFAULT_ANTHROPIC_MODEL,
         api_key: Optional[str] = None,
+        thinking_budget_tokens: Optional[int] = None,
     ):
         self.model = model
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key not provided")
+        self.thinking_budget_tokens = thinking_budget_tokens
 
     def _get_max_tokens(self) -> int:
-        if self.model == "claude-opus-4-20250514":
+        if self.model == self._OPUS_NAME:
             return 32_000
-        elif self.model == "claude-sonnet-4-20250514":
+        elif self.model == self._SONNET_NAME:
             return 64_000
-        elif self.model in ["claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"]:
+        elif self.model in self._HAIKU_NAMES:
             return 8192
         else:
             raise ValueError(
@@ -113,7 +120,16 @@ class AnthropicInterface(LLMInterface):
                 " https://docs.anthropic.com/en/docs/about-claude/models/overview"
             )
 
-    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
+    def _get_thinking_params(self) -> dict:
+        if self.thinking_budget_tokens == 0 or self.model not in [
+            self._OPUS_NAME,
+            self._SONNET_NAME,
+        ]:
+            return {"type": "disabled"}
+        budget_tokens = self.thinking_budget_tokens or 10000
+        return {"budget_tokens": budget_tokens, "type": "enabled"}
+
+    def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         # TODO: make use of streaming to get logs faster
         # TODO: try the async client
         client = anthropic.Anthropic(api_key=self.api_key)
@@ -123,13 +139,20 @@ class AnthropicInterface(LLMInterface):
                 max_tokens=self._get_max_tokens(),
                 system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
+                thinking=self._get_thinking_params(),
                 stream=True,
             )
-        final_text = ""
+
+        thinking = ""
+        content = ""
         for event in stream:
             if event.type == "content_block_delta":
-                final_text += event.delta.text
-        return final_text
+                if event.delta.type == "thinking_delta":
+                    thinking += event.delta.thinking
+                elif event.delta.type == "text_delta":
+                    content += event.delta.text
+
+        return LLMResponse(thinking=thinking, content=content)
 
     def get_model_info(self) -> str:
         return f"anthropic/{self.model}"
@@ -141,7 +164,7 @@ class MockLLMInterface(LLMInterface):
     def __init__(self):
         pass
 
-    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
+    def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         """Return appropriate mock response based on context"""
         # If this looks like a scaffolder prompt (contains system prompt about Python generation),
         # return a mock script. Otherwise, return a simple mock response.
@@ -175,7 +198,7 @@ class HumanLLMInterface(LLMInterface):
     def __init__(self):
         pass
 
-    def generate_response(self, prompt: str, system_prompt: str = "") -> str:
+    def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         """Get response from human user via CLI"""
         print("\n" + "=" * 80)
         print("HUMAN LLM MODE - You are acting as the LLM")
@@ -188,7 +211,8 @@ class HumanLLMInterface(LLMInterface):
         print(f"\nUSER PROMPT:\n{prompt}")
         print("-" * 40)
 
-        return self._get_user_input(prompt, system_prompt)
+        content = self._get_user_input(prompt, system_prompt)
+        return LLMResponse(content=content)
 
     def _get_user_input(self, prompt: str, system_prompt: str = "") -> str:
         """Get user input with vim option"""
@@ -374,6 +398,7 @@ class LLMFactory:
         model_spec: str,
         openai_api_key: Optional[str] = None,
         anthropic_api_key: Optional[str] = None,
+        thinking_budget_tokens: Optional[int] = None,
     ) -> LLMInterface:
         """Create LLM from consolidated model specification"""
         llm_type, model = LLMFactory._parse_model_spec(model_spec)
@@ -381,7 +406,11 @@ class LLMFactory:
         if llm_type in ["openai", "chatgpt", "gpt"]:
             return OpenAIInterface(model=model, api_key=openai_api_key)
         elif llm_type in ["anthropic", "claude"]:
-            return AnthropicInterface(model=model, api_key=anthropic_api_key)
+            return AnthropicInterface(
+                model=model,
+                api_key=anthropic_api_key,
+                thinking_budget_tokens=thinking_budget_tokens,
+            )
         elif llm_type == "mock":
             return MockLLMInterface()
         elif llm_type == "human":
