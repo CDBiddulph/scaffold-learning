@@ -15,6 +15,8 @@ import threading
 import queue
 import time
 
+from scaffold_learning.core.llm_interfaces import LLMFactory
+
 
 def _log_results(
     log_file: Path,
@@ -68,16 +70,6 @@ def _log_results(
             f.write("\n\n")
 
 
-def _load_metadata(scaffold_name: str, scaffold_dir: str) -> dict:
-    """Load metadata for a scaffold."""
-    metadata_path = Path(scaffold_dir) / scaffold_name / "metadata.json"
-    if not metadata_path.exists():
-        raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
-
-    with open(metadata_path, "r") as f:
-        return json.load(f)
-
-
 def _ensure_docker_image():
     """Ensure the Docker image is built."""
     # Check if image exists
@@ -89,16 +81,6 @@ def _ensure_docker_image():
         print("Building Docker image...")
         subprocess.run(["docker", "build", "-t", "scaffold-runner", "."], check=True)
         print("Docker image built successfully!")
-
-
-def _resolve_executor_model_spec(metadata: dict, override_model: str = None) -> str:
-    """Resolve executor specification, handling overrides."""
-    if override_model:
-        from scaffold_learning.core.llm_interfaces import LLMFactory
-
-        return LLMFactory.resolve_model_spec(override_model)
-    else:
-        return metadata["executor_model_spec"]
 
 
 def _build_docker_command(
@@ -347,13 +329,10 @@ def run_scaffold(
     scaffold_base_dir: str,
     input_string: str,
     log_level: str,
-    override_model: str,
+    model_spec: str,
     timeout: Optional[int] = None,
 ) -> None:
     """Run a scaffold in Docker container."""
-
-    # Load metadata
-    metadata = _load_metadata(scaffold_name, scaffold_base_dir)
 
     # Ensure Docker image exists
     _ensure_docker_image()
@@ -370,7 +349,7 @@ def run_scaffold(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Resolve executor specification
-    executor_model_spec = _resolve_executor_model_spec(metadata, override_model)
+    model_spec = LLMFactory.resolve_model_spec(model_spec)
 
     log_file = logs_dir / f"{timestamp}.log"
 
@@ -380,23 +359,23 @@ def run_scaffold(
         logs_dir,
         scaffold_name,
         timestamp,
-        executor_model_spec,
+        model_spec,
         log_level,
     )
 
     # Add Python script to execute
     python_script = _generate_python_script(
-        scaffold_name, input_string, executor_model_spec, log_level, timestamp
+        scaffold_name, input_string, model_spec, log_level, timestamp
     )
     docker_cmd.extend(["python", "-c", python_script])
 
-    print(f"Running scaffold '{scaffold_name}' with executor {executor_model_spec}")
+    print(f"Running scaffold '{scaffold_name}' with executor {model_spec}")
     print(f"Logs will be saved to: {log_file}")
 
     # Execute based on model type
     execute_scaffold_fn = (
         _execute_human_scaffold
-        if executor_model_spec == "human/human"
+        if model_spec == "human/human"
         else _execute_llm_scaffold
     )
     execute_scaffold_fn(
@@ -404,7 +383,7 @@ def run_scaffold(
         timeout,
         log_file,
         scaffold_name,
-        executor_model_spec,
+        model_spec,
         input_string,
         timestamp,
     )

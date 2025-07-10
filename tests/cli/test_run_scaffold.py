@@ -24,14 +24,6 @@ class TestRunScaffoldLogging(unittest.TestCase):
         self.scaffold_dir = Path(self.scaffold_base_dir) / self.scaffold_name
         self.scaffold_dir.mkdir()
 
-        # Create metadata.json for the scaffold
-        metadata = {
-            "executor_model_spec": "mock/mock",
-            "description": "Test scaffold for logging tests",
-        }
-        with open(self.scaffold_dir / "metadata.json", "w") as f:
-            json.dump(metadata, f)
-
         # Create a simple scaffold.py that can be executed
         scaffold_content = '''
 def process_input(input_string):
@@ -107,7 +99,7 @@ def process_input(input_string):
                         timeout, model_override, expect_exception
                     )
 
-    def _execute_run_scaffold(self, timeout, model_override, expect_exception):
+    def _execute_run_scaffold(self, timeout, model, expect_exception):
         """Execute run_scaffold with optional exception handling"""
         if expect_exception:
             with self.assertRaises(expect_exception):
@@ -116,8 +108,7 @@ def process_input(input_string):
                     self.scaffold_base_dir,
                     self.input_string,
                     "INFO",
-                    model_override,
-                    False,
+                    model,
                     timeout,
                 )
         else:
@@ -126,8 +117,7 @@ def process_input(input_string):
                 self.scaffold_base_dir,
                 self.input_string,
                 "INFO",
-                model_override,
-                False,
+                model,
                 timeout,
             )
 
@@ -141,8 +131,7 @@ def process_input(input_string):
                     self.scaffold_base_dir,
                     self.input_string,
                     "INFO",
-                    None,
-                    False,
+                    "human",
                     None,
                 )
 
@@ -187,7 +176,7 @@ def process_input(input_string):
             stderr_lines=["Info: scaffold loaded\n"],
         )
 
-        self._run_scaffold_with_llm_mock(mock_process)
+        self._run_scaffold_with_llm_mock(mock_process, model_override="mock")
 
         log_content = self._verify_log_file_exists_and_get_content()
         # Assert on the exact contents once to demonstrate what it looks like
@@ -225,6 +214,7 @@ Result for: test input data
         self._run_scaffold_with_llm_mock(
             mock_process,
             timeout=1,
+            model_override="mock",
             expect_exception=subprocess.TimeoutExpired,
             time_mock_values=[0, 0.5, 1.1],
         )
@@ -256,7 +246,7 @@ Result for: test input data
         )
 
         self._run_scaffold_with_llm_mock(
-            mock_process, expect_exception=subprocess.CalledProcessError
+            mock_process, model_override="mock", expect_exception=subprocess.CalledProcessError
         )
 
         log_content = self._verify_log_file_exists_and_get_content()
@@ -274,14 +264,6 @@ Result for: test input data
 
     def test_run_scaffold_human_model_creates_log_file(self):
         """Test that human model execution creates appropriate log file"""
-        # Override metadata to use human model
-        metadata = {
-            "executor_model_spec": "human/human",
-            "description": "Test scaffold with human executor",
-        }
-        with open(self.scaffold_dir / "metadata.json", "w") as f:
-            json.dump(metadata, f)
-
         self._run_scaffold_with_human_mock()
 
         log_content = self._verify_log_file_exists_and_get_content()
