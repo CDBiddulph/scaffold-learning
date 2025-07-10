@@ -13,21 +13,57 @@ from scaffold_learning.core.xml_utils import dict_to_xml
 
 _COMMON_INSTRUCTIONS = r"""Your task is to write a Python scaffold. Your script must implement a function called `process_input(input_string: str) -> str`.
 
-Basic code example:
+Example scaffold code (validating a cinquain poem):
 ```python
 import logging
+import json
 from llm_executor import execute_llm
 
-def process_input(input_string: str) -> str:
-    # Suppose the input string is a poem
-    try:
-        # TODO
-    except Exception as e:
-        logging.error(f"Error occurred: {str(e)}", exc_info=True)
-        raise
-```
+def num_syllables(line, retries=2):
+    logging.info(f"Requesting syllable counts for line: {line}")
+    prompt = (
+        "Respond with exactly one line containing a JSON list of [word, syllable_count] pairs.\n"
+        "Example:\n"
+        'Line: "An old silent pond..."\n'
+        '[["An",1], ["old",1], ["silent",2], ["pond",1]]\n\n'
+        f"Line: \"{line}\""
+    )
+    for attempt in range(retries + 1):
+        response = execute_llm(prompt)
+        for resp_line in response.splitlines():
+            try:
+                pairs = json.loads(resp_line)
+                if (isinstance(pairs, list) and
+                    all(isinstance(pair, list) and len(pair) == 2 and isinstance(pair[1], int) for pair in pairs)):
+                    return sum(syllable for _, syllable in pairs)
+            except json.JSONDecodeError:
+                pass
+        logging.warning(f"Failed to parse JSON syllable counts from response: {response}")
+    raise ValueError("Failed to parse JSON syllable counts in any line.")
 
-Tips:"""
+def is_cinquain(input_string):
+    lines = [line.strip() for line in input_string.strip().split("\n") if line.strip()]
+    
+    if len(lines) != 5:
+        logging.info(f"Expected 5 lines, got {len(lines)}")
+        return False
+
+    expected_syllables = [2, 4, 6, 8, 2]
+    for line, expected in zip(lines, expected_syllables):
+        try:
+            count = num_syllables(line)
+        except Exception as e:
+            logging.error(e)
+            return False
+        if count != expected:
+            logging.info(f"Expected {expected} syllables for line {line}, got {count}")
+            return False
+
+    return True
+
+def process_input(input_string: str) -> str:
+    return "Valid cinquain" if is_cinquain(input_string) else "Invalid cinquain"
+```"""
 
 _COMMON_TIPS = """- Your script must implement a function called `process_input(input_string: str) -> str`
 - You have access to an executor LLM through a library called `llm_executor`
@@ -157,9 +193,9 @@ def _build_prompt(
     if examples:
         full_prompt += _get_examples_xml(examples)
 
-    # Add the shared instructions
+    # Add the shared instructions and tips
     full_prompt += f"\n\n{_COMMON_INSTRUCTIONS}"
-    full_prompt += f"\n{_COMMON_TIPS}"
+    full_prompt += f"\n\nTips:\n{_COMMON_TIPS}"
 
     if evolve_examples:
         full_prompt += f"\n{_EVOLUTION_TIPS}"

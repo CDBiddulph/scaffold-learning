@@ -14,7 +14,7 @@ from scaffold_learning.core.data_structures import LLMResponse
 
 
 # Short test versions of the instructions
-TEST_COMMON_INSTRUCTIONS = "Write a scaffold that implements process_input().\n\nTips:"
+TEST_COMMON_INSTRUCTIONS = "Write a scaffold that implements process_input()."
 TEST_EXAMPLES_INSTRUCTIONS = "Use the examples above."
 TEST_EVOLUTION_INSTRUCTIONS = "Improve the existing scaffold."
 TEST_COMMON_TIPS = "- Common tip 1\n- Common tip 2"
