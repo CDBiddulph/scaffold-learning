@@ -128,14 +128,14 @@ class TestExperimentFileManager:
             manager.save_scaffold(scaffold_id="0", result=result)
 
             # Test getting Docker path
-            docker_path = manager.get_docker_scaffold_dir("0")
+            docker_path = manager.get_scaffold_dir("0")
             expected = experiment_dir / "scaffolds" / "0"
             assert docker_path == expected.absolute()
             assert docker_path.exists()
 
             # Test nonexistent scaffold
             with pytest.raises(FileNotFoundError):
-                manager.get_docker_scaffold_dir("nonexistent")
+                manager.get_scaffold_dir("nonexistent")
 
     def test_get_docker_logs_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -143,7 +143,7 @@ class TestExperimentFileManager:
             manager = ExperimentFileManager(experiment_dir)
 
             # Test getting Docker logs path
-            logs_dir = manager.get_docker_logs_dir(iteration=1, scaffold_id="0-0")
+            logs_dir = manager._get_docker_logs_dir(iteration=1, scaffold_id="0-0")
             expected = experiment_dir / "logs" / "1" / "0-0"
             assert logs_dir == expected.absolute()
 
@@ -267,9 +267,9 @@ class TestExperimentFileManager:
             manager = ExperimentFileManager(experiment_dir)
 
             # Get logs directories for different iterations and scaffolds
-            logs_dir_1 = manager.get_docker_logs_dir(iteration=0, scaffold_id="0")
-            logs_dir_2 = manager.get_docker_logs_dir(iteration=0, scaffold_id="1")
-            logs_dir_3 = manager.get_docker_logs_dir(iteration=1, scaffold_id="0-0")
+            logs_dir_1 = manager._get_docker_logs_dir(iteration=0, scaffold_id="0")
+            logs_dir_2 = manager._get_docker_logs_dir(iteration=0, scaffold_id="1")
+            logs_dir_3 = manager._get_docker_logs_dir(iteration=1, scaffold_id="0-0")
 
             # Check structure: logs/<iteration>/<scaffold_id>/
             assert logs_dir_1 == (experiment_dir / "logs" / "0" / "0").absolute()
@@ -281,19 +281,18 @@ class TestExperimentFileManager:
             assert logs_dir_2.exists()
             assert logs_dir_3.exists()
 
-    @pytest.mark.parametrize(
-        "run_type", ["train", "valid"]
-    )
+    @pytest.mark.parametrize("run_type", ["train", "valid"])
     def test_save_execution_log_valid_run_types(self, run_type):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
             # Valid run types should work
-            run_id = manager.save_execution_log(
-                iteration=0, scaffold_id="0", run_type=run_type, log_content="test log"
+            log_path = manager.get_new_execution_log_path(
+                iteration=0, scaffold_id="0", run_type=run_type
             )
-            assert run_id == f"{run_type}_0"
+            expected_path = experiment_dir / "logs" / "0" / "0" / f"{run_type}_0.log"
+            assert log_path == expected_path
 
     @pytest.mark.parametrize(
         "invalid_run_type", ["train_0", "valid_1", "test", "training", "validation", ""]
@@ -305,6 +304,8 @@ class TestExperimentFileManager:
 
             # Invalid run types should fail
             with pytest.raises(ValueError, match="Invalid run type"):
-                manager.save_execution_log(
-                    iteration=0, scaffold_id="0", run_type=invalid_run_type, log_content="test log"
+                manager.get_new_execution_log_path(
+                    iteration=0,
+                    scaffold_id="0",
+                    run_type=invalid_run_type,
                 )

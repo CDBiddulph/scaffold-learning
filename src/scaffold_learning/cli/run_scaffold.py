@@ -139,6 +139,8 @@ def _generate_python_script(
     # Properly escape the input string for Python
     escaped_input = json.dumps(input_string)
 
+    # TODO: think about whether we will need to distinguish between
+    # stdout from process_input and the print statement in this script
     return f"""
 import sys
 import logging

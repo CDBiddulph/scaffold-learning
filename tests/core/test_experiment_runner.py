@@ -108,37 +108,32 @@ class TestExperimentRunner:
 
     def _mock_execute(
         self,
-        file_manager,
-        scaffold_id,
-        iteration,
-        run_type,
+        scaffold_dir,
+        log_file_path,
         input_string,
         model_spec,
         timeout=120,
+        console_output=False,
     ):
         # Create a mock execution log that mimics what would be saved
         execution_log = f"""=== Scaffold Execution Log ===
 Model: {model_spec}
 Timestamp: 2024-01-01_12:00:00
-Execution Time: 1.00s
 
---- Input ---
+=== INPUT ===
 {input_string}
 
---- Output ---
+=== STDOUT ===
 SEA
 
---- Error Output ---
+=== STDERR ===
 Execution completed successfully
 """
 
-        # Save the execution log through the file manager (to mimic real behavior)
-        file_manager.save_execution_log(
-            iteration=iteration,
-            scaffold_id=scaffold_id,
-            run_type=run_type,
-            log_content=execution_log,
-        )
+        # Write the execution log directly to the file (to mimic the final result of streaming)
+        log_file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_file_path, "w") as f:
+            f.write(execution_log)
 
         return ScaffoldExecutionResult(
             output="SEA",
@@ -299,14 +294,15 @@ Execution completed successfully
         # Create a custom mock execute that returns different outputs based on scaffold_id
         # This will help us test averaging of scores
         def mock_execute_custom(
-            file_manager,
-            scaffold_id,
-            iteration,
-            run_type,
+            scaffold_dir,
+            log_file_path,
             input_string,
             model_spec,
             timeout=120,
+            console_output=False,
         ):
+            # Extract scaffold_id from the scaffold_dir path
+            scaffold_id = scaffold_dir.name
 
             # For scaffold "0": always return correct answer
             # For scaffold "1": return correct answer 50% of the time
@@ -588,14 +584,17 @@ Execution completed successfully
             )
 
         def mock_execute_func(
-            file_manager,
-            scaffold_id,
-            iteration,
-            run_type,
+            scaffold_dir,
+            log_file_path,
             input_string,
             model_spec,
             timeout=120,
+            console_output=False,
         ):
+            # Extract scaffold_id from the scaffold_dir path
+            scaffold_id = scaffold_dir.name
+            # Extract iteration from the log_file_path 
+            iteration = int(log_file_path.parent.parent.name)
             return ScaffoldExecutionResult(
                 output=f"{scaffold_id}:{iteration}",  # Return scaffold_id:iteration for scoring
                 stderr="",

@@ -368,7 +368,7 @@ class ExperimentRunner:
 
             return f"{parent_id}-{counter}"
 
-    def _create_initial_scaffolds(self) -> None:
+    def _create_initial_scaffolds(self) -> List[str]:
         """Create initial scaffolds using random training examples.
 
         Returns:
@@ -420,12 +420,13 @@ class ExperimentRunner:
         for example in validation_examples:
             # Execute scaffold
             result = execute_scaffold(
-                file_manager=self.file_manager,
-                scaffold_id=scaffold_id,
-                iteration=iteration,
-                run_type=f"valid",
+                scaffold_dir=self.file_manager.get_scaffold_dir(scaffold_id),
+                log_file_path=self.file_manager.get_new_execution_log_path(
+                    iteration, scaffold_id, "valid"
+                ),
                 input_string=example.input,
                 model_spec=self.executor_model,
+                console_output=False,
             )
 
             # Calculate score
@@ -494,12 +495,13 @@ class ExperimentRunner:
 
                 # Execute scaffold
                 execution_result = execute_scaffold(
-                    file_manager=self.file_manager,
-                    scaffold_id=scaffold_id,
-                    iteration=iteration,
-                    run_type=f"train",
+                    scaffold_dir=self.file_manager.get_scaffold_dir(scaffold_id),
+                    log_file_path=self.file_manager.get_new_execution_log_path(
+                        iteration, scaffold_id, "train"
+                    ),
                     input_string=example.input,
                     model_spec=self.executor_model,
+                    console_output=False,
                 )
 
                 # Calculate score

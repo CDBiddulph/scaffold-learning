@@ -1,16 +1,31 @@
 import os
 import subprocess
+import sys
 import time
 import json
+import threading
+import queue
 from pathlib import Path
 from datetime import datetime
+from typing import Optional, TextIO
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
 from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.llm_interfaces import LLMFactory
 
 
+class ScaffoldTimeoutError(Exception):
+    """Exception raised when scaffold execution times out."""
+
+    def __init__(
+        self, message: str, partial_stdout: str = "", partial_stderr: str = ""
+    ):
+        super().__init__(message)
+        self.partial_stdout = partial_stdout
+        self.partial_stderr = partial_stderr
+
+
 def _build_docker_command(
-    scaffold_dir: Path, logs_dir: Path, model_spec: str, timeout: int
+    scaffold_dir: Path, model_spec: str, timeout: int
 ) -> list[str]:
     """Build the Docker command with all necessary flags and environment variables."""
     docker_cmd = ["docker", "run", "--rm"]
@@ -24,8 +39,9 @@ def _build_docker_command(
             f"{os.getuid()}:{os.getgid()}",
             "-v",
             f"{scaffold_dir.absolute()}:/workspace/scaffold:ro",
-            "-v",
-            f"{logs_dir.absolute()}:/workspace/logs",
+            # TODO: consider uncommenting if we need to write the result as a txt file
+            # "-v",
+            # f"{logs_dir.absolute()}:/workspace/logs",
         ]
     )
 
@@ -54,8 +70,7 @@ def _build_docker_command(
 
 def _generate_python_script(
     input_string: str,
-    executor_model_spec: str,
-    timestamp: str,
+    model_spec: str,
 ) -> str:
     """Generate the Python script to run inside the Docker container."""
     # Properly escape the input string for Python
@@ -76,9 +91,10 @@ logging.basicConfig(
 # Use properly escaped input string
 input_string = {escaped_input}
 
+# TODO: Not sure if these logs get saved or printed anywhere
 logging.info('Running scaffold execution')
 logging.info(f'Input length: {{len(input_string)}} characters')
-logging.info(f'Executor: {executor_model_spec}')
+logging.info(f'Executor: {model_spec}')
 
 try:
     # Import scaffold
@@ -88,17 +104,10 @@ try:
     # Run the scaffold
     result = process_input(input_string)
     print(result)
-    
-    # Save result to log file
-    log_data = {{
-        'timestamp': datetime.now().isoformat(),
-        'input': input_string,
-        'result': result,
-        'executor_model_spec': '{executor_model_spec}',
-    }}
-    
-    with open('/workspace/logs/{timestamp}.json', 'w') as f:
-        json.dump(log_data, f, indent=2)
+
+    # TODO: consider saving the result to a file, we'll have to get the filename though
+    # with open('/workspace/logs/train_0.txt', 'w') as f:
+    #     f.write(result)
         
 except Exception as e:
     logging.error(f'Error occurred: {{str(e)}}', exc_info=True)
@@ -106,117 +115,250 @@ except Exception as e:
 """
 
 
-def create_execution_log(
-    input_string: str,
-    model: str,
-    timestamp: str,
-    output: str = None,
-    stderr: str = None,
-    execution_time: float = None,
-    error_message: str = None,
-) -> str:
-    """Create execution log content in a unified format."""
-    log_content = "=== Scaffold Execution Log ===\n"
-    log_content += f"Model: {model}\n"
-    log_content += f"Timestamp: {timestamp}\n"
-    if error_message:
-        log_content += f"Error: {error_message}\n"
-    log_content += f"Execution Time: {execution_time:.2f}s\n"
-    log_content += "\n--- Input ---\n"
-    log_content += input_string
-    log_content += "\n\n--- Output ---\n"
-    log_content += output or ""
-    log_content += "\n\n--- Error Output ---\n"
-    log_content += stderr or ""
+def _process_output_from_queue(
+    output_queue: queue.Queue,
+    lines: dict,
+    log_file: Optional[TextIO],
+    console_output: bool,
+    current_stream: Optional[str],
+    timeout: Optional[float] = None,
+) -> Optional[str]:
+    """Process output from the queue if available.
 
-    return log_content
+    Args:
+        output_queue: Queue containing output lines
+        lines: Dictionary to collect lines by stream
+        log_file: Optional file handle to write to
+        console_output: If True, also print to console
+        current_stream: Current stream name (either 'stdout' or 'stderr')
+        timeout: Timeout for getting from queue (None for no wait)
+
+    Returns:
+        The stream name if output was processed, None if queue was empty
+    """
+    try:
+        if timeout is not None:
+            stream_name, line = output_queue.get(timeout=timeout)
+        else:
+            stream_name, line = output_queue.get_nowait()
+
+        lines[stream_name].append(line)
+
+        # Handle stream transitions for log file
+        if log_file and current_stream != stream_name:
+            log_file.write(
+                f"\n=== {'STDOUT' if stream_name == 'stdout' else 'STDERR'} ===\n"
+            )
+
+        # Write to destinations
+        if console_output:
+            if stream_name == "stdout":
+                print(line, end="")
+            else:
+                print(line, end="", file=sys.stderr)
+
+        if log_file:
+            log_file.write(line)
+            log_file.flush()
+
+        return stream_name
+    except queue.Empty:
+        return None
+
+
+def _stream_output(pipe: TextIO, output_queue: queue.Queue, stream_name: str) -> None:
+    """Stream output from pipe to queue."""
+    try:
+        for line in iter(pipe.readline, ""):
+            output_queue.put((stream_name, line))
+        pipe.close()
+    except Exception as e:
+        output_queue.put((stream_name, f"Error reading {stream_name}: {e}\n"))
+
+def _stream_process_output(
+    process: subprocess.Popen,
+    timeout: int,
+    start_time: float,
+    log_file: Optional[TextIO],
+    console_output: bool,
+) -> tuple[str, str]:
+    """Stream process output and return collected stdout/stderr.
+
+    Args:
+        process: The subprocess.Popen process
+        timeout: Maximum execution time in seconds
+        start_time: When execution started (for timeout calculation)
+        log_file: Optional file handle to write real-time logs to
+        console_output: If True, print output to console in real-time
+
+    Returns:
+        Tuple of (stdout, stderr) as strings
+
+    Raises:
+        Exception: If timeout is exceeded, kills process and raises with partial output
+    """
+
+    # Set up output streaming
+    output_queue = queue.Queue()
+    lines = {"stdout": [], "stderr": []}
+    threads = {}
+    current_stream = None  # Track current section for log file
+
+    # Create threads for each stream
+    for stream_name, pipe in [("stdout", process.stdout), ("stderr", process.stderr)]:
+        thread = threading.Thread(
+            target=_stream_output, args=(pipe, output_queue, stream_name)
+        )
+        thread.daemon = True
+        thread.start()
+        threads[stream_name] = thread
+
+    # Process output in real-time
+    while process.poll() is None:
+        # Check timeout
+        current_time = time.time()
+        if timeout and (current_time - start_time) > timeout:
+            process.kill()
+
+            # Collect any remaining output
+            while not output_queue.empty():
+                try:
+                    stream_name, line = output_queue.get_nowait()
+                    lines[stream_name].append(line)
+                except queue.Empty:
+                    break
+
+            # Create exception with partial output
+            collected_stdout = "".join(lines["stdout"])
+            collected_stderr = "".join(lines["stderr"])
+
+            raise ScaffoldTimeoutError(
+                f"Execution timed out after {timeout} seconds",
+                partial_stdout=collected_stdout,
+                partial_stderr=collected_stderr,
+            )
+
+        # Get output with short timeout to avoid blocking
+        new_stream = _process_output_from_queue(
+            output_queue, lines, log_file, console_output, current_stream, timeout=0.1
+        )
+        if new_stream:
+            current_stream = new_stream
+
+    # Process any remaining output after process finishes
+    while not output_queue.empty():
+        new_stream = _process_output_from_queue(
+            output_queue, lines, log_file, console_output, current_stream
+        )
+        if new_stream:
+            current_stream = new_stream
+        else:
+            break
+
+    # Wait for threads to finish
+    for thread in threads.values():
+        thread.join(timeout=1)
+
+    # Return collected output
+    stdout = "".join(lines["stdout"])
+    stderr = "".join(lines["stderr"])
+
+    return stdout, stderr
 
 
 def execute_scaffold(
-    file_manager: ExperimentFileManager,
-    scaffold_id: str,
-    iteration: int,
-    run_type: str,
+    scaffold_dir: Path,
+    log_file_path: Path,
     input_string: str,
     model_spec: str,
     timeout: int = 120,
+    console_output: bool = False,
 ) -> ScaffoldExecutionResult:
     """Execute a scaffold in a Docker container with the given input.
 
     Args:
-        file_manager: ExperimentFileManager instance for path resolution
-        scaffold_id: Scaffold identifier to execute
-        iteration: Iteration number for logging
-        run_type: Type of run (e.g., 'train', 'valid')
+        scaffold_dir: Path to the scaffold directory
+        log_file_path: Path to the file to write logs to
         input_string: Input to pass to the scaffold's process_input function
         model_spec: Model spec for the executor LLM
         timeout: Maximum execution time in seconds
+        console_output: If True, print output to console in real-time
 
     Returns:
         ScaffoldExecutionResult with output, stderr, exit code, and execution time
     """
-    # Get scaffold directory for Docker mounting
-    scaffold_dir = file_manager.get_docker_scaffold_dir(scaffold_id)
-    logs_dir = file_manager.get_docker_logs_dir(iteration, scaffold_id)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
     model_spec = LLMFactory.resolve_model_spec(model_spec)
 
     # Build Docker command
     docker_cmd = _build_docker_command(
         scaffold_dir=scaffold_dir,
-        logs_dir=logs_dir,
         model_spec=model_spec,
         timeout=timeout,
     )
 
     # Generate Python script to run in container
     python_script = _generate_python_script(
-        input_string=input_string, executor_model_spec=model_spec, timestamp=timestamp
+        input_string=input_string,
+        model_spec=model_spec,
     )
 
     # Add the Python script as the command to run
     docker_cmd.extend(["python", "-c", python_script])
 
     error_message = None
+    stdout = ""
+    stderr = ""
 
     # Execute the scaffold
     start_time = time.time()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    try:
-        process = subprocess.Popen(
-            docker_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
+    # Write to the log file with live streaming
+    with open(log_file_path, "w") as log_file:
+        # Write log header
+        log_file.write("=== Scaffold Execution Log ===\n")
+        log_file.write(f"Model: {model_spec}\n")
+        log_file.write(f"Timestamp: {timestamp}\n")
+        log_file.write("\n=== INPUT ===\n")
+        log_file.write(input_string)
+        log_file.write("\n")
+        log_file.flush()
 
-        stdout, stderr = process.communicate(timeout=timeout)
-        exit_code = process.returncode
-        if exit_code != 0:
-            error_message = f"Error from scaffold (exit code {exit_code}):\n{stderr}"
+        try:
+            process = subprocess.Popen(
+                docker_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+            )
 
-    except Exception as e:
-        raise RuntimeError(f"Error from Docker when executing scaffold: {e}") from e
+            # Stream output and collect it
+            stdout, stderr = _stream_process_output(
+                process, timeout, start_time, log_file, console_output
+            )
+            exit_code = process.returncode
+
+            if exit_code != 0:
+                error_message = (
+                    f"Error from scaffold (exit code {exit_code}):\n{stderr}"
+                )
+
+        except ScaffoldTimeoutError as e:
+            # Handle timeout case - collect any output that was captured
+            stdout = e.partial_stdout
+            stderr = e.partial_stderr
+            error_message = str(e)
+        except Exception as e:
+            raise RuntimeError(f"Error from Docker when executing scaffold: {e}") from e
+
+        # Write error message to log if there was one
+        if error_message:
+            log_file.write(f"\n=== ERROR ===\n{error_message}\n")
 
     end_time = time.time()
     execution_time = end_time - start_time
-
-    # Save execution log through file manager
-    log_content = create_execution_log(
-        input_string=input_string,
-        model=model_spec,
-        timestamp=timestamp,
-        output=stdout,
-        stderr=stderr,
-        execution_time=execution_time,
-        error_message=error_message,
-    )
-
-    run_id = file_manager.save_execution_log(
-        iteration=iteration,
-        scaffold_id=scaffold_id,
-        run_type=run_type,
-        log_content=log_content,
-    )
 
     return ScaffoldExecutionResult(
         output=stdout.strip() if stdout else "",

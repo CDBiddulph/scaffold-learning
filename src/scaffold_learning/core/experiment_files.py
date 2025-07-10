@@ -91,8 +91,8 @@ class ExperimentFileManager:
 
         return ScaffoldResult(code=code, metadata=metadata)
 
-    def get_docker_scaffold_dir(self, scaffold_id: str) -> Path:
-        """Get scaffold directory path for Docker mounting.
+    def get_scaffold_dir(self, scaffold_id: str) -> Path:
+        """Get scaffold directory path.
 
         Args:
             scaffold_id: Scaffold identifier
@@ -110,7 +110,24 @@ class ExperimentFileManager:
 
         return scaffold_path.absolute()
 
-    def get_docker_logs_dir(self, iteration: int, scaffold_id: str) -> Path:
+    def get_new_execution_log_path(
+        self, iteration: int, scaffold_id: str, run_type: str
+    ) -> Path:
+        """Get a new path to an execution log to write to.
+
+        Args:
+            iteration: Iteration number
+            scaffold_id: Scaffold identifier
+            run_type: Type of run (e.g., 'train', 'valid')
+
+        Returns:
+            The path to the execution log
+        """
+        run_id = self._get_next_run_id(iteration, scaffold_id, run_type)
+        logs_dir = self._get_docker_logs_dir(iteration, scaffold_id)
+        return logs_dir / f"{run_id}.log"
+
+    def _get_docker_logs_dir(self, iteration: int, scaffold_id: str) -> Path:
         """Get logs directory path for Docker mounting.
 
         Args:
@@ -123,43 +140,6 @@ class ExperimentFileManager:
         logs_dir = self.experiment_dir / "logs" / str(iteration) / scaffold_id
         logs_dir.mkdir(parents=True, exist_ok=True)
         return logs_dir.absolute()
-
-    def _get_logs_path(self, iteration: int, scaffold_id: str, run_type: str) -> Path:
-        """Get path for saving execution logs.
-
-        Args:
-            iteration: Iteration number
-            scaffold_id: Scaffold identifier
-            run_type: Type of run (e.g., 'train_0', 'valid_1')
-
-        Returns:
-            Path where logs should be saved
-        """
-        logs_dir = self.get_docker_logs_dir(iteration, scaffold_id)
-        return logs_dir / f"{run_type}.log"
-
-    def save_execution_log(
-        self, iteration: int, scaffold_id: str, run_type: str, log_content: str
-    ) -> str:
-        """Save execution log and return the run ID used.
-
-        Args:
-            iteration: Iteration number
-            scaffold_id: Scaffold identifier
-            run_type: Type of run (e.g., 'train', 'valid')
-            log_content: Full log content to save
-
-        Returns:
-            The run ID that was used (e.g., 'train_0', 'valid_1')
-        """
-        run_id = self._get_next_run_id(iteration, scaffold_id, run_type)
-        logs_dir = self.get_docker_logs_dir(iteration, scaffold_id)
-        log_path = logs_dir / f"{run_id}.log"
-
-        with open(log_path, "w") as f:
-            f.write(log_content)
-
-        return run_id
 
     def _get_next_run_id(self, iteration: int, scaffold_id: str, run_type: str) -> str:
         """Determine the next available run ID for a given run type.
@@ -175,6 +155,7 @@ class ExperimentFileManager:
         Raises:
             ValueError: If the run type is not 'train' or 'valid'
         """
+        # TODO: consider whether there are race conditions, possibly use an in-memory counter
         if run_type not in ["train", "valid"]:
             raise ValueError(
                 f"Invalid run type: {run_type}. Must be 'train' or 'valid'."

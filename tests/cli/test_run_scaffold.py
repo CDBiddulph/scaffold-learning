@@ -246,7 +246,9 @@ Result for: test input data
         )
 
         self._run_scaffold_with_llm_mock(
-            mock_process, model_override="mock", expect_exception=subprocess.CalledProcessError
+            mock_process,
+            model_override="mock",
+            expect_exception=subprocess.CalledProcessError,
         )
 
         log_content = self._verify_log_file_exists_and_get_content()
