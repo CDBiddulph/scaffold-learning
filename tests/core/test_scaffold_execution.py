@@ -86,7 +86,9 @@ class TestScaffoldExecution:
                 with patch("time.time", side_effect=time_values):
                     result = execute_scaffold(
                         scaffold_dir=file_manager.get_scaffold_dir("test-scaffold"),
-                        log_file_path=file_manager.get_new_execution_log_path(0, "test-scaffold", "train"),
+                        log_file_path=file_manager.get_new_execution_log_path(
+                            0, "test-scaffold", "train"
+                        ),
                         input_string="test input",
                         model_spec=model_spec,
                         timeout=timeout,
@@ -157,7 +159,9 @@ class TestScaffoldExecution:
                 with patch("time.time", side_effect=[0.0, 1.0]):
                     execute_scaffold(
                         scaffold_dir=file_manager.get_scaffold_dir("test-scaffold"),
-                        log_file_path=file_manager.get_new_execution_log_path(0, "test-scaffold", "train"),
+                        log_file_path=file_manager.get_new_execution_log_path(
+                            0, "test-scaffold", "train"
+                        ),
                         input_string="test input",
                         model_spec="gpt-4o",
                         timeout=300,
@@ -182,7 +186,9 @@ class TestScaffoldExecution:
                 with patch("time.time", side_effect=[0.0, 2.0]):
                     execute_scaffold(
                         scaffold_dir=file_manager.get_scaffold_dir("test-scaffold"),
-                        log_file_path=file_manager.get_new_execution_log_path(0, "test-scaffold", "train"),
+                        log_file_path=file_manager.get_new_execution_log_path(
+                            0, "test-scaffold", "train"
+                        ),
                         input_string="test input",
                         model_spec="mock",
                     )
@@ -206,7 +212,9 @@ class TestScaffoldExecution:
                     with patch("time.time", side_effect=[0.0, 1.0]):
                         execute_scaffold(
                             scaffold_dir=file_manager.get_scaffold_dir("test-scaffold"),
-                            log_file_path=file_manager.get_new_execution_log_path(0, "test-scaffold", "train"),
+                            log_file_path=file_manager.get_new_execution_log_path(
+                                0, "test-scaffold", "train"
+                            ),
                             input_string="test input",
                             model_spec="mock",
                         )
@@ -233,7 +241,9 @@ class TestScaffoldExecution:
                 with patch("time.time", side_effect=[0.0, 0.1, 0.2, 0.3, 1.0]):
                     result = execute_scaffold(
                         scaffold_dir=file_manager.get_scaffold_dir("test-scaffold"),
-                        log_file_path=file_manager.get_new_execution_log_path(0, "test-scaffold", "train"),
+                        log_file_path=file_manager.get_new_execution_log_path(
+                            0, "test-scaffold", "train"
+                        ),
                         input_string="test input",
                         model_spec="mock",
                         console_output=True,
@@ -264,3 +274,52 @@ Line 2
 Error 1
 """
             assert re.match(expected_pattern, log_content)
+
+    def test_execute_scaffold_human_interactive_mode(self):
+        """Test that human/human model uses interactive Docker mode"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_manager = self.create_test_scaffold(temp_dir)
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
+                with patch("time.time", side_effect=[0.0, 1.0]):
+                    result = execute_scaffold(
+                        scaffold_dir=file_manager.get_scaffold_dir("test-scaffold"),
+                        log_file_path=file_manager.get_new_execution_log_path(
+                            0, "test-scaffold", "train"
+                        ),
+                        input_string="test input",
+                        model_spec="human",
+                    )
+
+            # Should use subprocess.run instead of subprocess.Popen
+            mock_run.assert_called_once()
+
+            # Docker command should include -it flags
+            call_args = mock_run.call_args[0][0]
+            assert "-it" in call_args
+
+            # Should return result with placeholder output
+            assert isinstance(result, ScaffoldExecutionResult)
+            assert (
+                result.output
+                == "Note: Human model execution - no output captured\nUser interaction occurred directly in terminal."
+            )
+            assert result.error_message is None
+
+            # Check that log file contains the stdout section
+            logs_dir = Path(temp_dir) / "experiment" / "logs" / "0" / "test-scaffold"
+            log_files = list(logs_dir.glob("*.log"))
+            assert len(log_files) == 1
+
+            expected_pattern = r"""=== Scaffold Execution Log ===
+Model: human/human
+Timestamp: \d{8}_\d{6}
+
+=== INPUT ===
+test input
+
+=== STDOUT ===
+Note: Human model execution - no output captured
+User interaction occurred directly in terminal\."""
+            assert re.match(expected_pattern, log_files[0].read_text())

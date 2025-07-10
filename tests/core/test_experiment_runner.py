@@ -593,7 +593,7 @@ Execution completed successfully
         ):
             # Extract scaffold_id from the scaffold_dir path
             scaffold_id = scaffold_dir.name
-            # Extract iteration from the log_file_path 
+            # Extract iteration from the log_file_path
             iteration = int(log_file_path.parent.parent.name)
             return ScaffoldExecutionResult(
                 output=f"{scaffold_id}:{iteration}",  # Return scaffold_id:iteration for scoring

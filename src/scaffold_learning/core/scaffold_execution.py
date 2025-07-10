@@ -25,10 +25,14 @@ class ScaffoldTimeoutError(Exception):
 
 
 def _build_docker_command(
-    scaffold_dir: Path, model_spec: str, timeout: int
+    scaffold_dir: Path, model_spec: str, timeout: int, interactive: bool = False
 ) -> list[str]:
     """Build the Docker command with all necessary flags and environment variables."""
     docker_cmd = ["docker", "run", "--rm"]
+
+    # Add interactive flags for human model
+    if interactive:
+        docker_cmd.extend(["-it"])
 
     # Add timeout
     docker_cmd.extend(["--stop-timeout", str(timeout)])
@@ -115,6 +119,15 @@ except Exception as e:
 """
 
 
+def _write_to_log_file(
+    log_file: TextIO, content: str, stream_name: str, current_stream: Optional[str]
+) -> None:
+    if current_stream != stream_name:
+        log_file.write(f"\n=== {stream_name.upper()} ===\n")
+    log_file.write(content)
+    log_file.flush()
+
+
 def _process_output_from_queue(
     output_queue: queue.Queue,
     lines: dict,
@@ -145,10 +158,8 @@ def _process_output_from_queue(
         lines[stream_name].append(line)
 
         # Handle stream transitions for log file
-        if log_file and current_stream != stream_name:
-            log_file.write(
-                f"\n=== {'STDOUT' if stream_name == 'stdout' else 'STDERR'} ===\n"
-            )
+        if log_file:
+            _write_to_log_file(log_file, line, stream_name, current_stream)
 
         # Write to destinations
         if console_output:
@@ -156,10 +167,6 @@ def _process_output_from_queue(
                 print(line, end="")
             else:
                 print(line, end="", file=sys.stderr)
-
-        if log_file:
-            log_file.write(line)
-            log_file.flush()
 
         return stream_name
     except queue.Empty:
@@ -174,6 +181,7 @@ def _stream_output(pipe: TextIO, output_queue: queue.Queue, stream_name: str) ->
         pipe.close()
     except Exception as e:
         output_queue.put((stream_name, f"Error reading {stream_name}: {e}\n"))
+
 
 def _stream_process_output(
     process: subprocess.Popen,
@@ -288,12 +296,14 @@ def execute_scaffold(
         ScaffoldExecutionResult with output, stderr, exit code, and execution time
     """
     model_spec = LLMFactory.resolve_model_spec(model_spec)
+    is_interactive = model_spec == "human/human"
 
     # Build Docker command
     docker_cmd = _build_docker_command(
         scaffold_dir=scaffold_dir,
         model_spec=model_spec,
         timeout=timeout,
+        interactive=is_interactive,
     )
 
     # Generate Python script to run in container
@@ -325,20 +335,29 @@ def execute_scaffold(
         log_file.flush()
 
         try:
-            process = subprocess.Popen(
-                docker_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-            )
+            if is_interactive:
+                # Interactive mode for human model
+                process = subprocess.run(docker_cmd, check=True)
+                stdout = "Note: Human model execution - no output captured\nUser interaction occurred directly in terminal."
+                stderr = ""
+                _write_to_log_file(log_file, stdout, "stdout", current_stream=None)
+                exit_code = process.returncode
+            else:
+                # Standard LLM mode with output streaming
+                process = subprocess.Popen(
+                    docker_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                )
 
-            # Stream output and collect it
-            stdout, stderr = _stream_process_output(
-                process, timeout, start_time, log_file, console_output
-            )
-            exit_code = process.returncode
+                # Stream output and collect it
+                stdout, stderr = _stream_process_output(
+                    process, timeout, start_time, log_file, console_output
+                )
+                exit_code = process.returncode
 
             if exit_code != 0:
                 error_message = (
