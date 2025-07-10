@@ -65,11 +65,11 @@ def run_scaffold(
             timeout=timeout or 120,
             console_output=True,
         )
-        
+
         # Handle errors from scaffold execution
         if result.error_message:
             raise RuntimeError(result.error_message)
-            
+
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

@@ -49,7 +49,9 @@ class ExperimentFileManager:
         (scaffold_dir / "scaffold.py").write_text(result.code)
 
         # Write metadata.xml
-        write_xml_file(result.metadata.to_dict(), scaffold_dir / "metadata.xml", "metadata")
+        write_xml_file(
+            result.metadata.to_dict(), scaffold_dir / "metadata.xml", "metadata"
+        )
 
         # Copy support files
         support_files = ["llm_executor.py", "llm_interfaces.py"]

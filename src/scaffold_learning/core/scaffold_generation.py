@@ -120,8 +120,6 @@ def _extract_python_code(response: LLMResponse) -> str:
     return code
 
 
-
-
 def _get_expected_output(scoring_data: Dict[str, Any]) -> str:
     # TODO: make printing scoring data vary depending on the domain
     # Possibly just have this as a fixed field in the jsonl for simplicity

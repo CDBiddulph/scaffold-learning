@@ -61,13 +61,14 @@ class TestExperimentFileManager:
             assert (scaffold_path / "scaffold.py").read_text() == result.code
 
             from scaffold_learning.core.xml_utils import xml_to_dict
+
             xml_content = (scaffold_path / "metadata.xml").read_text()
             saved_metadata = xml_to_dict(xml_content)
-            
+
             # XML converts numbers to strings and omits None values
             expected_metadata = {
                 "created_at": "2024-01-01T12:00:00",
-                "iteration": "0"  # XML converts to string
+                "iteration": "0",  # XML converts to string
                 # parent_scaffold_id is None, so omitted from XML
                 # scaffolder_prompt is None, so omitted from XML
                 # scaffolder_response is None, so omitted from XML

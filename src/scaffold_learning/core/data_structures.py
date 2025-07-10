@@ -77,17 +77,19 @@ class ScaffoldMetadata:
         """
         # Handle missing fields and type conversions from XML
         processed_data = data.copy()
-        
+
         # Convert iteration from string to int if present
-        if "iteration" in processed_data and isinstance(processed_data["iteration"], str):
+        if "iteration" in processed_data and isinstance(
+            processed_data["iteration"], str
+        ):
             processed_data["iteration"] = int(processed_data["iteration"])
-        
+
         # Ensure required fields without defaults have None values if missing
         if "parent_scaffold_id" not in processed_data:
             processed_data["parent_scaffold_id"] = None
         if "iteration" not in processed_data:
             processed_data["iteration"] = None
-        
+
         return cls(**processed_data)
 
 
