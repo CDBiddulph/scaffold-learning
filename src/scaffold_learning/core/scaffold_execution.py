@@ -64,7 +64,7 @@ def _build_docker_command(
             "-e",
             f"EXECUTOR_MODEL_SPEC={model_spec}",
             "-e",
-            "LOG_LEVEL=INFO",
+            "LOG_LEVEL=DEBUG",
             "scaffold-runner",
         ]
     )
@@ -84,11 +84,13 @@ def _generate_python_script(
 import sys
 import logging
 import json
+import os
 from datetime import datetime
 
 # Configure logging
+log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper(), logging.INFO)
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(asctime)s [%(levelname)s] %(message)s',
 )
 
