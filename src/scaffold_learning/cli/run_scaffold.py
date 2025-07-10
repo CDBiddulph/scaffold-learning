@@ -4,70 +4,13 @@ Run a generated scaffold script in a Docker container.
 """
 
 import argparse
-import json
-import os
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
-import threading
-import queue
-import time
+from typing import Optional
 
-from scaffold_learning.core.llm_interfaces import LLMFactory
-
-
-def _log_results(
-    log_file: Path,
-    scaffold_name: str,
-    executor_model_spec: str,
-    input_string: str,
-    timestamp: str,
-    stdout: Optional[Union[str, bytes]] = None,
-    stderr: Optional[Union[str, bytes]] = None,
-    error_message: Optional[str] = None,
-) -> None:
-    """Save execution log in a unified format."""
-
-    def decode_output(output: Optional[Union[str, bytes]]) -> Optional[str]:
-        """Convert bytes to string if needed."""
-        if output is None:
-            return None
-        if isinstance(output, bytes):
-            return output.decode("utf-8", errors="replace")
-        return output.strip()
-
-    stdout = decode_output(stdout)
-    stderr = decode_output(stderr)
-
-    # Save to log file
-    with open(log_file, "w") as f:
-        # Header
-        f.write("=== Scaffold Execution Log ===\n")
-        f.write(f"Scaffold: {scaffold_name}\n")
-        f.write(f"Executor: {executor_model_spec}\n")
-        f.write(f"Timestamp: {timestamp}\n")
-        if error_message:
-            f.write(f"Error: {error_message}\n")
-
-        f.write("================================\n\n")
-
-        # Input
-        f.write("=== INPUT ===\n")
-        f.write(input_string)
-        f.write("\n\n")
-
-        # Output
-        if stderr:
-            f.write("=== STDERR ===\n")
-            f.write(stderr)
-            f.write("\n\n")
-
-        if stdout:
-            f.write("=== STDOUT ===\n")
-            f.write(stdout)
-            f.write("\n\n")
+from scaffold_learning.core.scaffold_execution import execute_scaffold
 
 
 def _ensure_docker_image():
@@ -81,249 +24,6 @@ def _ensure_docker_image():
         print("Building Docker image...")
         subprocess.run(["docker", "build", "-t", "scaffold-runner", "."], check=True)
         print("Docker image built successfully!")
-
-
-def _build_docker_command(
-    scaffold_dir: Path,
-    logs_dir: Path,
-    scaffold_name: str,
-    timestamp: str,
-    executor_model_spec: str,
-    log_level: str,
-) -> list[str]:
-    """Build the Docker command with all necessary flags and environment variables."""
-    docker_cmd = ["docker", "run", "--rm"]
-
-    # Check if we need interactive mode for human model
-    if executor_model_spec == "human/human":
-        docker_cmd.insert(2, "-it")
-        print("Note: Using interactive mode for human model")
-
-    docker_cmd.extend(
-        [
-            "--user",
-            f"{os.getuid()}:{os.getgid()}",
-            "-v",
-            f"{scaffold_dir.absolute()}:/workspace/scaffold",
-            "-v",
-            f"{logs_dir.absolute()}:/workspace/logs",
-        ]
-    )
-
-    # Add environment variables from .env file if it exists
-    env_file = Path(".env")
-    if env_file.exists():
-        docker_cmd.extend(["--env-file", str(env_file.absolute())])
-
-    docker_cmd.extend(
-        [
-            "-e",
-            f"EXECUTOR_MODEL_SPEC={executor_model_spec}",
-            "-e",
-            f"LOG_LEVEL={log_level}",
-            "scaffold-runner",
-        ]
-    )
-
-    return docker_cmd
-
-
-def _generate_python_script(
-    scaffold_name: str,
-    input_string: str,
-    executor_model_spec: str,
-    log_level: str,
-    timestamp: str,
-) -> str:
-    """Generate the Python script to run inside the Docker container."""
-    # Properly escape the input string for Python
-    escaped_input = json.dumps(input_string)
-
-    # TODO: think about whether we will need to distinguish between
-    # stdout from process_input and the print statement in this script
-    return f"""
-import sys
-import logging
-import json
-from datetime import datetime
-
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, '{log_level}'),
-    format='%(asctime)s [%(levelname)s] %(message)s',
-)
-
-# Use properly escaped input string
-input_string = {escaped_input}
-
-logging.info(f'Running scaffold: {scaffold_name}')
-logging.info(f'Input length: {{len(input_string)}} characters')
-logging.info(f'Executor: {executor_model_spec}')
-
-try:
-    # Import scaffold
-    sys.path.insert(0, '/workspace/scaffold')
-    from scaffold import process_input
-    
-    # Run the scaffold
-    result = process_input(input_string)
-    print(result)
-    
-    # Save result to log file
-    log_data = {{
-        'scaffold_name': '{scaffold_name}',
-        'timestamp': datetime.now().isoformat(),
-        'input': input_string,
-        'result': result,
-        'executor_model_spec': '{executor_model_spec}',
-        'log_level': '{log_level}'
-    }}
-    
-    with open('/workspace/logs/{timestamp}.json', 'w') as f:
-        json.dump(log_data, f, indent=2)
-        
-except Exception as e:
-    logging.error(f'Error occurred: {{str(e)}}', exc_info=True)
-    sys.exit(1)
-"""
-
-
-def _execute_human_scaffold(
-    docker_cmd: list[str],
-    timeout: Optional[int],
-    log_file: Path,
-    scaffold_name: str,
-    executor_model_spec: str,
-    input_string: str,
-    timestamp: str,
-) -> None:
-    """Execute scaffold with human model."""
-    if timeout:
-        print("Warning: Timeout not supported for human model (interactive mode)")
-
-    subprocess.run(docker_cmd, check=True)
-
-    # Save basic log for human model
-    _log_results(
-        log_file,
-        scaffold_name,
-        executor_model_spec,
-        input_string,
-        timestamp,
-        stdout="Note: Human model execution - no output captured\nUser interaction occurred directly in terminal.\n",
-    )
-
-
-def _execute_llm_scaffold(
-    docker_cmd: list[str],
-    timeout: Optional[int],
-    log_file: Path,
-    scaffold_name: str,
-    executor_model_spec: str,
-    input_string: str,
-    timestamp: str,
-) -> None:
-    """Execute scaffold with LLM model."""
-
-    def stream_output(pipe, output_queue, stream_name):
-        """Stream output from pipe to queue."""
-        try:
-            for line in iter(pipe.readline, ""):
-                output_queue.put((stream_name, line))
-            pipe.close()
-        except Exception as e:
-            output_queue.put((stream_name, f"Error reading {stream_name}: {e}\n"))
-
-    # Start process
-    process = subprocess.Popen(
-        docker_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-    )
-
-    # Set up output streaming
-    output_queue = queue.Queue()
-    lines = {"stdout": [], "stderr": []}
-    threads = {}
-
-    # Create threads for each stream
-    for stream_name, pipe in [("stdout", process.stdout), ("stderr", process.stderr)]:
-        thread = threading.Thread(
-            target=stream_output, args=(pipe, output_queue, stream_name)
-        )
-        thread.daemon = True
-        thread.start()
-        threads[stream_name] = thread
-
-    start_time = time.time()
-
-    # Process output in real-time
-    while process.poll() is None:
-        # Check timeout
-        if timeout and (time.time() - start_time) > timeout:
-            process.kill()
-
-            # Save what we have so far before raising timeout error
-            _log_results(
-                log_file,
-                scaffold_name,
-                executor_model_spec,
-                input_string,
-                timestamp,
-                stdout="".join(lines["stdout"]),
-                stderr="".join(lines["stderr"]),
-                error_message=f"Execution timed out after {timeout} seconds",
-            )
-
-            raise subprocess.TimeoutExpired(docker_cmd, timeout)
-
-        try:
-            # Get output with short timeout to avoid blocking
-            stream_name, line = output_queue.get(timeout=0.1)
-
-            # Append to appropriate list and print
-            lines[stream_name].append(line)
-            if stream_name == "stdout":
-                print(line, end="")
-            else:  # stderr
-                print(line, end="", file=sys.stderr)
-
-        except queue.Empty:
-            continue  # No output available, continue checking
-
-    # Process any remaining output after process finishes
-    while not output_queue.empty():
-        try:
-            stream_name, line = output_queue.get_nowait()
-            lines[stream_name].append(line)
-            if stream_name == "stdout":
-                print(line, end="")
-            else:  # stderr
-                print(line, end="", file=sys.stderr)
-        except queue.Empty:
-            break
-
-    # Wait for threads to finish
-    for thread in threads.values():
-        thread.join(timeout=1)
-
-    # Save execution log to file
-    _log_results(
-        log_file,
-        scaffold_name,
-        executor_model_spec,
-        input_string,
-        timestamp,
-        stdout="".join(lines["stdout"]),
-        stderr="".join(lines["stderr"]),
-    )
-
-    # Check if process failed
-    if process.returncode != 0:
-        raise subprocess.CalledProcessError(process.returncode, docker_cmd)
 
 
 def run_scaffold(
@@ -349,46 +49,30 @@ def run_scaffold(
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # Resolve executor specification
-    model_spec = LLMFactory.resolve_model_spec(model_spec)
-
-    log_file = logs_dir / f"{timestamp}.log"
-
-    # Build Docker command
-    docker_cmd = _build_docker_command(
-        scaffold_dir,
-        logs_dir,
-        scaffold_name,
-        timestamp,
-        model_spec,
-        log_level,
-    )
-
-    # Add Python script to execute
-    python_script = _generate_python_script(
-        scaffold_name, input_string, model_spec, log_level, timestamp
-    )
-    docker_cmd.extend(["python", "-c", python_script])
+    log_file_path = logs_dir / f"{timestamp}.log"
 
     print(f"Running scaffold '{scaffold_name}' with executor {model_spec}")
-    print(f"Logs will be saved to: {log_file}")
+    print(f"Scaffold directory: {scaffold_dir}")
+    print(f"Logs will be saved to: {log_file_path}")
 
-    # Execute based on model type
-    execute_scaffold_fn = (
-        _execute_human_scaffold
-        if model_spec == "human/human"
-        else _execute_llm_scaffold
-    )
-    execute_scaffold_fn(
-        docker_cmd,
-        timeout,
-        log_file,
-        scaffold_name,
-        model_spec,
-        input_string,
-        timestamp,
-    )
+    # Execute the scaffold and handle errors
+    try:
+        result = execute_scaffold(
+            scaffold_dir=scaffold_dir,
+            log_file_path=log_file_path,
+            input_string=input_string,
+            model_spec=model_spec,
+            timeout=timeout or 120,
+            console_output=True,
+        )
+        
+        # Handle errors from scaffold execution
+        if result.error_message:
+            raise RuntimeError(result.error_message)
+            
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _parse_args() -> argparse.Namespace:
