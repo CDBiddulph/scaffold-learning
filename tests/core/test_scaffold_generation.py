@@ -117,6 +117,13 @@ Use the examples above.""",
             pytest.param(
                 "generate_scaffold",
                 {
+                    "examples": [
+                        DatasetExample(
+                            id="0-1-2-3",
+                            input="test",
+                            scoring_data={"solution": "test"},
+                        )
+                    ],
                     "llm_response": """Some explanation text
 
 ```python
@@ -131,6 +138,28 @@ More explanation""",
     return "result\"""",
                 },
                 id="generate_scaffold_extracts_code_from_markdown",
+            ),
+            pytest.param(
+                "generate_scaffold",
+                {
+                    "task_description": "solve crossword clues",
+                    "llm_response": """```python
+def process_input(input_string: str) -> str:
+    return "ANSWER"
+```""",
+                    "expected_code": 'def process_input(input_string: str) -> str:\n    return "ANSWER"',
+                    "expected_prompt": """<timeout>120</timeout>
+
+
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+
+The scaffold should do the following task: solve crossword clues""",
+                },
+                id="generate_scaffold_with_task_description",
             ),
             pytest.param(
                 "evolve_scaffold",
@@ -181,6 +210,72 @@ Improve the existing scaffold.""",
                 },
                 id="evolve_scaffold_correct_prompt",
             ),
+            pytest.param(
+                "evolve_scaffold",
+                {
+                    "llm_response": """```python
+def process_input(input_string: str) -> str:
+    return "CORRECT"
+```""",
+                    "run_data": [
+                        ScaffoldRunData(
+                            code='def process_input(input_string: str) -> str:\n    return "WRONG1"',
+                            execution_log="Log 1",
+                            example=DatasetExample(
+                                id="1",
+                                input="First clue",
+                                scoring_data={"solution": "FIRST"},
+                            ),
+                            actual_output="WRONG1",
+                            score=0.0,
+                        ),
+                        ScaffoldRunData(
+                            code='def process_input(input_string: str) -> str:\n    return "WRONG2"',
+                            execution_log="Log 2",
+                            example=DatasetExample(
+                                id="2",
+                                input="Second clue",
+                                scoring_data={"solution": "SECOND"},
+                            ),
+                            actual_output="WRONG2",
+                            score=0.5,
+                        ),
+                    ],
+                    "expected_code": 'def process_input(input_string: str) -> str:\n    return "CORRECT"',
+                    "expected_prompt": """<code>```python
+def process_input(input_string: str) -> str:
+    return "WRONG1"
+```</code>
+<timeout>120</timeout>
+<example-1>
+    <input>First clue</input>
+    <expected_output>FIRST</expected_output>
+    <actual_output>WRONG1</actual_output>
+    <execution_log>Log 1</execution_log>
+    <score>0.0</score>
+</example-1>
+<example-2>
+    <input>Second clue</input>
+    <expected_output>SECOND</expected_output>
+    <actual_output>WRONG2</actual_output>
+    <execution_log>Log 2</execution_log>
+    <score>0.5</score>
+</example-2>
+
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+- Evolution tip 1
+- Evolution tip 2
+
+Use the examples above.
+
+Improve the existing scaffold.""",
+                },
+                id="evolve_scaffold_with_multiple_run_data",
+            ),
         ],
     )
     def test_scaffold_generation(self, method, test_case):
@@ -190,15 +285,21 @@ Improve the existing scaffold.""",
         mock_llm.generate_response.return_value = llm_response
 
         if method == "generate_scaffold":
-            examples = test_case.get(
-                "examples",
-                [
+            task_description = test_case.get("task_description", None)
+            # Only provide default examples if no task_description is provided
+            if task_description is not None:
+                default_examples = None
+            else:
+                default_examples = [
                     DatasetExample(
                         id="0-1-2-3",
                         input="test",
                         scoring_data={"solution": "test"},
                     )
-                ],
+                ]
+            examples = test_case.get(
+                "examples",
+                default_examples,
             )
 
         # Check that the error is raised if expected
@@ -207,6 +308,7 @@ Improve the existing scaffold.""",
                 if method == "generate_scaffold":
                     generate_scaffold(
                         examples=examples,
+                        task_description=task_description,
                         scaffolder_llm=mock_llm,
                         iteration=0,
                     )
@@ -222,6 +324,7 @@ Improve the existing scaffold.""",
         if method == "generate_scaffold":
             result = generate_scaffold(
                 examples=examples,
+                task_description=task_description,
                 scaffolder_llm=mock_llm,
                 iteration=0,
             )

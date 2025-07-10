@@ -5,9 +5,10 @@ import json
 from pathlib import Path
 from datetime import datetime
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
+from scaffold_learning.core.experiment_files import ExperimentFileManager
 
 
-def build_docker_command(
+def _build_docker_command(
     scaffold_dir: Path, logs_dir: Path, executor_model_spec: str, timeout: int
 ) -> list[str]:
     """Build the Docker command with all necessary flags and environment variables."""
@@ -50,7 +51,7 @@ def build_docker_command(
     return docker_cmd
 
 
-def generate_python_script(
+def _generate_python_script(
     input_string: str,
     executor_model_spec: str,
     timestamp: str,
@@ -104,76 +105,83 @@ except Exception as e:
 """
 
 
-def save_execution_log(
-    logs_path: Path,
+def create_execution_log(
     input_string: str,
     model: str,
     timestamp: str,
     output: str = None,
     stderr: str = None,
-    exit_code: int = None,
     execution_time: float = None,
     error_message: str = None,
-) -> None:
-    """Save execution log in a unified format."""
-    logs_path.parent.mkdir(parents=True, exist_ok=True)
+) -> str:
+    """Create execution log content in a unified format."""
+    log_content = "=== Scaffold Execution Log ===\n"
+    log_content += f"Model: {model}\n"
+    log_content += f"Timestamp: {timestamp}\n"
+    if error_message:
+        log_content += f"Error: {error_message}\n"
+    log_content += f"Execution Time: {execution_time:.2f}s\n"
+    log_content += "\n--- Input ---\n"
+    log_content += input_string
+    log_content += "\n\n--- Output ---\n"
+    log_content += output or ""
+    log_content += "\n\n--- Error Output ---\n"
+    log_content += stderr or ""
 
-    with open(logs_path, "w") as f:
-        f.write("=== Scaffold Execution Log ===\n")
-        f.write(f"Model: {model}\n")
-        f.write(f"Timestamp: {timestamp}\n")
-        if error_message:
-            f.write(f"Error: {error_message}\n")
-        f.write(f"Exit Code: {exit_code}\n")
-        f.write(f"Execution Time: {execution_time:.2f}s\n")
-        f.write("\n--- Input ---\n")
-        f.write(input_string)
-        f.write("\n\n--- Output ---\n")
-        f.write(output or "")
-        f.write("\n\n--- Error Output ---\n")
-        f.write(stderr or "")
+    return log_content
 
 
 def execute_scaffold(
-    scaffold_dir: Path,
+    file_manager: ExperimentFileManager,
+    scaffold_id: str,
+    iteration: int,
+    run_type: str,
     input_string: str,
     model: str,
-    logs_path: Path,
-    timeout: int = 120,  # TODO: make this configurable
+    timeout: int = 120,
 ) -> ScaffoldExecutionResult:
     """Execute a scaffold in a Docker container with the given input.
 
     Args:
-        scaffold_dir: Path to directory containing scaffold.py and related files
+        file_manager: ExperimentFileManager instance for path resolution
+        scaffold_id: Scaffold identifier to execute
+        iteration: Iteration number for logging
+        run_type: Type of run (e.g., 'train', 'valid')
         input_string: Input to pass to the scaffold's process_input function
         model: Model name for the executor LLM
-        logs_path: Path where execution logs should be saved
         timeout: Maximum execution time in seconds
 
     Returns:
         ScaffoldExecutionResult with output, stderr, exit code, and execution time
     """
+    # Get scaffold directory for Docker mounting
+    scaffold_dir = file_manager.get_docker_scaffold_dir(scaffold_id)
+    logs_dir = file_manager.get_docker_logs_dir(iteration, scaffold_id)
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Build Docker command
-    docker_cmd = build_docker_command(
+    docker_cmd = _build_docker_command(
         scaffold_dir=scaffold_dir,
-        logs_dir=logs_path.parent,
+        logs_dir=logs_dir,
         executor_model_spec=model,
         timeout=timeout,
     )
 
     # Generate Python script to run in container
-    python_script = generate_python_script(
+    python_script = _generate_python_script(
         input_string=input_string, executor_model_spec=model, timestamp=timestamp
     )
 
     # Add the Python script as the command to run
     docker_cmd.extend(["python", "-c", python_script])
 
+    error_message = None
+
     # Execute the scaffold
     start_time = time.time()
 
+    # TODO: I'm not sure usage of stderr and error_message are ideal
     try:
         process = subprocess.Popen(
             docker_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -181,35 +189,36 @@ def execute_scaffold(
 
         stdout, stderr = process.communicate(timeout=timeout)
         exit_code = process.returncode
+        if exit_code != 0:
+            error_message = f"Scaffold error (exit code {exit_code}):\n{stderr}"
 
-    except subprocess.TimeoutExpired:
-        process.kill()
-        stdout, stderr = process.communicate()
-        exit_code = 124  # Standard timeout exit code
-        stderr = stderr + "\nProcess killed due to timeout"
     except Exception as e:
-        stdout = ""
-        stderr = f"Execution error: {str(e)}"
-        exit_code = 1
+        raise RuntimeError(f"Error from Docker when executing scaffold: {e}") from e
 
     end_time = time.time()
     execution_time = end_time - start_time
 
-    # Save execution log
-    save_execution_log(
-        logs_path=logs_path,
+    # Save execution log through file manager
+    log_content = create_execution_log(
         input_string=input_string,
         model=model,
         timestamp=timestamp,
         output=stdout,
         stderr=stderr,
-        exit_code=exit_code,
         execution_time=execution_time,
+        error_message=error_message,
+    )
+
+    run_id = file_manager.save_execution_log(
+        iteration=iteration,
+        scaffold_id=scaffold_id,
+        run_type=run_type,
+        log_content=log_content,
     )
 
     return ScaffoldExecutionResult(
         output=stdout.strip() if stdout else "",
         stderr=stderr.strip() if stderr else "",
-        exit_code=exit_code,
+        error_message=error_message,
         execution_time=execution_time,
     )

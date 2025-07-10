@@ -99,21 +99,21 @@ class ExperimentRunner:
         self.logger.info(f"Initialized experiment: {experiment_name}")
         self.logger.info(f"Random seed: {metadata['random_seed']}")
 
-    def run(self) -> Tuple[Optional[Path], float]:
+    def run(self) -> Tuple[Optional[str], float]:
         """Run the complete experiment.
 
         Creates initial scaffolds, runs iterations of evaluation and evolution,
         and returns the best performing scaffold.
 
         Returns:
-            Tuple of (best_scaffold_path, best_score)
+            Tuple of (best_scaffold_id, best_score)
         """
         self.logger.info("Starting experiment run")
 
         self.logger.info("Creating initial scaffolds for iteration 0")
         self._create_initial_scaffolds()
 
-        best_path = None
+        best_scaffold_id = None
         best_score = -1.0
 
         # Run iterations
@@ -127,12 +127,12 @@ class ExperimentRunner:
             )
 
             # Find best scaffold from current iteration scores
-            iter_best_path, iter_best_score = self._find_best_scaffold_from_scores(
-                iteration, validation_scores
+            iter_best_scaffold_id, iter_best_score = (
+                self._find_best_scaffold_from_scores(iteration, validation_scores)
             )
             if iter_best_score > best_score:
                 best_score = iter_best_score
-                best_path = iter_best_path
+                best_scaffold_id = iter_best_scaffold_id
 
             # Save scores and log results
             self.file_manager.save_scores(
@@ -142,13 +142,13 @@ class ExperimentRunner:
             )
             self._log_iteration_results(iteration, validation_scores)
 
-        if best_path is None:
+        if best_scaffold_id is None:
             self.logger.warning("No scaffolds were scored during the experiment.")
         else:
             self.logger.info(
-                f"Experiment complete. Best scaffold: {best_path} (score: {best_score:.3f})"
+                f"Experiment complete. Best scaffold: {best_scaffold_id} (score: {best_score:.3f})"
             )
-        return best_path, best_score
+        return best_scaffold_id, best_score
 
     def _sample_validation_examples(self) -> List[DatasetExample]:
         """Sample validation examples for consistent evaluation within an iteration."""
@@ -172,7 +172,7 @@ class ExperimentRunner:
             Tuple of (training_scores, validation_scores) - dictionaries mapping scaffold_id to score
         """
         # Get most recent validation scores for ranking
-        most_recent_scores = self._get_most_recent_validation_scores(iteration)
+        most_recent_scores = self.file_manager.get_most_recent_validation_scores()
 
         # Select top scaffolds to evolve
         top_scaffold_ids, validation_scores = self._select_top_scaffolds(
@@ -198,54 +198,6 @@ class ExperimentRunner:
         self._evolve_scaffolds(iteration, top_scaffold_runs)
 
         return training_scores, validation_scores
-
-    def _get_most_recent_validation_scores(
-        self, current_iteration: int
-    ) -> Dict[str, Optional[float]]:
-        """Get the most recent validation scores for all scaffolds.
-
-        Precondition: we have not run scoring for this iteration yet.
-
-        Args:
-            current_iteration: Current iteration number. We will look at
-            all iterations up to and including this one.
-
-        Returns:
-            Dictionary mapping scaffold_id to most recent validation score (None if never validated)
-        """
-        most_recent_scores = {}
-
-        # Test the precondition: there are no scores for this iteration
-        try:
-            scores_data = self.file_manager.load_scores(current_iteration)
-            raise RuntimeError(
-                f"Current iteration {current_iteration} should not have scores yet"
-            )
-        except FileNotFoundError:
-            # This is expected
-            pass
-
-        # Collect all scaffolds from all previous iterations
-        for iteration in range(current_iteration):
-            # Find scaffolds created in this iteration
-            scaffold_ids = self.file_manager.list_scaffolds(iteration)
-            for scaffold_id in scaffold_ids:
-                most_recent_scores[scaffold_id] = None  # Default to never validated
-
-            # Update with validation scores if they exist
-            try:
-                scores_data = self.file_manager.load_scores(iteration)
-                for scaffold_id, score_data in scores_data["valid"].items():
-                    most_recent_scores[scaffold_id] = score_data["mean_score"]
-            except FileNotFoundError:
-                # No scores file - this is expected for iteration 0
-                if iteration != 0:
-                    raise RuntimeError(
-                        f"Missing scores file for iteration {iteration}. "
-                        "All iterations except 0 should have validation scores."
-                    )
-
-        return most_recent_scores
 
     def _select_top_scaffolds(
         self,
@@ -332,18 +284,6 @@ class ExperimentRunner:
         current_scaffold_ids = []
 
         for parent_id, run_data_list in top_scaffold_runs.items():
-            # Copy to old directory
-            # TODO: consider moving some of this logic into the file manager
-            parent_iteration = self.file_manager.find_scaffold_iteration(parent_id)
-            parent_path = self.file_manager.get_scaffold_path(
-                parent_iteration, parent_id
-            )
-            self.file_manager.copy_scaffold(
-                from_path=parent_path,
-                to_iteration=iteration,
-                to_scaffold_id=parent_id,
-            )
-
             evolved_result = evolve_scaffold(
                 run_data=run_data_list,
                 scaffolder_llm=self.scaffolder_llm,
@@ -354,7 +294,6 @@ class ExperimentRunner:
             # Save evolved scaffold
             new_scaffold_id = self._get_next_scaffold_id(parent_id)
             self.file_manager.save_scaffold(
-                iteration=iteration,
                 scaffold_id=new_scaffold_id,
                 result=evolved_result,
             )
@@ -370,7 +309,7 @@ class ExperimentRunner:
         self,
         iteration: int,
         scores: Dict[str, Dict[str, Any]],
-    ) -> Tuple[Optional[Path], float]:
+    ) -> Tuple[Optional[str], float]:
         """Find the best scaffold from current iteration scores.
 
         Args:
@@ -378,31 +317,18 @@ class ExperimentRunner:
             scores: Dictionary mapping scaffold_id to score data dict
 
         Returns:
-            Tuple of (best_scaffold_path, best_score) from this iteration
+            Tuple of (best_scaffold_id, best_score) from this iteration
         """
-        best_path = None
+        best_scaffold_id = None
         best_score = -1.0
 
         for scaffold_id, score_data in scores.items():
             score = score_data["mean_score"]
             if score > best_score:
                 best_score = score
-                # Check if scaffold exists in current iteration, otherwise find its source iteration
-                scaffold_path = self.file_manager.get_scaffold_path(
-                    iteration, scaffold_id
-                )
-                if not scaffold_path.exists():
-                    # Find the scaffold in previous iterations
-                    for prev_iter in range(iteration):
-                        prev_path = self.file_manager.get_scaffold_path(
-                            prev_iter, scaffold_id
-                        )
-                        if prev_path.exists():
-                            scaffold_path = prev_path
-                            break
-                best_path = scaffold_path
+                best_scaffold_id = scaffold_id
 
-        return best_path, best_score
+        return best_scaffold_id, best_score
 
     def _log_iteration_results(
         self, iteration: int, validation_scores: Dict[str, Dict[str, Any]]
@@ -466,9 +392,7 @@ class ExperimentRunner:
             )
 
             # Save scaffold
-            self.file_manager.save_scaffold(
-                iteration=0, scaffold_id=scaffold_id, result=result
-            )
+            self.file_manager.save_scaffold(scaffold_id=scaffold_id, result=result)
 
             scaffold_ids.append(scaffold_id)
             self.logger.info(f"Created initial scaffold {scaffold_id}")
@@ -491,35 +415,29 @@ class ExperimentRunner:
         Returns:
             List of scores, in order of validation_examples
         """
-        # Get scaffold from its source iteration
-        source_iteration = self.file_manager.find_scaffold_iteration(scaffold_id)
-        scaffold_path = self.file_manager.get_scaffold_path(
-            source_iteration, scaffold_id
-        )
-
         scores = []
 
-        for example_idx, example in enumerate(validation_examples):
-            # Get logs path with example index to avoid overwriting
-            logs_path = self.file_manager.get_logs_path(
-                iteration, scaffold_id, f"valid_{example_idx}"
-            )
-
+        for example in validation_examples:
             # Execute scaffold
             result = execute_scaffold(
-                scaffold_dir=scaffold_path,
+                file_manager=self.file_manager,
+                scaffold_id=scaffold_id,
+                iteration=iteration,
+                run_type=f"valid",
                 input_string=example.input,
                 model=self.executor_model,
-                logs_path=logs_path,
             )
 
             # Calculate score
-            if result.exit_code == 0:
+            if result.error_message is None:
                 expected = example.scoring_data.get(
                     "solution", str(example.scoring_data)
                 )
                 score = self.scoring_function(expected, {"solution": result.output})
             else:
+                logging.warning(
+                    f"Scaffold {scaffold_id} failed to execute: {result.error_message}"
+                )
                 score = 0.0  # Failed execution gets 0 score
 
             scores.append(score)
@@ -570,33 +488,22 @@ class ExperimentRunner:
         training_runs = {}
         for scaffold_id, examples in examples_by_scaffold.items():
             training_runs[scaffold_id] = []
-            for i, example in enumerate(examples):
-                # Load scaffold from its source iteration
-                source_iteration = self.file_manager.find_scaffold_iteration(
-                    scaffold_id
-                )
-                scaffold_result = self.file_manager.load_scaffold(
-                    source_iteration, scaffold_id
-                )
-                scaffold_path = self.file_manager.get_scaffold_path(
-                    source_iteration, scaffold_id
-                )
-
-                # Get logs path
-                logs_path = self.file_manager.get_logs_path(
-                    iteration, scaffold_id, f"train_{i}"
-                )
+            for example in examples:
+                # Load scaffold to get code for ScaffoldRunData
+                scaffold_result = self.file_manager.load_scaffold(scaffold_id)
 
                 # Execute scaffold
                 execution_result = execute_scaffold(
-                    scaffold_dir=scaffold_path,
+                    file_manager=self.file_manager,
+                    scaffold_id=scaffold_id,
+                    iteration=iteration,
+                    run_type=f"train",
                     input_string=example.input,
                     model=self.executor_model,
-                    logs_path=logs_path,
                 )
 
                 # Calculate score
-                if execution_result.exit_code == 0:
+                if execution_result.error_message is None:
                     expected = example.scoring_data.get(
                         "solution", str(example.scoring_data)
                     )
@@ -606,13 +513,10 @@ class ExperimentRunner:
                 else:
                     score = 0.0
 
-                # Read execution log
-                execution_log = logs_path.read_text()
-
                 training_runs[scaffold_id].append(
                     ScaffoldRunData(
                         code=scaffold_result.code,
-                        execution_log=execution_log,
+                        execution_log=execution_result.stderr,
                         example=example,
                         actual_output=execution_result.output,
                         score=score,

@@ -5,28 +5,49 @@ import tempfile
 import json
 from scaffold_learning.core.scaffold_execution import execute_scaffold
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
+from scaffold_learning.core.experiment_files import ExperimentFileManager
+from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata
 
 
 class TestScaffoldExecution:
+    def create_test_scaffold(self, temp_dir: str, scaffold_id: str = "test-scaffold"):
+        """Helper to create a test scaffold and file manager."""
+        experiment_dir = Path(temp_dir) / "experiment"
+        file_manager = ExperimentFileManager(experiment_dir)
+
+        metadata = ScaffoldMetadata(
+            created_at="2024-01-01T12:00:00",
+            parent_scaffold_id=None,
+            iteration=0,
+        )
+        scaffold_result = ScaffoldResult(
+            code="def process_input(s): return s", metadata=metadata
+        )
+        file_manager.save_scaffold(scaffold_id=scaffold_id, result=scaffold_result)
+
+        return file_manager
+
     def test_execute_scaffold_success(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            scaffold_dir = Path(temp_dir) / "scaffold"
-            logs_path = Path(temp_dir) / "logs"
+            experiment_dir = Path(temp_dir) / "experiment"
+            file_manager = ExperimentFileManager(experiment_dir)
 
-            # Create scaffold directory with files
-            scaffold_dir.mkdir()
-            logs_path.mkdir()
-
-            # Create a basic scaffold.py
-            (scaffold_dir / "scaffold.py").write_text(
-                """
+            # Create and save a scaffold
+            metadata = ScaffoldMetadata(
+                created_at="2024-01-01T12:00:00",
+                parent_scaffold_id=None,
+                iteration=0,
+            )
+            scaffold_result = ScaffoldResult(
+                code="""
 def process_input(input_string: str) -> str:
     return f"processed: {input_string}"
-"""
+""",
+                metadata=metadata,
             )
-
-            # Create metadata.json
-            (scaffold_dir / "metadata.json").write_text('{"model": "test"}')
+            file_manager.save_scaffold(
+                scaffold_id="test-scaffold", result=scaffold_result
+            )
 
             # Mock subprocess to simulate successful execution
             with patch("subprocess.Popen") as mock_popen:
@@ -38,51 +59,80 @@ def process_input(input_string: str) -> str:
                 # Mock time.time for execution timing
                 with patch("time.time", side_effect=[0.0, 1.5]):
                     result = execute_scaffold(
-                        scaffold_dir=scaffold_dir,
+                        file_manager=file_manager,
+                        scaffold_id="test-scaffold",
+                        iteration=0,
+                        run_type="train",
                         input_string="test input",
                         model="test-model",
-                        logs_path=logs_path / "test.log",
                         timeout=120,
                     )
 
                 assert isinstance(result, ScaffoldExecutionResult)
                 assert result.output == "result output"
                 assert result.stderr == ""
-                assert result.exit_code == 0
+                assert result.error_message is None
                 assert result.execution_time == 1.5
 
     def test_execute_scaffold_with_timeout(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            scaffold_dir = Path(temp_dir) / "scaffold"
-            logs_path = Path(temp_dir) / "logs"
-            scaffold_dir.mkdir()
-            logs_path.mkdir()
+            experiment_dir = Path(temp_dir) / "experiment"
+            file_manager = ExperimentFileManager(experiment_dir)
+
+            # Create and save a scaffold
+            metadata = ScaffoldMetadata(
+                created_at="2024-01-01T12:00:00",
+                parent_scaffold_id=None,
+                iteration=0,
+            )
+            scaffold_result = ScaffoldResult(
+                code="def process_input(s): return s", metadata=metadata
+            )
+            file_manager.save_scaffold(
+                scaffold_id="test-scaffold", result=scaffold_result
+            )
 
             # Mock subprocess that hangs
             with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
-                mock_process.communicate.side_effect = [("", "Timeout error")]
+                mock_process.communicate.return_value = ("", "Timeout error")
                 mock_process.returncode = 124  # Timeout exit code
                 mock_popen.return_value = mock_process
 
                 with patch("time.time", side_effect=[0.0, 120.5]):
                     result = execute_scaffold(
-                        scaffold_dir=scaffold_dir,
+                        file_manager=file_manager,
+                        scaffold_id="test-scaffold",
+                        iteration=0,
+                        run_type="train",
                         input_string="test input",
                         model="test-model",
-                        logs_path=logs_path / "test.log",
                         timeout=60,
                     )
 
-                assert result.exit_code == 124
+                assert (
+                    result.error_message
+                    == "Scaffold error (exit code 124):\nTimeout error"
+                )
                 assert result.execution_time == 120.5
 
     def test_execute_scaffold_with_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            scaffold_dir = Path(temp_dir) / "scaffold"
-            logs_path = Path(temp_dir) / "logs"
-            scaffold_dir.mkdir()
-            logs_path.mkdir()
+            experiment_dir = Path(temp_dir) / "experiment"
+            file_manager = ExperimentFileManager(experiment_dir)
+
+            # Create and save a scaffold
+            metadata = ScaffoldMetadata(
+                created_at="2024-01-01T12:00:00",
+                parent_scaffold_id=None,
+                iteration=0,
+            )
+            scaffold_result = ScaffoldResult(
+                code="def process_input(s): return s", metadata=metadata
+            )
+            file_manager.save_scaffold(
+                scaffold_id="test-scaffold", result=scaffold_result
+            )
 
             with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
@@ -92,22 +142,24 @@ def process_input(input_string: str) -> str:
 
                 with patch("time.time", side_effect=[0.0, 0.5]):
                     result = execute_scaffold(
-                        scaffold_dir=scaffold_dir,
+                        file_manager=file_manager,
+                        scaffold_id="test-scaffold",
+                        iteration=0,
+                        run_type="train",
                         input_string="test input",
                         model="test-model",
-                        logs_path=logs_path / "test.log",
                     )
 
-                assert result.exit_code == 1
+                assert (
+                    result.error_message
+                    == "Scaffold error (exit code 1):\nError: syntax error"
+                )
                 assert result.stderr == "Error: syntax error"
                 assert result.execution_time == 0.5
 
     def test_execute_scaffold_docker_command_construction(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            scaffold_dir = Path(temp_dir) / "scaffold"
-            logs_path = Path(temp_dir) / "logs"
-            scaffold_dir.mkdir()
-            logs_path.mkdir()
+            file_manager = self.create_test_scaffold(temp_dir)
 
             with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
@@ -117,10 +169,12 @@ def process_input(input_string: str) -> str:
 
                 with patch("time.time", side_effect=[0.0, 1.0]):
                     execute_scaffold(
-                        scaffold_dir=scaffold_dir,
+                        file_manager=file_manager,
+                        scaffold_id="test-scaffold",
+                        iteration=0,
+                        run_type="train",
                         input_string="test input",
                         model="gpt-4o",
-                        logs_path=logs_path / "test.log",
                         timeout=300,
                     )
 
@@ -129,17 +183,15 @@ def process_input(input_string: str) -> str:
                 assert "docker" in call_args
                 assert "run" in call_args
                 assert "--rm" in call_args
-                assert f"{scaffold_dir.absolute()}:/workspace/scaffold:ro" in " ".join(
-                    call_args
-                )
-                assert f"{logs_path.absolute()}:/workspace/logs" in " ".join(call_args)
+
+                # Check that volumes are mounted correctly
+                command_str = " ".join(call_args)
+                assert "/workspace/scaffold:ro" in command_str
+                assert "/workspace/logs" in command_str
 
     def test_execute_scaffold_logs_saved_correctly(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            scaffold_dir = Path(temp_dir) / "scaffold"
-            logs_path = Path(temp_dir) / "logs" / "execution.log"
-            scaffold_dir.mkdir()
-            logs_path.parent.mkdir()
+            file_manager = self.create_test_scaffold(temp_dir)
 
             with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
@@ -149,25 +201,31 @@ def process_input(input_string: str) -> str:
 
                 with patch("time.time", side_effect=[0.0, 2.0]):
                     result = execute_scaffold(
-                        scaffold_dir=scaffold_dir,
+                        file_manager=file_manager,
+                        scaffold_id="test-scaffold",
+                        iteration=0,
+                        run_type="train",
                         input_string="test input",
                         model="test-model",
-                        logs_path=logs_path,
                     )
 
-                # Check that logs were saved correctly
-                assert logs_path.exists()
-                log_content = logs_path.read_text()
+                # Check that log files were created in the correct directory
+                logs_dir = (
+                    Path(temp_dir) / "experiment" / "logs" / "0" / "test-scaffold"
+                )
+                assert logs_dir.exists()
+                log_files = list(logs_dir.glob("*.log"))
+                assert len(log_files) == 1
+
+                log_content = log_files[0].read_text()
                 assert "test input" in log_content
                 assert "test output" in log_content
                 assert "test stderr" in log_content
+                assert "test-model" in log_content
 
     def test_execute_scaffold_environment_variables(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            scaffold_dir = Path(temp_dir) / "scaffold"
-            logs_path = Path(temp_dir) / "logs"
-            scaffold_dir.mkdir()
-            logs_path.mkdir()
+            file_manager = self.create_test_scaffold(temp_dir)
 
             with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
@@ -179,10 +237,12 @@ def process_input(input_string: str) -> str:
                 with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
                     with patch("time.time", side_effect=[0.0, 1.0]):
                         result = execute_scaffold(
-                            scaffold_dir=scaffold_dir,
+                            file_manager=file_manager,
+                            scaffold_id="test-scaffold",
+                            iteration=0,
+                            run_type="train",
                             input_string="test input",
                             model="test-model",
-                            logs_path=logs_path / "test.log",
                         )
 
                 # Check environment was passed to Docker
@@ -192,10 +252,7 @@ def process_input(input_string: str) -> str:
 
     def test_execute_scaffold_custom_timeout(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            scaffold_dir = Path(temp_dir) / "scaffold"
-            logs_path = Path(temp_dir) / "logs"
-            scaffold_dir.mkdir()
-            logs_path.mkdir()
+            file_manager = self.create_test_scaffold(temp_dir)
 
             with patch("subprocess.Popen") as mock_popen:
                 mock_process = Mock()
@@ -205,10 +262,12 @@ def process_input(input_string: str) -> str:
 
                 with patch("time.time", side_effect=[0.0, 1.0]):
                     result = execute_scaffold(
-                        scaffold_dir=scaffold_dir,
+                        file_manager=file_manager,
+                        scaffold_id="test-scaffold",
+                        iteration=0,
+                        run_type="train",
                         input_string="test input",
                         model="test-model",
-                        logs_path=logs_path / "test.log",
                         timeout=600,  # 10 minutes
                     )
 

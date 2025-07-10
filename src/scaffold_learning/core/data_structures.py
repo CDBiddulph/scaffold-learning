@@ -98,14 +98,14 @@ class ScaffoldExecutionResult:
     Attributes:
         output: Standard output from the scaffold
         stderr: Standard error output
-        exit_code: Process exit code (0 for success)
+        error_message: Error message from the scaffold execution
         execution_time: Time taken in seconds
     """
 
     output: str
     stderr: str
-    exit_code: int
     execution_time: float
+    error_message: Optional[str] = None
 
 
 @dataclass

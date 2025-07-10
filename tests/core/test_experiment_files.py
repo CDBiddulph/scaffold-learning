@@ -14,7 +14,9 @@ class TestExperimentFileManager:
             manager = ExperimentFileManager(experiment_dir)
 
             assert experiment_dir.exists()
-            assert (experiment_dir / "iterations").exists()
+            assert (experiment_dir / "scaffolds").exists()
+            assert (experiment_dir / "logs").exists()
+            assert (experiment_dir / "scoring").exists()
 
     def test_save_experiment_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -31,29 +33,24 @@ class TestExperimentFileManager:
                 saved_data = json.load(f)
             assert saved_data == metadata
 
-    def test_save_scaffold_iteration_0(self):
+    def test_save_scaffold(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
             metadata = ScaffoldMetadata(
                 created_at="2024-01-01T12:00:00",
-                                parent_scaffold_id=None,
+                parent_scaffold_id=None,
                 iteration=0,
             )
             result = ScaffoldResult(
                 code="def process_input(s):\n    return s.upper()", metadata=metadata
             )
 
-            scaffold_path = manager.save_scaffold(
-                iteration=0, scaffold_id="0", result=result
-            )
+            manager.save_scaffold(scaffold_id="0", result=result)
 
-            # Check directory structure for iteration 0
-            expected_path = (
-                experiment_dir / "iterations" / "0" / "scaffolds" / "new" / "0"
-            )
-            assert scaffold_path == expected_path
+            # Check directory structure - flat structure
+            scaffold_path = experiment_dir / "scaffolds" / "0"
             assert scaffold_path.exists()
 
             # Check files exist
@@ -67,29 +64,24 @@ class TestExperimentFileManager:
                 saved_metadata = json.load(f)
             assert saved_metadata == metadata.to_dict()
 
-    def test_save_scaffold_iteration_1_new(self):
+    def test_save_evolved_scaffold(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
             metadata = ScaffoldMetadata(
                 created_at="2024-01-01T12:00:00",
-                                parent_scaffold_id="0",
+                parent_scaffold_id="0",
                 iteration=1,
             )
             result = ScaffoldResult(
                 code="def process_input(s):\n    return s.lower()", metadata=metadata
             )
 
-            scaffold_path = manager.save_scaffold(
-                iteration=1, scaffold_id="0-0", result=result
-            )
+            manager.save_scaffold(scaffold_id="0-0", result=result)
 
-            # Check directory structure for iteration 1+
-            expected_path = (
-                experiment_dir / "iterations" / "1" / "scaffolds" / "new" / "0-0"
-            )
-            assert scaffold_path == expected_path
+            # Check directory structure - still flat
+            scaffold_path = experiment_dir / "scaffolds" / "0-0"
             assert scaffold_path.exists()
 
     def test_load_scaffold(self):
@@ -100,17 +92,17 @@ class TestExperimentFileManager:
             # First save a scaffold
             metadata = ScaffoldMetadata(
                 created_at="2024-01-01T12:00:00",
-                                parent_scaffold_id=None,
+                parent_scaffold_id=None,
                 iteration=0,
             )
             original_result = ScaffoldResult(
                 code="def process_input(s):\n    return s.upper()", metadata=metadata
             )
 
-            manager.save_scaffold(iteration=0, scaffold_id="0", result=original_result)
+            manager.save_scaffold(scaffold_id="0", result=original_result)
 
             # Now load it back
-            loaded_result = manager.load_scaffold(iteration=0, scaffold_id="0")
+            loaded_result = manager.load_scaffold(scaffold_id="0")
 
             assert loaded_result.code == original_result.code
             assert loaded_result.metadata.created_at == metadata.created_at
@@ -119,52 +111,44 @@ class TestExperimentFileManager:
             )
             assert loaded_result.metadata.iteration == metadata.iteration
 
-    def test_get_scaffold_path(self):
+    def test_get_docker_scaffold_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            # Test iteration 0
-            path_0 = manager.get_scaffold_path(iteration=0, scaffold_id="0")
-            expected_0 = experiment_dir / "iterations" / "0" / "scaffolds" / "new" / "0"
-            assert path_0 == expected_0
-
-            # Test iteration 1+
-            path_1 = manager.get_scaffold_path(iteration=1, scaffold_id="0-0")
-            expected_1 = (
-                experiment_dir / "iterations" / "1" / "scaffolds" / "new" / "0-0"
+            # Create a scaffold first
+            metadata = ScaffoldMetadata(
+                created_at="2024-01-01T12:00:00",
+                parent_scaffold_id=None,
+                iteration=0,
             )
-            assert path_1 == expected_1
+            result = ScaffoldResult(
+                code="def process_input(s): return s", metadata=metadata
+            )
+            manager.save_scaffold(scaffold_id="0", result=result)
 
-    def test_copy_scaffold(self):
+            # Test getting Docker path
+            docker_path = manager.get_docker_scaffold_dir("0")
+            expected = experiment_dir / "scaffolds" / "0"
+            assert docker_path == expected.absolute()
+            assert docker_path.exists()
+
+            # Test nonexistent scaffold
+            with pytest.raises(FileNotFoundError):
+                manager.get_docker_scaffold_dir("nonexistent")
+
+    def test_get_docker_logs_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            # Create source scaffold
-            source_dir = experiment_dir / "iterations" / "0" / "scaffolds" / "new" / "0"
-            source_dir.mkdir(parents=True)
-            (source_dir / "scaffold.py").write_text("def process_input(s): return s")
-            (source_dir / "metadata.json").write_text('{"test": "data"}')
+            # Test getting Docker logs path
+            logs_dir = manager.get_docker_logs_dir(iteration=1, scaffold_id="0-0")
+            expected = experiment_dir / "logs" / "1" / "0-0"
+            assert logs_dir == expected.absolute()
 
-            # Copy to new location
-            target_path = manager.copy_scaffold(
-                from_path=source_dir, to_iteration=1, to_scaffold_id="0"
-            )
-
-            expected_target = (
-                experiment_dir / "iterations" / "1" / "scaffolds" / "old" / "0"
-            )
-            assert target_path == expected_target
-            assert target_path.exists()
-            assert (target_path / "scaffold.py").exists()
-            assert (target_path / "metadata.json").exists()
-
-            # Check content was copied
-            assert (
-                target_path / "scaffold.py"
-            ).read_text() == "def process_input(s): return s"
-            assert (target_path / "metadata.json").read_text() == '{"test": "data"}'
+            # Directory should be created
+            assert logs_dir.exists()
 
     def test_save_scores(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -173,18 +157,18 @@ class TestExperimentFileManager:
 
             train_scores = {
                 "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
-                "1": {"mean_score": 0.6, "scores": [0.6, 0.6]}
+                "1": {"mean_score": 0.6, "scores": [0.6, 0.6]},
             }
             valid_scores = {
                 "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
-                "1": {"mean_score": 0.65, "scores": [0.7, 0.6]}
+                "1": {"mean_score": 0.65, "scores": [0.7, 0.6]},
             }
 
             manager.save_scores(
                 iteration=1, train_scores=train_scores, valid_scores=valid_scores
             )
 
-            scoring_file = experiment_dir / "iterations" / "1" / "scoring.json"
+            scoring_file = experiment_dir / "scoring" / "scores_1.json"
             assert scoring_file.exists()
 
             with open(scoring_file) as f:
@@ -201,11 +185,11 @@ class TestExperimentFileManager:
             # Save scores first
             train_scores = {
                 "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
-                "1": {"mean_score": 0.6, "scores": [0.6, 0.6]}
+                "1": {"mean_score": 0.6, "scores": [0.6, 0.6]},
             }
             valid_scores = {
                 "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
-                "1": {"mean_score": 0.65, "scores": [0.7, 0.6]}
+                "1": {"mean_score": 0.65, "scores": [0.7, 0.6]},
             }
             manager.save_scores(1, train_scores, valid_scores)
 
@@ -215,28 +199,31 @@ class TestExperimentFileManager:
                 "valid": valid_scores,
             }
 
-    def test_get_logs_path(self):
+    def test_scaffold_flat_structure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            train_path = manager.get_logs_path(
-                iteration=1, scaffold_id="0-0", run_type="train"
-            )
+            # Save multiple scaffolds across iterations
+            for scaffold_id, iteration in [("0", 0), ("1", 0), ("0-0", 1), ("1-0", 1)]:
+                metadata = ScaffoldMetadata(
+                    created_at="2024-01-01T12:00:00",
+                    parent_scaffold_id=(
+                        scaffold_id.split("-")[0] if "-" in scaffold_id else None
+                    ),
+                    iteration=iteration,
+                )
+                result = ScaffoldResult(code="code", metadata=metadata)
+                manager.save_scaffold(scaffold_id=scaffold_id, result=result)
 
-            expected_train = (
-                experiment_dir / "iterations" / "1" / "logs" / "0-0" / "train.log"
-            )
-            assert train_path == expected_train
+            # All scaffolds should be in flat structure
+            assert (experiment_dir / "scaffolds" / "0").exists()
+            assert (experiment_dir / "scaffolds" / "1").exists()
+            assert (experiment_dir / "scaffolds" / "0-0").exists()
+            assert (experiment_dir / "scaffolds" / "1-0").exists()
 
-            valid_path = manager.get_logs_path(
-                iteration=1, scaffold_id="0-0", run_type="valid"
-            )
-
-            expected_valid = (
-                experiment_dir / "iterations" / "1" / "logs" / "0-0" / "valid.log"
-            )
-            assert valid_path == expected_valid
+            # No iteration-based directories
+            assert not (experiment_dir / "iterations").exists()
 
     def test_load_nonexistent_scaffold_raises_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -244,7 +231,7 @@ class TestExperimentFileManager:
             manager = ExperimentFileManager(experiment_dir)
 
             with pytest.raises(FileNotFoundError):
-                manager.load_scaffold(iteration=0, scaffold_id="nonexistent")
+                manager.load_scaffold(scaffold_id="nonexistent")
 
     def test_load_nonexistent_scores_raises_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -254,88 +241,70 @@ class TestExperimentFileManager:
             with pytest.raises(FileNotFoundError):
                 manager.load_scores(iteration=999)
 
-    def test_copy_preserves_all_support_files(self):
+    def test_scoring_new_location(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            # Create a complete scaffold
-            source_dir = experiment_dir / "iterations" / "0" / "scaffolds" / "new" / "0"
-            source_dir.mkdir(parents=True)
-            (source_dir / "scaffold.py").write_text("code")
-            (source_dir / "metadata.json").write_text("{}")
+            # Save scores for multiple iterations
+            for iteration in [0, 1, 2]:
+                train_scores = {
+                    f"scaffold_{iteration}": {"mean_score": 0.5, "scores": [0.5]}
+                }
+                valid_scores = {
+                    f"scaffold_{iteration}": {"mean_score": 0.6, "scores": [0.6]}
+                }
+                manager.save_scores(iteration, train_scores, valid_scores)
 
-            # Copy scaffold
-            target_path = manager.copy_scaffold(
-                from_path=source_dir, to_iteration=1, to_scaffold_id="0"
+            # Check all scores are in scoring directory
+            assert (experiment_dir / "scoring" / "scores_0.json").exists()
+            assert (experiment_dir / "scoring" / "scores_1.json").exists()
+            assert (experiment_dir / "scoring" / "scores_2.json").exists()
+
+    def test_logs_directory_structure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiment_dir = Path(temp_dir) / "test_experiment"
+            manager = ExperimentFileManager(experiment_dir)
+
+            # Get logs directories for different iterations and scaffolds
+            logs_dir_1 = manager.get_docker_logs_dir(iteration=0, scaffold_id="0")
+            logs_dir_2 = manager.get_docker_logs_dir(iteration=0, scaffold_id="1")
+            logs_dir_3 = manager.get_docker_logs_dir(iteration=1, scaffold_id="0-0")
+
+            # Check structure: logs/<iteration>/<scaffold_id>/
+            assert logs_dir_1 == (experiment_dir / "logs" / "0" / "0").absolute()
+            assert logs_dir_2 == (experiment_dir / "logs" / "0" / "1").absolute()
+            assert logs_dir_3 == (experiment_dir / "logs" / "1" / "0-0").absolute()
+
+            # All directories should be created
+            assert logs_dir_1.exists()
+            assert logs_dir_2.exists()
+            assert logs_dir_3.exists()
+
+    @pytest.mark.parametrize(
+        "run_type", ["train", "valid"]
+    )
+    def test_save_execution_log_valid_run_types(self, run_type):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiment_dir = Path(temp_dir) / "test_experiment"
+            manager = ExperimentFileManager(experiment_dir)
+
+            # Valid run types should work
+            run_id = manager.save_execution_log(
+                iteration=0, scaffold_id="0", run_type=run_type, log_content="test log"
             )
+            assert run_id == f"{run_type}_0"
 
-            # Verify all files were copied
-            assert (target_path / "scaffold.py").read_text() == "code"
-            assert (target_path / "metadata.json").read_text() == "{}"
-
-    def test_list_scaffolds(self):
+    @pytest.mark.parametrize(
+        "invalid_run_type", ["train_0", "valid_1", "test", "training", "validation", ""]
+    )
+    def test_save_execution_log_invalid_run_types(self, invalid_run_type):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            # Create some scaffolds
-            new_dir = experiment_dir / "iterations" / "0" / "scaffolds" / "new"
-            new_dir.mkdir(parents=True)
-            (new_dir / "0").mkdir()
-            (new_dir / "1").mkdir()
-            (new_dir / "2").mkdir()
-            (new_dir / "not_a_dir.txt").write_text("file")  # Should be ignored
-
-            # Test listing
-            scaffolds = manager.list_scaffolds(0)
-            assert set(scaffolds) == {"0", "1", "2"}
-
-            # Test another iteration
-            new_dir_1 = experiment_dir / "iterations" / "1" / "scaffolds" / "new"
-            new_dir_1.mkdir(parents=True)
-            (new_dir_1 / "0-0").mkdir()
-            (new_dir_1 / "1-0").mkdir()
-
-            scaffolds_1 = manager.list_scaffolds(1)
-            assert set(scaffolds_1) == {"0-0", "1-0"}
-
-    def test_list_scaffolds_missing_directory_fails(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            experiment_dir = Path(temp_dir) / "test_experiment"
-            manager = ExperimentFileManager(experiment_dir)
-            with pytest.raises(FileNotFoundError):
-                assert manager.list_scaffolds(0) == []
-
-    def test_find_scaffold_iteration(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            experiment_dir = Path(temp_dir) / "test_experiment"
-            manager = ExperimentFileManager(experiment_dir)
-
-            # Create scaffolds in different iterations
-            iter0_dir = experiment_dir / "iterations" / "0" / "scaffolds" / "new"
-            iter0_dir.mkdir(parents=True)
-            (iter0_dir / "0").mkdir()
-            (iter0_dir / "1").mkdir()
-
-            iter1_dir = experiment_dir / "iterations" / "1" / "scaffolds" / "new"
-            iter1_dir.mkdir(parents=True)
-            (iter1_dir / "0-0").mkdir()
-            (iter1_dir / "1-0").mkdir()
-
-            iter2_dir = experiment_dir / "iterations" / "2" / "scaffolds" / "new"
-            iter2_dir.mkdir(parents=True)
-            (iter2_dir / "0-0-0").mkdir()
-
-            # Test finding scaffolds
-            assert manager.find_scaffold_iteration("0") == 0
-            assert manager.find_scaffold_iteration("1") == 0
-            assert manager.find_scaffold_iteration("0-0") == 1
-            assert manager.find_scaffold_iteration("1-0") == 1
-            assert manager.find_scaffold_iteration("0-0-0") == 2
-
-            # Test nonexistent scaffold
-            with pytest.raises(
-                FileNotFoundError, match="Scaffold nonexistent not found"
-            ):
-                manager.find_scaffold_iteration("nonexistent")
+            # Invalid run types should fail
+            with pytest.raises(ValueError, match="Invalid run type"):
+                manager.save_execution_log(
+                    iteration=0, scaffold_id="0", run_type=invalid_run_type, log_content="test log"
+                )
