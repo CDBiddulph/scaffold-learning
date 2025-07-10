@@ -108,13 +108,9 @@ def _build_docker_command(
     timestamp: str,
     executor_model_spec: str,
     log_level: str,
-    keep_container: bool = False,
 ) -> list[str]:
     """Build the Docker command with all necessary flags and environment variables."""
     docker_cmd = ["docker", "run", "--rm"]
-
-    if keep_container:
-        docker_cmd.extend(["--name", f"scaffold-{scaffold_name}-{timestamp}"])
 
     # Check if we need interactive mode for human model
     if executor_model_spec == "human/human":
@@ -352,7 +348,6 @@ def run_scaffold(
     input_string: str,
     log_level: str,
     override_model: str,
-    keep_container: bool,
     timeout: Optional[int] = None,
 ) -> None:
     """Run a scaffold in Docker container."""
@@ -387,7 +382,6 @@ def run_scaffold(
         timestamp,
         executor_model_spec,
         log_level,
-        keep_container,
     )
 
     # Add Python script to execute
@@ -445,11 +439,6 @@ def _parse_args() -> argparse.Namespace:
         help="Override the executor model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest')",
     )
     parser.add_argument(
-        "--keep-container",
-        action="store_true",
-        help="Keep the container after execution (for debugging)",
-    )
-    parser.add_argument(
         "--timeout",
         type=int,
         help="Timeout in seconds for scaffold execution (default: no timeout)",
@@ -485,7 +474,6 @@ def main():
         input_string,
         args.log_level,
         args.model,
-        args.keep_container,
         args.timeout,
     )
 
