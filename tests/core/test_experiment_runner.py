@@ -113,12 +113,12 @@ class TestExperimentRunner:
         iteration,
         run_type,
         input_string,
-        model,
+        model_spec,
         timeout=120,
     ):
         # Create a mock execution log that mimics what would be saved
         execution_log = f"""=== Scaffold Execution Log ===
-Model: {model}
+Model: {model_spec}
 Timestamp: 2024-01-01_12:00:00
 Execution Time: 1.00s
 
@@ -304,7 +304,7 @@ Execution completed successfully
             iteration,
             run_type,
             input_string,
-            model,
+            model_spec,
             timeout=120,
         ):
 
@@ -593,7 +593,7 @@ Execution completed successfully
             iteration,
             run_type,
             input_string,
-            model,
+            model_spec,
             timeout=120,
         ):
             return ScaffoldExecutionResult(

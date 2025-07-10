@@ -6,10 +6,11 @@ from pathlib import Path
 from datetime import datetime
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
 from scaffold_learning.core.experiment_files import ExperimentFileManager
+from scaffold_learning.core.llm_interfaces import LLMFactory
 
 
 def _build_docker_command(
-    scaffold_dir: Path, logs_dir: Path, executor_model_spec: str, timeout: int
+    scaffold_dir: Path, logs_dir: Path, model_spec: str, timeout: int
 ) -> list[str]:
     """Build the Docker command with all necessary flags and environment variables."""
     docker_cmd = ["docker", "run", "--rm"]
@@ -41,7 +42,7 @@ def _build_docker_command(
     docker_cmd.extend(
         [
             "-e",
-            f"EXECUTOR_MODEL_SPEC={executor_model_spec}",
+            f"EXECUTOR_MODEL_SPEC={model_spec}",
             "-e",
             "LOG_LEVEL=INFO",
             "scaffold-runner",
@@ -137,7 +138,7 @@ def execute_scaffold(
     iteration: int,
     run_type: str,
     input_string: str,
-    model: str,
+    model_spec: str,
     timeout: int = 120,
 ) -> ScaffoldExecutionResult:
     """Execute a scaffold in a Docker container with the given input.
@@ -148,7 +149,7 @@ def execute_scaffold(
         iteration: Iteration number for logging
         run_type: Type of run (e.g., 'train', 'valid')
         input_string: Input to pass to the scaffold's process_input function
-        model: Model name for the executor LLM
+        model_spec: Model spec for the executor LLM
         timeout: Maximum execution time in seconds
 
     Returns:
@@ -160,17 +161,19 @@ def execute_scaffold(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+    model_spec = LLMFactory.resolve_model_spec(model_spec)
+
     # Build Docker command
     docker_cmd = _build_docker_command(
         scaffold_dir=scaffold_dir,
         logs_dir=logs_dir,
-        executor_model_spec=model,
+        model_spec=model_spec,
         timeout=timeout,
     )
 
     # Generate Python script to run in container
     python_script = _generate_python_script(
-        input_string=input_string, executor_model_spec=model, timestamp=timestamp
+        input_string=input_string, executor_model_spec=model_spec, timestamp=timestamp
     )
 
     # Add the Python script as the command to run
@@ -181,7 +184,6 @@ def execute_scaffold(
     # Execute the scaffold
     start_time = time.time()
 
-    # TODO: I'm not sure usage of stderr and error_message are ideal
     try:
         process = subprocess.Popen(
             docker_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -190,7 +192,7 @@ def execute_scaffold(
         stdout, stderr = process.communicate(timeout=timeout)
         exit_code = process.returncode
         if exit_code != 0:
-            error_message = f"Scaffold error (exit code {exit_code}):\n{stderr}"
+            error_message = f"Error from scaffold (exit code {exit_code}):\n{stderr}"
 
     except Exception as e:
         raise RuntimeError(f"Error from Docker when executing scaffold: {e}") from e
@@ -201,7 +203,7 @@ def execute_scaffold(
     # Save execution log through file manager
     log_content = create_execution_log(
         input_string=input_string,
-        model=model,
+        model=model_spec,
         timestamp=timestamp,
         output=stdout,
         stderr=stderr,

@@ -425,7 +425,7 @@ class ExperimentRunner:
                 iteration=iteration,
                 run_type=f"valid",
                 input_string=example.input,
-                model=self.executor_model,
+                model_spec=self.executor_model,
             )
 
             # Calculate score
@@ -499,7 +499,7 @@ class ExperimentRunner:
                     iteration=iteration,
                     run_type=f"train",
                     input_string=example.input,
-                    model=self.executor_model,
+                    model_spec=self.executor_model,
                 )
 
                 # Calculate score

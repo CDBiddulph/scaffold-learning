@@ -64,7 +64,7 @@ def process_input(input_string: str) -> str:
                         iteration=0,
                         run_type="train",
                         input_string="test input",
-                        model="test-model",
+                        model_spec="mock",
                         timeout=120,
                     )
 
@@ -106,13 +106,13 @@ def process_input(input_string: str) -> str:
                         iteration=0,
                         run_type="train",
                         input_string="test input",
-                        model="test-model",
+                        model_spec="mock",
                         timeout=60,
                     )
 
                 assert (
                     result.error_message
-                    == "Scaffold error (exit code 124):\nTimeout error"
+                    == "Error from scaffold (exit code 124):\nTimeout error"
                 )
                 assert result.execution_time == 120.5
 
@@ -147,12 +147,12 @@ def process_input(input_string: str) -> str:
                         iteration=0,
                         run_type="train",
                         input_string="test input",
-                        model="test-model",
+                        model_spec="mock",
                     )
 
                 assert (
                     result.error_message
-                    == "Scaffold error (exit code 1):\nError: syntax error"
+                    == "Error from scaffold (exit code 1):\nError: syntax error"
                 )
                 assert result.stderr == "Error: syntax error"
                 assert result.execution_time == 0.5
@@ -174,7 +174,7 @@ def process_input(input_string: str) -> str:
                         iteration=0,
                         run_type="train",
                         input_string="test input",
-                        model="gpt-4o",
+                        model_spec="gpt-4o",
                         timeout=300,
                     )
 
@@ -206,7 +206,7 @@ def process_input(input_string: str) -> str:
                         iteration=0,
                         run_type="train",
                         input_string="test input",
-                        model="test-model",
+                        model_spec="mock",
                     )
 
                 # Check that log files were created in the correct directory
@@ -221,7 +221,7 @@ def process_input(input_string: str) -> str:
                 assert "test input" in log_content
                 assert "test output" in log_content
                 assert "test stderr" in log_content
-                assert "test-model" in log_content
+                assert "mock/mock" in log_content
 
     def test_execute_scaffold_environment_variables(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -242,7 +242,7 @@ def process_input(input_string: str) -> str:
                             iteration=0,
                             run_type="train",
                             input_string="test input",
-                            model="test-model",
+                            model_spec="mock",
                         )
 
                 # Check environment was passed to Docker
@@ -267,7 +267,7 @@ def process_input(input_string: str) -> str:
                         iteration=0,
                         run_type="train",
                         input_string="test input",
-                        model="test-model",
+                        model_spec="mock",
                         timeout=600,  # 10 minutes
                     )
 
