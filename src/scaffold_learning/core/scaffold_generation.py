@@ -9,6 +9,7 @@ from scaffold_learning.core.data_structures import (
     LLMResponse,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
+from scaffold_learning.core.xml_utils import dict_to_xml
 
 _COMMON_INSTRUCTIONS = r"""Your task is to write a Python scaffold. Your script must implement a function called `process_input(input_string: str) -> str`.
 
@@ -83,11 +84,6 @@ def _extract_python_code(response: LLMResponse) -> str:
     return code
 
 
-def _get_xml(root_tag: str, inner_tags: Dict[str, str]) -> str:
-    middle = "\n".join(
-        [f"    <{tag}>{value}</{tag}>" for tag, value in inner_tags.items()]
-    )
-    return f"<{root_tag}>\n{middle}\n</{root_tag}>"
 
 
 def _get_expected_output(scoring_data: Dict[str, Any]) -> str:
@@ -111,7 +107,7 @@ def _get_example_xml(example: DatasetExample | ScaffoldRunData, idx: int) -> str
             "expected_output": _get_expected_output(example.scoring_data),
         }
 
-    return _get_xml(f"example-{idx}", xml_dict)
+    return dict_to_xml(xml_dict, f"example-{idx}")
 
 
 def _get_examples_xml(examples: List[DatasetExample | ScaffoldRunData]) -> str:

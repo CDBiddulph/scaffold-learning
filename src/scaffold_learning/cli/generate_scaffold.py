@@ -11,12 +11,13 @@ import os
 import sys
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any
 from scaffold_learning.core.llm_interfaces import LLMFactory
 from scaffold_learning.core.scaffold_generation import (
     generate_scaffold,
 )
-from scaffold_learning.core.data_structures import DatasetExample
+from scaffold_learning.core.xml_utils import write_xml_file
 import shutil
 import logging
 
@@ -86,15 +87,9 @@ def main() -> None:
         with open(scaffold_file, "w") as f:
             f.write(generated_script)
 
-        # Create metadata file
-        metadata = {
-            "scaffolder_model_spec": scaffolder_model_spec,
-            "created": datetime.now().isoformat(),
-        }
-
-        metadata_file = os.path.join(output_dir, "metadata.json")
-        with open(metadata_file, "w") as f:
-            json.dump(metadata, f, indent=2)
+        # Create metadata file using ScaffoldMetadata from result
+        metadata_file = os.path.join(output_dir, "metadata.xml")
+        write_xml_file(result.metadata.to_dict(), Path(metadata_file), "metadata")
 
         logger.info(f"Generated script saved to: {scaffold_file}")
         logger.info(f"Metadata saved to: {metadata_file}")

@@ -55,14 +55,24 @@ class TestExperimentFileManager:
 
             # Check files exist
             assert (scaffold_path / "scaffold.py").exists()
-            assert (scaffold_path / "metadata.json").exists()
+            assert (scaffold_path / "metadata.xml").exists()
 
             # Check content
             assert (scaffold_path / "scaffold.py").read_text() == result.code
 
-            with open(scaffold_path / "metadata.json") as f:
-                saved_metadata = json.load(f)
-            assert saved_metadata == metadata.to_dict()
+            from scaffold_learning.core.xml_utils import xml_to_dict
+            xml_content = (scaffold_path / "metadata.xml").read_text()
+            saved_metadata = xml_to_dict(xml_content)
+            
+            # XML converts numbers to strings and omits None values
+            expected_metadata = {
+                "created_at": "2024-01-01T12:00:00",
+                "iteration": "0"  # XML converts to string
+                # parent_scaffold_id is None, so omitted from XML
+                # scaffolder_prompt is None, so omitted from XML
+                # scaffolder_response is None, so omitted from XML
+            }
+            assert saved_metadata == expected_metadata
 
     def test_save_evolved_scaffold(self):
         with tempfile.TemporaryDirectory() as temp_dir:

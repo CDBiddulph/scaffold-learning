@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata
+from scaffold_learning.core.xml_utils import write_xml_file, read_xml_file
 
 
 class ExperimentFileManager:
@@ -47,9 +48,8 @@ class ExperimentFileManager:
         # Write scaffold.py
         (scaffold_dir / "scaffold.py").write_text(result.code)
 
-        # Write metadata.json
-        with open(scaffold_dir / "metadata.json", "w") as f:
-            json.dump(result.metadata.to_dict(), f, indent=2)
+        # Write metadata.xml
+        write_xml_file(result.metadata.to_dict(), scaffold_dir / "metadata.xml", "metadata")
 
         # Copy support files
         support_files = ["llm_executor.py", "llm_interfaces.py"]
@@ -85,8 +85,7 @@ class ExperimentFileManager:
         code = (scaffold_path / "scaffold.py").read_text()
 
         # Load metadata
-        with open(scaffold_path / "metadata.json") as f:
-            metadata_dict = json.load(f)
+        metadata_dict = read_xml_file(scaffold_path / "metadata.xml")
         metadata = ScaffoldMetadata.from_dict(metadata_dict)
 
         return ScaffoldResult(code=code, metadata=metadata)
