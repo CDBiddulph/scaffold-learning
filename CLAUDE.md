@@ -11,7 +11,9 @@ This is a research project for LLM-generated script execution, using a "scaffold
 ### General philosophy
 - This is an ongoing, rough research project, NOT a production system
 - Focus on velocity and simplicity over "professional" code
-- Do NOT worry about backwards compatibility, as this repo has only one user
+- NEVER TRY TO MAINTAIN BACKWARDS COMPATIBILITY
+    - I am the only user of this repo, and I have no desire to maintain multiple ways of doing the same thing
+    - If you find yourself thinking "we should keep this backwards compatible by..." STOP THAT
 - Things can change very quickly, so it's often not worth writing code to handle every edge case
     - However, tests should be sufficient to rule out bugs in mainline code paths
 - Generally, stick to the stated plan
