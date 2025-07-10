@@ -208,14 +208,35 @@ except Exception as e:
 """
 
 
-def _execute_human_scaffold(docker_cmd: list[str]) -> None:
+def _execute_human_scaffold(
+    docker_cmd: list[str],
+    timeout: Optional[int],
+    log_file: Path,
+    scaffold_name: str,
+    executor_model_spec: str,
+    input_string: str,
+    timestamp: str,
+) -> None:
     """Execute scaffold with human model."""
+    if timeout:
+        print("Warning: Timeout not supported for human model (interactive mode)")
+
     subprocess.run(docker_cmd, check=True)
+
+    # Save basic log for human model
+    _log_results(
+        log_file,
+        scaffold_name,
+        executor_model_spec,
+        input_string,
+        timestamp,
+        stdout="Note: Human model execution - no output captured\nUser interaction occurred directly in terminal.\n",
+    )
 
 
 def _execute_llm_scaffold(
     docker_cmd: list[str],
-    timeout: int,
+    timeout: Optional[int],
     log_file: Path,
     scaffold_name: str,
     executor_model_spec: str,
@@ -332,7 +353,7 @@ def run_scaffold(
     log_level: str,
     override_model: str,
     keep_container: bool,
-    timeout: int = None,
+    timeout: Optional[int] = None,
 ) -> None:
     """Run a scaffold in Docker container."""
 
@@ -379,30 +400,20 @@ def run_scaffold(
     print(f"Logs will be saved to: {log_file}")
 
     # Execute based on model type
-    if executor_model_spec == "human/human":
-        if timeout:
-            print("Warning: Timeout not supported for human model (interactive mode)")
-        _execute_human_scaffold(docker_cmd)
-
-        # Save basic log for human model
-        _log_results(
-            log_file,
-            scaffold_name,
-            executor_model_spec,
-            input_string,
-            timestamp,
-            stdout="Note: Human model execution - no output captured\nUser interaction occurred directly in terminal.\n",
-        )
-    else:
-        _execute_llm_scaffold(
-            docker_cmd,
-            timeout,
-            log_file,
-            scaffold_name,
-            executor_model_spec,
-            input_string,
-            timestamp,
-        )
+    execute_scaffold_fn = (
+        _execute_human_scaffold
+        if executor_model_spec == "human/human"
+        else _execute_llm_scaffold
+    )
+    execute_scaffold_fn(
+        docker_cmd,
+        timeout,
+        log_file,
+        scaffold_name,
+        executor_model_spec,
+        input_string,
+        timestamp,
+    )
 
 
 def _parse_args() -> argparse.Namespace:
