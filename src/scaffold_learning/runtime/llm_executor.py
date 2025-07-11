@@ -32,5 +32,5 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
     )
 
     # Generate response
-    with suppress_logging("httpx", "anthropic._base_client"):
+    with suppress_logging():
         return executor_llm.generate_response(prompt, system_prompt).content

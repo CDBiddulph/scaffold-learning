@@ -26,9 +26,19 @@ def suppress_logging(*logger_names, level=logging.WARNING):
     """Context manager to temporarily suppress logging for specified loggers.
 
     Args:
-        *logger_names: Names of loggers to suppress
+        *logger_names: Names of loggers to suppress. If none provided, uses default list.
         level: Logging level to set (default: WARNING)
     """
+    # Default list of commonly noisy loggers
+    if not logger_names:
+        logger_names = [
+            "httpx", 
+            "openai", 
+            "anthropic._base_client",
+            "urllib3.connectionpool",
+            "requests.packages.urllib3.connectionpool"
+        ]
+    
     loggers = [logging.getLogger(name) for name in logger_names]
     original_levels = [logger.level for logger in loggers]
 
@@ -75,11 +85,12 @@ class OpenAIInterface(LLMInterface):
 
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         client = openai.OpenAI(api_key=self.api_key)
-        response = client.responses.create(
-            model=self.model,
-            instructions=system_prompt,
-            input=prompt,
-        )
+        with suppress_logging():
+            response = client.responses.create(
+                model=self.model,
+                instructions=system_prompt,
+                input=prompt,
+            )
         return LLMResponse(content=response.output[0].content[0].text)
 
     def get_model_info(self) -> str:
@@ -153,7 +164,7 @@ class AnthropicInterface(LLMInterface):
 
         for attempt in range(self.max_retries):
             try:
-                with suppress_logging("httpx", "anthropic._base_client"):
+                with suppress_logging():
                     stream = client.messages.create(
                         model=self.model,
                         max_tokens=self._get_max_tokens(),
