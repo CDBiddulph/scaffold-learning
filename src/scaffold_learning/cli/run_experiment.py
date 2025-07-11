@@ -10,7 +10,7 @@ from scaffold_learning.core.data_structures import DatasetExample
 from scaffold_learning.core.experiment_runner import ExperimentRunner
 from scaffold_learning.core.llm_interfaces import LLMFactory
 
-from scaffold_learning.domains.crosswords.score import score as score_crosswords
+from scaffold_learning.domains.crosswords.score.score import score as score_crosswords
 
 
 def load_dataset(dataset_path: Path) -> List[DatasetExample]:

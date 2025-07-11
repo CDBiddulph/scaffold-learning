@@ -2,7 +2,7 @@
 """Tests for score.py"""
 
 import unittest
-from scaffold_learning.domains.crosswords import score
+from scaffold_learning.domains.crosswords.score import score
 
 
 class TestScore(unittest.TestCase):

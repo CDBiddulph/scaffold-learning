@@ -1,40 +1,16 @@
-#!/usr/bin/env python
-"""Score a crossword puzzle answer against the solution"""
-
-import sys
-import os
-import json
 import re
-from . import puz
 
 
-def score(expected_solution, attempted_solution, mode="strict"):
+def score(expected_solution, attempted_solution):
     """
     Score a puzzle answer against the solution.
 
     Args:
         expected_solution: String containing the expected solution (like from JSONL "solution" field)
         attempted_solution: String containing the attempted solution
-        mode: 'strict' (all instances must be correct) or 'lenient' (any instance can be correct)
 
     Returns:
         float: Score from 0.0 to 1.0 representing percentage of correct squares
-    """
-    score, _, _ = _score_detailed(expected_solution, attempted_solution, mode)
-    return score
-
-
-def _score_detailed(expected_solution, attempted_solution, mode="strict"):
-    """
-    Score a puzzle answer against the solution with detailed results.
-
-    Args:
-        expected_solution: String containing the expected solution (like from JSONL "solution" field)
-        attempted_solution: String containing the attempted solution
-        mode: 'strict' (all instances must be correct) or 'lenient' (any instance can be correct)
-
-    Returns:
-        tuple: (score, correct_count, total_count) where score is float 0.0-1.0
     """
     # Parse expected solution into sections
     expected_grid, expected_across, expected_down = _parse_expected_solution(
@@ -74,7 +50,6 @@ def _score_detailed(expected_solution, attempted_solution, mode="strict"):
                 piece,
                 expected_across,
                 width,
-                height,
                 expected_grid,
                 correct_squares,
                 incorrect_squares,
@@ -83,7 +58,6 @@ def _score_detailed(expected_solution, attempted_solution, mode="strict"):
             _process_down_section(
                 piece,
                 expected_down,
-                width,
                 height,
                 expected_grid,
                 correct_squares,
@@ -95,7 +69,7 @@ def _score_detailed(expected_solution, attempted_solution, mode="strict"):
                 piece, expected_grid, correct_squares, incorrect_squares
             )
 
-    # Count fillable squares and determine final correct squares based on mode
+    # Count fillable squares and determine final correct squares
     fillable_count = 0
     final_correct_squares = set()
 
@@ -104,15 +78,8 @@ def _score_detailed(expected_solution, attempted_solution, mode="strict"):
             if expected_grid[row][col] != ".":  # Not a black square
                 fillable_count += 1
                 pos = (row, col)
-
-                if mode == "strict":
-                    # Square is correct only if it was never marked incorrect
-                    if pos in correct_squares and pos not in incorrect_squares:
-                        final_correct_squares.add(pos)
-                elif mode == "lenient":
-                    # Square is correct if it was ever marked correct
-                    if pos in correct_squares:
-                        final_correct_squares.add(pos)
+                if pos in correct_squares:
+                    final_correct_squares.add(pos)
 
     correct_count = len(final_correct_squares)
 
@@ -197,7 +164,6 @@ def _process_across_section(
     section_text,
     expected_across,
     width,
-    height,
     expected_grid,
     correct_squares,
     incorrect_squares,
@@ -253,7 +219,6 @@ def _process_across_section(
 def _process_down_section(
     section_text,
     expected_down,
-    width,
     height,
     expected_grid,
     correct_squares,
@@ -338,76 +303,3 @@ def _find_clue_position(clue_num, grid, direction):
                 current_num += 1
 
     return None
-
-
-def load_expected_solution(file_path, puzzle_name=None):
-    """
-    Load expected solution from either a text file or JSONL file
-
-    Args:
-        file_path: Path to the file
-        puzzle_name: If JSONL file, the name of the puzzle to find
-
-    Returns:
-        str: Expected solution string
-    """
-    if file_path.endswith(".jsonl"):
-        if puzzle_name is None:
-            raise ValueError("puzzle_name required when using JSONL file")
-
-        with open(file_path, "r", encoding="utf-8") as f:
-            for line in f:
-                data = json.loads(line.strip())
-                if data.get("name") == puzzle_name:
-                    return data["solution"]
-
-        raise ValueError(f"Puzzle '{puzzle_name}' not found in JSONL file")
-
-    else:
-        # Assume it's a text file with the expected solution
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read()
-
-
-def main():
-    """Command line interface"""
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Score a crossword puzzle answer against the solution",
-    )
-
-    parser.add_argument(
-        "expected_solution", help="Text file with expected solution OR JSONL file"
-    )
-    parser.add_argument("attempted_solution", help="Text file with attempted solution")
-    parser.add_argument(
-        "--puzzle",
-        "-p",
-        help="Puzzle name (required if expected_solution is JSONL file)",
-    )
-    parser.add_argument(
-        "--mode",
-        "-m",
-        choices=["strict", "lenient"],
-        default="strict",
-        help="Scoring mode: 'strict' (all instances must be correct) or 'lenient' (any instance can be correct) (default: strict)",
-    )
-
-    args = parser.parse_args()
-
-    # Load expected solution
-    expected_solution = load_expected_solution(args.expected_solution, args.puzzle)
-
-    # Load attempted solution
-    with open(args.attempted_solution, "r", encoding="utf-8") as f:
-        attempted_solution = f.read()
-
-    score, correct_count, total_count = score_detailed(
-        expected_solution, attempted_solution, args.mode
-    )
-    print(f"Score: {score:.3f} ({correct_count}/{total_count}) [{args.mode}]")
-
-
-if __name__ == "__main__":
-    main()
