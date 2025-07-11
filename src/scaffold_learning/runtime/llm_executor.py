@@ -5,7 +5,7 @@ This module provides access to the executor LLM for generated scripts running in
 """
 
 import os
-from scaffold_learning.core.llm_interfaces import LLMFactory, suppress_logging
+from scaffold_learning.core.llm_interfaces import LLMFactory
 
 
 def execute_llm(prompt: str, system_prompt: str = "") -> str:
@@ -32,5 +32,4 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
     )
 
     # Generate response
-    with suppress_logging():
-        return executor_llm.generate_response(prompt, system_prompt).content
+    return executor_llm.generate_response(prompt, system_prompt).content

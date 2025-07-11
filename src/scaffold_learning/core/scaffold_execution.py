@@ -64,8 +64,7 @@ def _build_docker_command(
             "-e",
             f"EXECUTOR_MODEL_SPEC={model_spec}",
             "-e",
-            # TODO: try DEBUG after removing extraneous logs from Anthropic
-            "LOG_LEVEL=INFO",
+            "LOG_LEVEL=DEBUG",
             "scaffold-runner",
         ]
     )
@@ -98,19 +97,22 @@ logging.basicConfig(
 # Use properly escaped input string
 input_string = {escaped_input}
 
-# TODO: Not sure if these logs get saved or printed anywhere
-logging.info('Running scaffold execution')
-logging.info(f'Input length: {{len(input_string)}} characters')
-logging.info(f'Executor: {model_spec}')
-
 try:
-    # Import scaffold
+    # Import scaffold and logging utilities
     sys.path.insert(0, '/workspace/scaffold')
     from scaffold import process_input
+    from scaffold_learning.core.logging_utils import suppress_all_except_root
     
-    # Run the scaffold
-    result = process_input(input_string)
-    print(result)
+    # Suppress a specific noisy logger at the library level.
+    # It wasn't covered by suppress_all_except_root for some reason.
+    for logger_name in ['httpcore']:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+    
+    # Suppress all logging except from root logger
+    with suppress_all_except_root():
+        # Run the scaffold - any logging.info/debug calls will show
+        result = process_input(input_string)
+        print(result)
 
     # TODO: consider saving the result to a file, we'll have to get the filename though
     # with open('/workspace/logs/train_0.txt', 'w') as f:

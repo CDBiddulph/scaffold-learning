@@ -14,7 +14,6 @@ from scaffold_learning.core.llm_interfaces import (
     MockLLMInterface,
     HumanLLMInterface,
     LLMConfig,
-    suppress_logging,
 )
 import anthropic
 
@@ -304,37 +303,6 @@ class TestMockLLMInterface(unittest.TestCase):
         self.assertTrue(
             "```python" in result.content or "#!/usr/bin/env python3" in result.content
         )
-
-
-class TestSuppressLogging(unittest.TestCase):
-
-    def test_suppress_logging_context_manager(self):
-        """Test logging suppression context manager"""
-        loggers = {name: logging.getLogger(name) for name in ["httpx", "test_logger"]}
-        for logger in loggers.values():
-            logger.setLevel(logging.DEBUG)
-
-        # Test with specific logger name
-        with suppress_logging("test_logger", level=logging.ERROR):
-            self.assertEqual(loggers["httpx"].level, logging.DEBUG)
-            self.assertEqual(loggers["test_logger"].level, logging.ERROR)
-
-        for logger in loggers.values():
-            self.assertEqual(logger.level, logging.DEBUG)
-
-    def test_suppress_logging_default_loggers(self):
-        """Test that default loggers are suppressed when no names provided"""
-        loggers = {name: logging.getLogger(name) for name in ["httpx", "test_logger"]}
-        for logger in loggers.values():
-            logger.setLevel(logging.DEBUG)
-
-        # Test with default loggers
-        with suppress_logging(level=logging.ERROR):
-            self.assertEqual(loggers["httpx"].level, logging.ERROR)
-            self.assertEqual(loggers["test_logger"].level, logging.DEBUG)
-
-        for logger in loggers.values():
-            self.assertEqual(logger.level, logging.DEBUG)
 
 
 if __name__ == "__main__":

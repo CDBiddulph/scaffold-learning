@@ -10,45 +10,15 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from typing import Optional
-from contextlib import contextmanager
 from dotenv import load_dotenv
 from scaffold_learning.core.data_structures import LLMResponse
+from scaffold_learning.core.logging_utils import suppress_all_except_root
 
 import anthropic
 import openai
 
 # Load the environment variables for the API keys
 load_dotenv()
-
-
-@contextmanager
-def suppress_logging(*logger_names, level=logging.WARNING):
-    """Context manager to temporarily suppress logging for specified loggers.
-
-    Args:
-        *logger_names: Names of loggers to suppress. If none provided, uses default list.
-        level: Logging level to set (default: WARNING)
-    """
-    # Default list of commonly noisy loggers
-    if not logger_names:
-        logger_names = [
-            "httpx", 
-            "openai", 
-            "anthropic._base_client",
-            "urllib3.connectionpool",
-            "requests.packages.urllib3.connectionpool"
-        ]
-    
-    loggers = [logging.getLogger(name) for name in logger_names]
-    original_levels = [logger.level for logger in loggers]
-
-    try:
-        for logger in loggers:
-            logger.setLevel(level)
-        yield
-    finally:
-        for logger, original_level in zip(loggers, original_levels):
-            logger.setLevel(original_level)
 
 
 class LLMConfig:
@@ -85,7 +55,7 @@ class OpenAIInterface(LLMInterface):
 
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         client = openai.OpenAI(api_key=self.api_key)
-        with suppress_logging():
+        with suppress_all_except_root():
             response = client.responses.create(
                 model=self.model,
                 instructions=system_prompt,
@@ -164,7 +134,7 @@ class AnthropicInterface(LLMInterface):
 
         for attempt in range(self.max_retries):
             try:
-                with suppress_logging():
+                with suppress_all_except_root():
                     stream = client.messages.create(
                         model=self.model,
                         max_tokens=self._get_max_tokens(),
