@@ -487,9 +487,12 @@ class ExperimentRunner:
         # Log scores
         log_type_str = "validation" if log_type == "valid" else "training"
         scores_str = ", ".join(f"{s:.3f}" for s in scores)
-        average_score = np.mean(scores)
+        if len(scores) > 1:
+            maybe_s, average_str = "s", f" (avg {np.mean(scores):.3f})"
+        else:
+            maybe_s, average_str = "", ""
         self.logger.info(
-            f"Scaffold {scaffold_id} {log_type_str} scores: {scores_str} (avg {average_score:.3f})"
+            f"Scaffold {scaffold_id} {log_type_str} score{maybe_s}: {scores_str}{average_str}"
         )
 
         return scores
