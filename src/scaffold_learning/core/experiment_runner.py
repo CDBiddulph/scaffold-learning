@@ -113,6 +113,12 @@ class ExperimentRunner:
         self.logger.info("Creating initial scaffolds for iteration 0")
         self._create_initial_scaffolds()
 
+        # Sample validation examples once for the entire experiment
+        validation_sample = self._sample_validation_examples()
+        self.logger.info(
+            f"Using {len(validation_sample)} validation examples for all iterations"
+        )
+
         best_scaffold_id = None
         best_score = -1.0
 
@@ -120,8 +126,6 @@ class ExperimentRunner:
         for iteration in range(1, self.num_iterations):
             self.logger.info(f"Starting iteration {iteration}")
 
-            # Use one set of validation examples within an iteration for consistency
-            validation_sample = self._sample_validation_examples()
             training_scores, validation_scores = self._run_evolution_iteration(
                 iteration, validation_sample
             )
@@ -151,7 +155,7 @@ class ExperimentRunner:
         return best_scaffold_id, best_score
 
     def _sample_validation_examples(self) -> List[DatasetExample]:
-        """Sample validation examples for consistent evaluation within an iteration."""
+        """Sample validation examples."""
         return random.sample(
             self.validation_data,
             min(self.num_validation_examples, len(self.validation_data)),
@@ -171,12 +175,9 @@ class ExperimentRunner:
         Returns:
             Tuple of (training_scores, validation_scores) - dictionaries mapping scaffold_id to score
         """
-        # Get most recent validation scores for ranking
-        most_recent_scores = self.file_manager.get_most_recent_validation_scores()
-
         # Select top scaffolds to evolve
         top_scaffold_ids, validation_scores = self._select_top_scaffolds(
-            iteration, most_recent_scores, validation_sample
+            iteration, validation_sample
         )
 
         # Run training examples for top scaffolds
@@ -202,70 +203,62 @@ class ExperimentRunner:
     def _select_top_scaffolds(
         self,
         iteration: int,
-        most_recent_scores: Dict[str, Optional[float]],
         validation_sample: List[DatasetExample],
     ) -> Tuple[List[str], Dict[str, Dict[str, Any]]]:
         """Select top scaffolds to evolve.
 
         Args:
             iteration: Current iteration number
-            most_recent_scores: Most recent validation scores for each scaffold
             validation_sample: Validation examples to use for evaluation
 
         Returns:
             Tuple of (top_scaffold_ids, validation_scores) where validation_scores
             maps scaffold_id to dict with 'mean_score' and 'scores' keys
         """
+        # Get most recent validation scores for ranking
+        most_recent_scores = self.file_manager.get_most_recent_validation_scores()
 
-        # Get current top K scaffolds based on available scores
-        def get_sort_key(scaffold_id):
-            if scaffold_id in validated_scores:
-                return validated_scores[scaffold_id]["mean_score"]
-            score = most_recent_scores[scaffold_id]
-            return float("inf") if score is None else score
+        # Validate any scaffolds that haven't been validated yet
+        newly_validated_scores = {}
+        for scaffold_id in most_recent_scores:
+            if most_recent_scores[scaffold_id] is None:
+                # This scaffold has never been validated
+                scores = self._evaluate_scaffold(
+                    iteration=iteration,
+                    scaffold_id=scaffold_id,
+                    validation_examples=validation_sample,
+                )
+                newly_validated_scores[scaffold_id] = {
+                    "mean_score": np.mean(scores),
+                    "scores": scores,
+                }
 
-        validated_scores = {}
-        top_k_ids = None
-        current_ranking = list(most_recent_scores.keys())
+        # Create combined scores for selection (newly validated + previously validated)
+        all_scaffold_scores = {}
+        for scaffold_id, score in most_recent_scores.items():
+            if scaffold_id in newly_validated_scores:
+                all_scaffold_scores[scaffold_id] = newly_validated_scores[scaffold_id][
+                    "mean_score"
+                ]
+            else:
+                all_scaffold_scores[scaffold_id] = score
 
-        # Validate scaffolds as needed until top K are confirmed
-        while True:
-            # Sort by current best known scores
-            current_ranking.sort(key=get_sort_key, reverse=True)
-            top_k_ids = current_ranking[: self.scaffolds_per_iter]
-
-            # Find next unvalidated scaffold in top K, if any
-            next_to_validate = None
-            for scaffold_id in top_k_ids:
-                if scaffold_id not in validated_scores:
-                    next_to_validate = scaffold_id
-                    break
-
-            # If all top K are validated, we're done
-            if next_to_validate is None:
-                break
-
-            scores = self._evaluate_scaffold(
-                iteration=iteration,
-                scaffold_id=next_to_validate,
-                validation_examples=validation_sample,
-            )
-            validated_scores[next_to_validate] = {
-                "mean_score": np.mean(scores),
-                "scores": scores,
-            }
-
-        # Create final top scaffolds list
-        assert top_k_ids is not None
-
-        id_score_pairs = [
-            f"{id}: {score_data['mean_score']:.3f}"
-            for id, score_data in validated_scores.items()
+        # Sort scaffolds by score and select top K
+        sorted_scaffolds = sorted(
+            all_scaffold_scores.items(), key=lambda x: x[1], reverse=True
+        )
+        top_k_ids = [
+            scaffold_id
+            for scaffold_id, _ in sorted_scaffolds[: self.scaffolds_per_iter]
         ]
+
+        # Log results for top K scaffolds
+        id_score_pairs = [f"{id}: {all_scaffold_scores[id]:.3f}" for id in top_k_ids]
         logging.info(f"Got validation scores: {', '.join(id_score_pairs)}")
         logging.info(f"Selected top {len(top_k_ids)} scaffolds: {', '.join(top_k_ids)}")
 
-        return top_k_ids, validated_scores
+        # Return only newly validated scores to be saved to the scoring JSON
+        return top_k_ids, newly_validated_scores
 
     def _evolve_scaffolds(
         self,
