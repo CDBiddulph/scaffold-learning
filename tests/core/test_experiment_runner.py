@@ -11,6 +11,7 @@ from scaffold_learning.core.data_structures import (
     ScaffoldExecutionResult,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
+from scaffold_learning.core.data_structures import LLMResponse
 
 
 class TestExperimentRunner:
@@ -482,7 +483,9 @@ Execution completed successfully
                     parent_scaffold_id=None,
                     iteration=iteration,
                     scaffolder_prompt=f"prompt with {examples[0].input}",
-                    scaffolder_response=f"output for {examples[0].input}",
+                    scaffolder_response=LLMResponse(
+                        content=f"output for {examples[0].input}",
+                    ),
                 ),
             )
 
@@ -502,7 +505,9 @@ Execution completed successfully
                     parent_scaffold_id=parent_scaffold_id,
                     iteration=iteration,
                     scaffolder_prompt=f"evolve prompt for {first_run_data.example.input}",
-                    scaffolder_response=f"evolved output for {first_run_data.example.input}",
+                    scaffolder_response=LLMResponse(
+                        content=f"evolved output for {first_run_data.example.input}",
+                    ),
                 ),
             )
 
@@ -563,7 +568,7 @@ Execution completed successfully
         assert scaffold_0.metadata.scaffolder_prompt is not None
         assert scaffold_0.metadata.scaffolder_response is not None
         assert "prompt with" in scaffold_0.metadata.scaffolder_prompt
-        assert "output for" in scaffold_0.metadata.scaffolder_response
+        assert "output for" in scaffold_0.metadata.scaffolder_response.content
 
     def _run_scaffold_selection_test(self, test_case):
         """Test that scaffold selection works correctly based on validation scores."""

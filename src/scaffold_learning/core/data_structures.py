@@ -84,6 +84,14 @@ class ScaffoldMetadata:
         ):
             processed_data["iteration"] = int(processed_data["iteration"])
 
+        # Convert scaffolder_response from dict to LLMResponse if present
+        if "scaffolder_response" in processed_data and isinstance(
+            processed_data["scaffolder_response"], dict
+        ):
+            processed_data["scaffolder_response"] = LLMResponse.from_dict(
+                processed_data["scaffolder_response"]
+            )
+
         # Ensure required fields without defaults have None values if missing
         if "parent_scaffold_id" not in processed_data:
             processed_data["parent_scaffold_id"] = None
