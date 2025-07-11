@@ -443,7 +443,7 @@ class ExperimentRunner:
 
         average_score = np.mean(scores)
         self.logger.info(
-            f"Scaffold {scaffold_id} validation score: {average_score:.3f}"
+            f"Scaffold {scaffold_id} validation scores: {scores} (avg {average_score:.3f})"
         )
 
         return scores
@@ -523,5 +523,8 @@ class ExperimentRunner:
                     )
                 )
 
-                self.logger.info(f"Training run {scaffold_id}: score {score:.3f}")
+            scores = [run_data.score for run_data in training_runs[scaffold_id]]
+            self.logger.info(
+                f"Scaffold {scaffold_id} training scores: {scores} (avg {np.mean(scores):.3f})"
+            )
         return training_runs
