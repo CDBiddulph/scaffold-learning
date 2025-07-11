@@ -162,6 +162,7 @@ def _build_prompt(
     generate_examples: Optional[List[DatasetExample]] = None,
     evolve_examples: Optional[List[ScaffoldRunData]] = None,
     task_description: Optional[str] = None,
+    scoring_fn_code: Optional[str] = None,
 ) -> str:
     """Build the full prompt for scaffold generation or evolution.
 
@@ -186,6 +187,11 @@ def _build_prompt(
     if evolve_examples:
         code = evolve_examples[0].code
         full_prompt = f"<code>```python\n{code}\n```</code>\n"
+
+    if scoring_fn_code:
+        full_prompt += (
+            f"<scoring_function>```python\n{scoring_fn_code}\n```</scoring_function>\n"
+        )
 
     # Include the timeout
     timeout_seconds = 120  # TODO: make this configurable
@@ -221,10 +227,13 @@ def _generate_or_evolve_scaffold(
     generate_examples: Optional[List[DatasetExample]] = None,
     evolve_examples: Optional[List[ScaffoldRunData]] = None,
     task_description: Optional[str] = None,
+    scoring_fn_code: Optional[str] = None,
     iteration: Optional[int] = None,
     parent_scaffold_id: Optional[str] = None,
 ) -> ScaffoldResult:
-    prompt = _build_prompt(generate_examples, evolve_examples, task_description)
+    prompt = _build_prompt(
+        generate_examples, evolve_examples, task_description, scoring_fn_code
+    )
 
     response = scaffolder_llm.generate_response(prompt)
     code = _extract_python_code(response)
@@ -243,6 +252,7 @@ def _generate_or_evolve_scaffold(
 def generate_scaffold(
     scaffolder_llm: LLMInterface,
     examples: Optional[List[DatasetExample]] = None,
+    scoring_fn_code: Optional[str] = None,
     task_description: Optional[str] = None,
     iteration: Optional[int] = None,
 ) -> ScaffoldResult:
@@ -253,6 +263,7 @@ def generate_scaffold(
     Args:
         scaffolder_llm: LLM interface to use for generating the scaffold
         examples: Training examples to show the scaffolder
+        scoring_fn_code: Content of the scoring function to show the scaffolder
         task_description: Description of the task to be performed by the scaffold
         iteration: Iteration number for this scaffold
 
@@ -266,6 +277,7 @@ def generate_scaffold(
         scaffolder_llm,
         generate_examples=examples,
         task_description=task_description,
+        scoring_fn_code=scoring_fn_code,
         iteration=iteration,
     )
 
@@ -273,15 +285,17 @@ def generate_scaffold(
 def evolve_scaffold(
     scaffolder_llm: LLMInterface,
     run_data: List[ScaffoldRunData],
+    scoring_fn_code: Optional[str] = None,
     iteration: Optional[int] = None,
     parent_scaffold_id: Optional[str] = None,
 ) -> ScaffoldResult:
     """Generate an evolved version of a scaffold based on execution feedback.
 
     Args:
+        scaffolder_llm: LLM interface to use for generation
         run_data: List of ScaffoldRunData objects, each containing data from a
         previous scaffold execution including logs and score
-        scaffolder_llm: LLM interface to use for generation
+        scoring_fn_code: Content of the scoring function to show the scaffolder
         iteration: Iteration number for this scaffold
         parent_scaffold_id: ID of the parent scaffold being evolved
 
@@ -294,6 +308,7 @@ def evolve_scaffold(
     return _generate_or_evolve_scaffold(
         scaffolder_llm,
         evolve_examples=run_data,
+        scoring_fn_code=scoring_fn_code,
         iteration=iteration,
         parent_scaffold_id=parent_scaffold_id,
     )

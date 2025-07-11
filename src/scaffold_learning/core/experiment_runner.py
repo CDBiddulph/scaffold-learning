@@ -25,7 +25,7 @@ class ExperimentRunner:
         experiment_name: str,
         training_data: List[DatasetExample],
         validation_data: List[DatasetExample],
-        scoring_function: Callable[[str, Dict], float],
+        scoring_fn: Callable[[str, Dict], float],
         scaffolder_llm: LLMInterface,
         num_iterations: int,
         scaffolds_per_iter: int,
@@ -34,6 +34,7 @@ class ExperimentRunner:
         num_validation_examples: int,
         base_dir: Path = Path("experiments"),
         executor_model: str = "gpt-4",
+        scoring_fn_code: Optional[str] = None,
     ):
         """Initialize an experiment runner.
 
@@ -41,7 +42,7 @@ class ExperimentRunner:
             experiment_name: Name for this experiment run
             training_data: List of training examples
             validation_data: List of validation examples
-            scoring_function: Function that takes (expected, scoring_data) and returns score 0-1
+            scoring_fn: Function that takes (expected, scoring_data) and returns score 0-1
             scaffolder_llm: LLM to use for generating/improving scaffolds
             num_iterations: Number of evolution iterations to run
             scaffolds_per_iter: Number of top scaffolds to evolve each iteration
@@ -50,6 +51,7 @@ class ExperimentRunner:
             num_validation_examples: Number of validation examples to use for scoring
             base_dir: Base directory for all experiments
             executor_model: Model name to use for executing scaffolds
+            scoring_fn_code: Scoring function code to include in prompts
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -60,7 +62,7 @@ class ExperimentRunner:
         self.experiment_name = experiment_name
         self.training_data = training_data
         self.validation_data = validation_data
-        self.scoring_function = scoring_function
+        self.scoring_fn = scoring_fn
         self.scaffolder_llm = scaffolder_llm
         self.num_iterations = num_iterations
         self.scaffolds_per_iter = scaffolds_per_iter
@@ -68,6 +70,7 @@ class ExperimentRunner:
         self.num_training_examples = num_training_examples
         self.num_validation_examples = num_validation_examples
         self.executor_model = executor_model
+        self.scoring_fn_code = scoring_fn_code
 
         # Set up experiment directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -280,6 +283,7 @@ class ExperimentRunner:
             evolved_result = evolve_scaffold(
                 run_data=run_data_list,
                 scaffolder_llm=self.scaffolder_llm,
+                scoring_fn_code=self.scoring_fn_code,
                 iteration=iteration,
                 parent_scaffold_id=parent_id,
             )
@@ -381,6 +385,7 @@ class ExperimentRunner:
             result = generate_scaffold(
                 examples=[example],  # TODO: show multiple examples
                 scaffolder_llm=self.scaffolder_llm,
+                scoring_fn_code=self.scoring_fn_code,
                 iteration=0,
             )
 
@@ -427,7 +432,7 @@ class ExperimentRunner:
                 expected = example.scoring_data.get(
                     "solution", str(example.scoring_data)
                 )
-                score = self.scoring_function(expected, {"solution": result.output})
+                score = self.scoring_fn(expected, {"solution": result.output})
             else:
                 logging.warning(
                     f"Scaffold {scaffold_id} failed to execute: {result.error_message}"
@@ -502,7 +507,7 @@ class ExperimentRunner:
                     expected = example.scoring_data.get(
                         "solution", str(example.scoring_data)
                     )
-                    score = self.scoring_function(
+                    score = self.scoring_fn(
                         expected, {"solution": execution_result.output}
                     )
                 else:

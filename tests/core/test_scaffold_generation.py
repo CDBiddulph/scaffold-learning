@@ -276,6 +276,95 @@ Improve the existing scaffold.""",
                 },
                 id="evolve_scaffold_with_multiple_run_data",
             ),
+            pytest.param(
+                "generate_scaffold",
+                {
+                    "examples": [
+                        DatasetExample(
+                            id="test",
+                            input="test input",
+                            scoring_data={"solution": "test solution"},
+                        )
+                    ],
+                    "scoring_fn_code": "def score(expected, actual):\n    return 1.0 if expected == actual else 0.0",
+                    "llm_response": """```python
+def process_input(input_string: str) -> str:
+    return "test"
+```""",
+                    "expected_code": 'def process_input(input_string: str) -> str:\n    return "test"',
+                    "expected_prompt": """<scoring_function>```python
+def score(expected, actual):
+    return 1.0 if expected == actual else 0.0
+```</scoring_function>
+<timeout>120</timeout>
+<example-1>
+    <input>test input</input>
+    <expected_output>test solution</expected_output>
+</example-1>
+
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+
+Use the examples above.""",
+                },
+                id="generate_scaffold_with_scoring_function",
+            ),
+            pytest.param(
+                "evolve_scaffold",
+                {
+                    "llm_response": """```python
+def process_input(input_string: str) -> str:
+    return "EVOLVED"
+```""",
+                    "run_data": [
+                        ScaffoldRunData(
+                            code='def process_input(input_string: str) -> str:\n    return "ORIGINAL"',
+                            execution_log="Execution log here",
+                            example=DatasetExample(
+                                id="test-example",
+                                input="test clue",
+                                scoring_data={"solution": "ANSWER"},
+                            ),
+                            actual_output="ORIGINAL",
+                            score=0.5,
+                        )
+                    ],
+                    "scoring_fn_code": "def score(expected, actual):\n    return 1.0 if expected == actual else 0.0",
+                    "expected_code": 'def process_input(input_string: str) -> str:\n    return "EVOLVED"',
+                    "expected_prompt": """<code>```python
+def process_input(input_string: str) -> str:
+    return "ORIGINAL"
+```</code>
+<scoring_function>```python
+def score(expected, actual):
+    return 1.0 if expected == actual else 0.0
+```</scoring_function>
+<timeout>120</timeout>
+<example-1>
+    <input>test clue</input>
+    <expected_output>ANSWER</expected_output>
+    <actual_output>ORIGINAL</actual_output>
+    <execution_log>Execution log here</execution_log>
+    <score>0.5</score>
+</example-1>
+
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+- Evolution tip 1
+- Evolution tip 2
+
+Use the examples above.
+
+Improve the existing scaffold.""",
+                },
+                id="evolve_scaffold_with_scoring_function",
+            ),
         ],
     )
     def test_scaffold_generation(self, method, test_case):
@@ -283,6 +372,8 @@ Improve the existing scaffold.""",
         response_text = test_case.get("llm_response", "```\nUnused response text\n```")
         llm_response = LLMResponse(content=response_text)
         mock_llm.generate_response.return_value = llm_response
+
+        scoring_fn_code = test_case.get("scoring_fn_code", None)
 
         if method == "generate_scaffold":
             task_description = test_case.get("task_description", None)
@@ -310,11 +401,13 @@ Improve the existing scaffold.""",
                         examples=examples,
                         task_description=task_description,
                         scaffolder_llm=mock_llm,
+                        scoring_fn_code=scoring_fn_code,
                         iteration=0,
                     )
                 else:  # evolve_scaffold
                     evolve_scaffold(
                         run_data=test_case["run_data"],
+                        scoring_fn_code=scoring_fn_code,
                         scaffolder_llm=mock_llm,
                         iteration=1,
                         parent_scaffold_id="test-parent",
@@ -325,6 +418,7 @@ Improve the existing scaffold.""",
             result = generate_scaffold(
                 examples=examples,
                 task_description=task_description,
+                scoring_fn_code=scoring_fn_code,
                 scaffolder_llm=mock_llm,
                 iteration=0,
             )
@@ -333,6 +427,7 @@ Improve the existing scaffold.""",
         else:  # evolve_scaffold
             result = evolve_scaffold(
                 run_data=test_case["run_data"],
+                scoring_fn_code=scoring_fn_code,
                 scaffolder_llm=mock_llm,
                 iteration=1,
                 parent_scaffold_id="test-parent",

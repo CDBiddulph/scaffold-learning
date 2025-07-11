@@ -76,14 +76,14 @@ class TestExperimentRunner:
     ):
         """Factory method to create ExperimentRunner with common defaults."""
         training_data, validation_data = self.create_test_data()
-        scoring_function = self.create_mock_scoring_function()
+        scoring_fn = self.create_mock_scoring_function()
         mock_llm = Mock(spec=LLMInterface)
 
         return ExperimentRunner(
             experiment_name=experiment_name,
             training_data=training_data,
             validation_data=validation_data,
-            scoring_function=scoring_function,
+            scoring_fn=scoring_fn,
             scaffolder_llm=mock_llm,
             num_iterations=num_iterations,
             scaffolds_per_iter=scaffolds_per_iter,
@@ -155,7 +155,7 @@ Execution completed successfully
 
     def test_validation_parameter_check(self):
         training_data, validation_data = self.create_test_data()
-        scoring_function = self.create_mock_scoring_function()
+        scoring_fn = self.create_mock_scoring_function()
         mock_llm = Mock(spec=LLMInterface)
 
         # Should raise error when scaffolds_per_iter > initial_scaffolds
@@ -167,7 +167,7 @@ Execution completed successfully
                 experiment_name="test_experiment",
                 training_data=training_data,
                 validation_data=validation_data,
-                scoring_function=scoring_function,
+                scoring_fn=scoring_fn,
                 scaffolder_llm=mock_llm,
                 num_iterations=1,
                 scaffolds_per_iter=5,  # Too many
@@ -187,7 +187,9 @@ Execution completed successfully
         training_data, validation_data = self.create_test_data()
 
         # Create mocks to track calls
-        def mock_generate_func(examples, scaffolder_llm, iteration):
+        def mock_generate_func(
+            examples, scaffolder_llm, iteration, scoring_fn_code=None
+        ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
                 metadata=ScaffoldMetadata(
@@ -197,7 +199,13 @@ Execution completed successfully
                 ),
             )
 
-        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
+        def mock_evolve_func(
+            run_data,
+            scaffolder_llm,
+            iteration,
+            parent_scaffold_id,
+            scoring_fn_code=None,
+        ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
                 metadata=ScaffoldMetadata(
@@ -271,7 +279,9 @@ Execution completed successfully
         )
 
         # Create mocks for scaffold generation and evolution
-        def mock_generate_func(examples, scaffolder_llm, iteration):
+        def mock_generate_func(
+            examples, scaffolder_llm, iteration, scoring_fn_code=None
+        ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
                 metadata=ScaffoldMetadata(
@@ -281,7 +291,13 @@ Execution completed successfully
                 ),
             )
 
-        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
+        def mock_evolve_func(
+            run_data,
+            scaffolder_llm,
+            iteration,
+            parent_scaffold_id,
+            scoring_fn_code=None,
+        ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
                 metadata=ScaffoldMetadata(
@@ -436,7 +452,7 @@ Execution completed successfully
             DatasetExample(id="v1", input="Val 1", scoring_data={"solution": "VOUT1"}),
         ]
 
-        scoring_function = lambda expected, actual: (
+        scoring_fn = lambda expected, actual: (
             1.0 if actual.get("solution") == expected else 0.0
         )
         mock_llm = Mock(spec=LLMInterface)
@@ -445,7 +461,7 @@ Execution completed successfully
             experiment_name="test_inputs",
             training_data=training_data,
             validation_data=validation_data,
-            scoring_function=scoring_function,
+            scoring_fn=scoring_fn,
             scaffolder_llm=mock_llm,
             num_iterations=2,
             scaffolds_per_iter=1,
@@ -456,7 +472,9 @@ Execution completed successfully
         )
 
         # Create mocks that track calls automatically
-        def mock_generate_func(examples, scaffolder_llm, iteration):
+        def mock_generate_func(
+            examples, scaffolder_llm, iteration, scoring_fn_code=None
+        ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
                 metadata=ScaffoldMetadata(
@@ -468,7 +486,13 @@ Execution completed successfully
                 ),
             )
 
-        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
+        def mock_evolve_func(
+            run_data,
+            scaffolder_llm,
+            iteration,
+            parent_scaffold_id,
+            scoring_fn_code=None,
+        ):
             # run_data is a list of ScaffoldRunData objects
             first_run_data = run_data[0]
             return ScaffoldResult(
@@ -601,7 +625,9 @@ Execution completed successfully
                 execution_time=0.1,
             )
 
-        def mock_generate_func(examples, scaffolder_llm, iteration):
+        def mock_generate_func(
+            examples, scaffolder_llm, iteration, scoring_fn_code=None
+        ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
                 metadata=ScaffoldMetadata(
@@ -611,7 +637,13 @@ Execution completed successfully
                 ),
             )
 
-        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
+        def mock_evolve_func(
+            run_data,
+            scaffolder_llm,
+            iteration,
+            parent_scaffold_id,
+            scoring_fn_code=None,
+        ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
                 metadata=ScaffoldMetadata(
@@ -622,7 +654,7 @@ Execution completed successfully
             )
 
         # Override the runner's scoring function
-        runner.scoring_function = mock_scoring_function
+        runner.scoring_fn = mock_scoring_function
 
         mock_generate = Mock(side_effect=mock_generate_func)
         mock_evolve = Mock(side_effect=mock_evolve_func)
@@ -780,7 +812,9 @@ Execution completed successfully
                 execution_time=0.1,
             )
 
-        def mock_generate_func(examples, scaffolder_llm, iteration):
+        def mock_generate_func(
+            examples, scaffolder_llm, iteration, scoring_fn_code=None
+        ):
             return ScaffoldResult(
                 code='def process_input(s): return "result"',
                 metadata=ScaffoldMetadata(
@@ -790,7 +824,13 @@ Execution completed successfully
                 ),
             )
 
-        def mock_evolve_func(run_data, scaffolder_llm, iteration, parent_scaffold_id):
+        def mock_evolve_func(
+            run_data,
+            scaffolder_llm,
+            iteration,
+            parent_scaffold_id,
+            scoring_fn_code=None,
+        ):
             return ScaffoldResult(
                 code='def process_input(s): return "evolved"',
                 metadata=ScaffoldMetadata(
@@ -800,7 +840,7 @@ Execution completed successfully
                 ),
             )
 
-        runner.scoring_function = mock_scoring_function
+        runner.scoring_fn = mock_scoring_function
 
         with patch(
             "scaffold_learning.core.experiment_runner.generate_scaffold",
