@@ -33,12 +33,12 @@ def puzzle_to_text(puzzle):
     return input_text, solution_text
 
 
-def collect_puzzles(data, header, target_count, source, day_pattern):
+def collect_puzzles(data, header, target_count, source, day_pattern, day_of_week=None):
     """Collect puzzles and convert to text format"""
     puzzles = []
 
     for puzzle, source, date, year, month, day in iterate_puzzles(
-        data, header, source, day_pattern, target_count
+        data, header, source, day_pattern, target_count, day_of_week
     ):
         # Convert to text
         input_text, solution_text = puzzle_to_text(puzzle)
@@ -86,6 +86,19 @@ def main():
         help="Regex pattern to filter day names (default: '^\\d+$' for numbered days only)",
     )
     parser.add_argument(
+        "--day-of-week",
+        choices=[
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ],
+        help="Filter puzzles by day of the week (e.g., monday, tuesday, etc.)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -105,10 +118,13 @@ def main():
 
     # Collect training puzzles
     total_needed = args.num_train + args.num_valid
-    print(f"Searching for {total_needed} suitable puzzles from {args.source}...")
+    day_filter_msg = f" on {args.day_of_week}s" if args.day_of_week else ""
+    print(
+        f"Searching for {total_needed} suitable puzzles from {args.source}{day_filter_msg}..."
+    )
 
     all_puzzles = collect_puzzles(
-        data, header, total_needed, args.source, args.day_filter
+        data, header, total_needed, args.source, args.day_filter, args.day_of_week
     )
 
     if len(all_puzzles) < total_needed:

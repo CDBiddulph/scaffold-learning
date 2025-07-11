@@ -4,6 +4,7 @@
 import json
 import gzip
 import re
+from datetime import datetime
 from urllib.request import urlopen, Request
 
 from . import puz
@@ -164,7 +165,9 @@ def puzzle_to_solution_text(puzzle, numbering):
     return "\n".join(lines)
 
 
-def iterate_puzzles(data, header, source, day_pattern, max_count=None):
+def iterate_puzzles(
+    data, header, source, day_pattern, max_count=None, day_of_week=None
+):
     """
     Generator that yields puzzle objects from the GitHub archive
 
@@ -174,6 +177,7 @@ def iterate_puzzles(data, header, source, day_pattern, max_count=None):
         source: Puzzle source name (e.g. "NY Times")
         day_pattern: Regex pattern to filter day names
         max_count: Optional maximum number of puzzles to yield
+        day_of_week: Optional day of week to filter by (e.g. "monday")
 
     Yields:
         tuple: (puzzle_object, source, date_string, year, month, day)
@@ -191,6 +195,20 @@ def iterate_puzzles(data, header, source, day_pattern, max_count=None):
             for day, info in sorted(days.items(), reverse=True):
                 if not re.match(day_pattern, day):
                     continue
+
+                # Filter by day of week if specified
+                if day_of_week is not None:
+                    # Extract only the numeric part of the day (e.g., "12" from "12-mini")
+                    day_numeric = re.match(r"(\d+)", day)
+                    if not day_numeric:
+                        continue  # Skip if no numeric part found
+                    day_num = day_numeric.group(1)
+                    date_obj = datetime.strptime(
+                        f"{year}-{month}-{day_num}", "%Y-%m-%d"
+                    )
+                    puzzle_day_of_week = date_obj.strftime("%A").lower()
+                    if puzzle_day_of_week != day_of_week.lower():
+                        continue
 
                 try:
                     puzzle_data = get_data(*info, mode="gzip", header=header)
