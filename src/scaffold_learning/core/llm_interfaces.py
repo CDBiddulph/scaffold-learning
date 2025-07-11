@@ -7,6 +7,7 @@ This module provides abstract interfaces and concrete implementations for differ
 
 import os
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Optional
 from contextlib import contextmanager
@@ -97,12 +98,16 @@ class AnthropicInterface(LLMInterface):
         model: str = LLMConfig.DEFAULT_ANTHROPIC_MODEL,
         api_key: Optional[str] = None,
         thinking_budget_tokens: Optional[int] = None,
+        max_retries: int = 5,
+        base_delay: float = 1.0,
     ):
         self.model = model
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key not provided")
         self.thinking_budget_tokens = thinking_budget_tokens
+        self.max_retries = max_retries
+        self.base_delay = base_delay
 
     def _get_max_tokens(self) -> int:
         if self.model == self._OPUS_NAME:
@@ -127,30 +132,67 @@ class AnthropicInterface(LLMInterface):
         budget_tokens = self.thinking_budget_tokens or 10000
         return {"budget_tokens": budget_tokens, "type": "enabled"}
 
+    def _get_retry_after_from_headers(self, e: Exception) -> Optional[float]:
+        """Get the retry-after value from the response headers, if available"""
+        if not isinstance(e, anthropic.RateLimitError):
+            return None
+        if not hasattr(e.response, "headers"):
+            return None
+        retry_after_str = e.response.headers.get("retry-after")
+        if not retry_after_str:
+            return None
+        try:
+            return float(retry_after_str)
+        except ValueError:
+            return None
+
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         # TODO: make use of streaming to get logs faster
         # TODO: try the async client
         client = anthropic.Anthropic(api_key=self.api_key)
-        with suppress_logging("httpx", "anthropic._base_client"):
-            stream = client.messages.create(
-                model=self.model,
-                max_tokens=self._get_max_tokens(),
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
-                thinking=self._get_thinking_params(),
-                stream=True,
-            )
 
-        thinking = ""
-        content = ""
-        for event in stream:
-            if event.type == "content_block_delta":
-                if event.delta.type == "thinking_delta":
-                    thinking += event.delta.thinking
-                elif event.delta.type == "text_delta":
-                    content += event.delta.text
+        for attempt in range(self.max_retries):
+            try:
+                with suppress_logging("httpx", "anthropic._base_client"):
+                    stream = client.messages.create(
+                        model=self.model,
+                        max_tokens=self._get_max_tokens(),
+                        system=system_prompt,
+                        messages=[{"role": "user", "content": prompt}],
+                        thinking=self._get_thinking_params(),
+                        stream=True,
+                    )
 
-        return LLMResponse(thinking=thinking, content=content)
+                thinking = ""
+                content = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        if event.delta.type == "thinking_delta":
+                            thinking += event.delta.thinking
+                        elif event.delta.type == "text_delta":
+                            content += event.delta.text
+
+                return LLMResponse(thinking=thinking, content=content)
+
+            except (anthropic.RateLimitError, anthropic.APIError) as e:
+                if attempt == self.max_retries - 1:
+                    raise
+
+                retry_after = self._get_retry_after_from_headers(e)
+                # Use retry-after if available, otherwise exponential backoff
+                if retry_after:
+                    wait_time = retry_after
+                else:
+                    wait_time = self.base_delay * (2**attempt)
+
+                logging.warning(
+                    f"Rate limit hit for {self.model}. Retrying in {wait_time} seconds "
+                    f"(determined from {'retry-after header' if retry_after else 'exponential backoff'})... "
+                    f"(attempt {attempt + 1}/{self.max_retries})"
+                )
+                time.sleep(wait_time)
+
+        raise RuntimeError("Unreachable")
 
     def get_model_info(self) -> str:
         return f"anthropic/{self.model}"
@@ -212,10 +254,10 @@ class HumanLLMInterface(LLMInterface):
         while True:
             try:
                 line = input()
-                
+
                 if line.strip().lower() == "exit":
                     raise KeyboardInterrupt()
-                
+
                 # Check if line ends with backslash
                 if line.endswith("\\"):
                     # Remove the backslash and continue
@@ -224,7 +266,7 @@ class HumanLLMInterface(LLMInterface):
                     # This is the last line
                     lines.append(line)
                     break
-                    
+
             except (EOFError, KeyboardInterrupt):
                 print("\nInterrupted. Retrying input.")
                 return self._get_user_input(prompt, system_prompt)
@@ -232,7 +274,6 @@ class HumanLLMInterface(LLMInterface):
         response = "\n".join(lines)
         print("\n" + "=" * 80)
         return response
-
 
     def get_model_info(self) -> str:
         return "human"
