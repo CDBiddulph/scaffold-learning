@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Callable, Tuple, Any
+from collections import defaultdict
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldRunData,
@@ -14,7 +15,10 @@ from scaffold_learning.core.scaffold_generation import (
     generate_scaffold,
     evolve_scaffold,
 )
-from scaffold_learning.core.scaffold_execution import execute_scaffold
+from scaffold_learning.core.scaffold_execution import (
+    execute_scaffold,
+    ScaffoldExecutionResult,
+)
 
 
 class ExperimentRunner:
@@ -226,10 +230,8 @@ class ExperimentRunner:
         for scaffold_id in most_recent_scores:
             if most_recent_scores[scaffold_id] is None:
                 # This scaffold has never been validated
-                scores = self._evaluate_scaffold(
-                    iteration=iteration,
-                    scaffold_id=scaffold_id,
-                    validation_examples=validation_sample,
+                scores = self._run_scaffold_on_examples(
+                    iteration, scaffold_id, validation_sample, "valid"
                 )
                 newly_validated_scores[scaffold_id] = {
                     "mean_score": np.mean(scores),
@@ -397,53 +399,97 @@ class ExperimentRunner:
 
         return scaffold_ids
 
-    def _evaluate_scaffold(
+    def _execute_and_score_scaffold(
         self,
         iteration: int,
         scaffold_id: str,
-        validation_examples: List[DatasetExample],
-    ) -> List[float]:
-        """Evaluate a scaffold on validation examples.
+        example: DatasetExample,
+        log_type: str,
+    ) -> Tuple[ScaffoldExecutionResult, float]:
+        """Execute a scaffold on a single example and return the score and execution result.
 
         Args:
             iteration: Current iteration number (where to save logs)
-            scaffold_id: ID of scaffold to evaluate
-            validation_examples: Examples to test the scaffold on
+            scaffold_id: ID of scaffold to execute
+            example: Example to test the scaffold on
+            log_type: Type of log ("train" or "valid")
 
         Returns:
-            List of scores, in order of validation_examples
+            Tuple of (execution_result, score)
+        """
+        # Execute scaffold
+        result = execute_scaffold(
+            scaffold_dir=self.file_manager.get_scaffold_dir(scaffold_id),
+            log_file_path=self.file_manager.get_new_execution_log_path(
+                iteration, scaffold_id, log_type
+            ),
+            input_string=example.input,
+            model_spec=self.executor_model,
+            console_output=False,
+        )
+
+        # Calculate score
+        if result.error_message is None:
+            expected = example.scoring_data.get("solution", str(example.scoring_data))
+            score = self.scoring_fn(expected, {"solution": result.output})
+        else:
+            logging.warning(
+                f"Scaffold {scaffold_id} failed to execute: {result.error_message}"
+            )
+            score = 0.0  # Failed execution gets 0 score
+
+        return result, score
+
+    def _run_scaffold_on_examples(
+        self,
+        iteration: int,
+        scaffold_id: str,
+        examples: List[DatasetExample],
+        log_type: str,
+        run_data_list: Optional[List[ScaffoldRunData]] = None,
+        scaffold_code: Optional[str] = None,
+    ) -> List[float]:
+        """Run a scaffold on examples and return scores and run data.
+
+        Args:
+            iteration: Current iteration number (where to save logs)
+            scaffold_id: ID of scaffold to run
+            examples: Examples to test the scaffold on
+            log_type: Type of log ("train" or "valid")
+            run_data_list: List of ScaffoldRunData to append to. Requires scaffold_code.
+            scaffold_code: Scaffold code to use for ScaffoldRunData.
+
+        Returns:
+            A list of scores, in order of examples
         """
         scores = []
 
-        for example in validation_examples:
-            # Execute scaffold
-            result = execute_scaffold(
-                scaffold_dir=self.file_manager.get_scaffold_dir(scaffold_id),
-                log_file_path=self.file_manager.get_new_execution_log_path(
-                    iteration, scaffold_id, "valid"
-                ),
-                input_string=example.input,
-                model_spec=self.executor_model,
-                console_output=False,
+        for example in examples:
+            execution_result, score = self._execute_and_score_scaffold(
+                iteration, scaffold_id, example, log_type
             )
-
-            # Calculate score
-            if result.error_message is None:
-                expected = example.scoring_data.get(
-                    "solution", str(example.scoring_data)
-                )
-                score = self.scoring_fn(expected, {"solution": result.output})
-            else:
-                logging.warning(
-                    f"Scaffold {scaffold_id} failed to execute: {result.error_message}"
-                )
-                score = 0.0  # Failed execution gets 0 score
-
             scores.append(score)
 
+            # For training, create ScaffoldRunData
+            if run_data_list is not None:
+                if scaffold_code is None:
+                    raise ValueError("Scaffold code is required for ScaffoldRunData")
+                run_data_list.append(
+                    ScaffoldRunData(
+                        code=scaffold_code,
+                        execution_log=execution_result.stderr,
+                        example=example,
+                        actual_output=execution_result.output,
+                        score=score,
+                    )
+                )
+
+        # Log scores
+        log_type_str = "validation" if log_type == "valid" else "training"
+        scores_str = ", ".join(f"{s:.3f}" for s in scores)
         average_score = np.mean(scores)
         self.logger.info(
-            f"Scaffold {scaffold_id} validation scores: {scores} (avg {average_score:.3f})"
+            f"Scaffold {scaffold_id} {log_type_str} scores: {scores_str} (avg {average_score:.3f})"
         )
 
         return scores
@@ -468,13 +514,12 @@ class ExperimentRunner:
             i += self.num_training_examples
         return examples_by_scaffold
 
-    # TODO: deduplicate with _evaluate_scaffold
     def _run_training(
         self,
         iteration: int,
         scaffold_ids: List[str],
     ) -> Dict[str, List[ScaffoldRunData]]:
-        """Run scaffolds on training examples.
+        """Run scaffolds on training examples and get ScaffoldRunData.
 
         Args:
             iteration: Current iteration number (where to save logs)
@@ -484,47 +529,17 @@ class ExperimentRunner:
             Dictionary mapping scaffold_id to list of ScaffoldRunData
         """
         examples_by_scaffold = self._get_training_examples(scaffold_ids)
-        training_runs = {}
+        training_runs = defaultdict(list)
         for scaffold_id, examples in examples_by_scaffold.items():
-            training_runs[scaffold_id] = []
-            for example in examples:
-                # Load scaffold to get code for ScaffoldRunData
-                scaffold_result = self.file_manager.load_scaffold(scaffold_id)
-
-                # Execute scaffold
-                execution_result = execute_scaffold(
-                    scaffold_dir=self.file_manager.get_scaffold_dir(scaffold_id),
-                    log_file_path=self.file_manager.get_new_execution_log_path(
-                        iteration, scaffold_id, "train"
-                    ),
-                    input_string=example.input,
-                    model_spec=self.executor_model,
-                    console_output=False,
-                )
-
-                # Calculate score
-                if execution_result.error_message is None:
-                    expected = example.scoring_data.get(
-                        "solution", str(example.scoring_data)
-                    )
-                    score = self.scoring_fn(
-                        expected, {"solution": execution_result.output}
-                    )
-                else:
-                    score = 0.0
-
-                training_runs[scaffold_id].append(
-                    ScaffoldRunData(
-                        code=scaffold_result.code,
-                        execution_log=execution_result.stderr,
-                        example=example,
-                        actual_output=execution_result.output,
-                        score=score,
-                    )
-                )
-
-            scores = [run_data.score for run_data in training_runs[scaffold_id]]
-            self.logger.info(
-                f"Scaffold {scaffold_id} training scores: {scores} (avg {np.mean(scores):.3f})"
+            # Load scaffold to get code for ScaffoldRunData
+            scaffold_result = self.file_manager.load_scaffold(scaffold_id)
+            self._run_scaffold_on_examples(
+                iteration,
+                scaffold_id,
+                examples,
+                "train",
+                scaffold_code=scaffold_result.code,
+                run_data_list=training_runs[scaffold_id],
             )
+
         return training_runs
