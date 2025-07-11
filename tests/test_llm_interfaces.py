@@ -125,7 +125,7 @@ class TestMockLLMInterface(unittest.TestCase):
         """Test mock response for executor calls"""
         interface = MockLLMInterface()
         result = interface.generate_response("test prompt", "")
-        self.assertEqual(result, "Mock LLM response to: test prompt")
+        self.assertEqual(result.content, "Mock LLM response to: test prompt")
 
     def test_generate_response_scaffolder_with_real_template(self):
         """Test mock response for scaffolder calls with real template file"""
@@ -171,9 +171,9 @@ class TestMockLLMInterface(unittest.TestCase):
         result = interface.generate_response("test", "process_input")
         # The MockLLMInterface should either read the template file or use the fallback
         # Either way, it should contain valid Python code with process_input function
-        self.assertIn("def process_input", result)
+        self.assertIn("def process_input", result.content)
         # Should contain either markdown formatting or Python shebang
-        self.assertTrue("```python" in result or "#!/usr/bin/env python3" in result)
+        self.assertTrue("```python" in result.content or "#!/usr/bin/env python3" in result.content)
 
 
 class TestSuppressLogging(unittest.TestCase):
