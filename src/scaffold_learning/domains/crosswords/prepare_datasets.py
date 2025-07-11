@@ -61,7 +61,7 @@ def save_puzzles_to_dir(puzzles, output_dir, num_train, num_valid, seed):
 
     # Split into train and validation
     train_puzzles = puzzles[:num_train]
-    valid_puzzles = puzzles[num_train:num_train + num_valid]
+    valid_puzzles = puzzles[num_train : num_train + num_valid]
 
     # Save training set
     train_file = output_dir / "train.jsonl"
@@ -81,32 +81,44 @@ def save_puzzles_to_dir(puzzles, output_dir, num_train, num_valid, seed):
     return len(train_puzzles), len(valid_puzzles)
 
 
-def create_all_day_datasets(data, header, output_dir, num_train, num_valid, source, day_filter, seed):
+def create_all_day_datasets(
+    data, header, output_dir, num_train, num_valid, source, day_filter, seed
+):
     """Create datasets for all days of the week in separate directories"""
-    days_of_week = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    days_of_week = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ]
     total_train = 0
     total_valid = 0
-    
+
     for day in days_of_week:
         print(f"\nProcessing {day}s...")
         day_dir = output_dir / day
         day_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Collect puzzles for this day
         day_puzzles = collect_puzzles(
             data, header, num_train + num_valid, source, day_filter, day
         )
-        
+
         if len(day_puzzles) < num_train + num_valid:
-            print(f"Warning: Only found {len(day_puzzles)} {day} puzzles, needed {num_train + num_valid}")
-        
+            print(
+                f"Warning: Only found {len(day_puzzles)} {day} puzzles, needed {num_train + num_valid}"
+            )
+
         # Save puzzles to this day's directory (different seed for each day)
         train_count, valid_count = save_puzzles_to_dir(
             day_puzzles, day_dir, num_train, num_valid, seed + hash(day)
         )
         total_train += train_count
         total_valid += valid_count
-    
+
     return total_train, total_valid
 
 
@@ -176,8 +188,14 @@ def main():
 
     if args.day_of_week == "all":
         return create_all_day_datasets(
-            data, header, output_dir, args.num_train, args.num_valid, 
-            args.source, args.day_filter, args.seed
+            data,
+            header,
+            output_dir,
+            args.num_train,
+            args.num_valid,
+            args.source,
+            args.day_filter,
+            args.seed,
         )
     else:
         # Original behavior for single day or no day filter
@@ -192,9 +210,13 @@ def main():
         )
 
         if len(all_puzzles) < total_needed:
-            print(f"Warning: Only found {len(all_puzzles)} puzzles, needed {total_needed}")
+            print(
+                f"Warning: Only found {len(all_puzzles)} puzzles, needed {total_needed}"
+            )
 
-        return save_puzzles_to_dir(all_puzzles, output_dir, args.num_train, args.num_valid, args.seed)
+        return save_puzzles_to_dir(
+            all_puzzles, output_dir, args.num_train, args.num_valid, args.seed
+        )
 
 
 if __name__ == "__main__":

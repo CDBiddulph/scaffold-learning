@@ -121,116 +121,128 @@ class TestAnthropicInterface(unittest.TestCase):
         self.assertTrue(hasattr(interface, "generate_response"))
         self.assertTrue(callable(interface.generate_response))
 
-    @patch('time.sleep')
-    @patch('anthropic.Anthropic')
-    def test_rate_limit_retry_with_retry_after_header(self, mock_anthropic_class, mock_sleep):
+    @patch("time.sleep")
+    @patch("anthropic.Anthropic")
+    def test_rate_limit_retry_with_retry_after_header(
+        self, mock_anthropic_class, mock_sleep
+    ):
         """Test retry logic uses retry-after header when available"""
         interface = AnthropicInterface(api_key=self.api_key)
-        
+
         # Create a mock response with retry-after header
         mock_response = MagicMock()
-        mock_response.headers = {'retry-after': '5.5'}
-        
+        mock_response.headers = {"retry-after": "5.5"}
+
         # Create a RateLimitError with the mock response
         rate_limit_error = anthropic.RateLimitError(
-            message="Rate limit exceeded",
-            response=mock_response,
-            body=None
+            message="Rate limit exceeded", response=mock_response, body=None
         )
-        
+
         # Mock the client and its messages.create method
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
-        
+
         # Create a mock stream that succeeds on second attempt
         mock_stream_success = [
-            MagicMock(type="content_block_delta", delta=MagicMock(type="text_delta", text="Hello")),
-            MagicMock(type="content_block_delta", delta=MagicMock(type="text_delta", text=" world"))
+            MagicMock(
+                type="content_block_delta",
+                delta=MagicMock(type="text_delta", text="Hello"),
+            ),
+            MagicMock(
+                type="content_block_delta",
+                delta=MagicMock(type="text_delta", text=" world"),
+            ),
         ]
-        
+
         # First call raises rate limit error, second succeeds
-        mock_client.messages.create.side_effect = [rate_limit_error, mock_stream_success]
-        
+        mock_client.messages.create.side_effect = [
+            rate_limit_error,
+            mock_stream_success,
+        ]
+
         # Call generate_response
         result = interface.generate_response("test prompt", "test system")
-        
+
         # Verify the response
         self.assertEqual(result.content, "Hello world")
-        
+
         # Verify retry-after was used (5.5 seconds)
         mock_sleep.assert_called_once_with(5.5)
-        
+
         # Verify create was called twice
         self.assertEqual(mock_client.messages.create.call_count, 2)
 
-    @patch('time.sleep')
-    @patch('anthropic.Anthropic')
-    def test_rate_limit_retry_with_exponential_backoff(self, mock_anthropic_class, mock_sleep):
+    @patch("time.sleep")
+    @patch("anthropic.Anthropic")
+    def test_rate_limit_retry_with_exponential_backoff(
+        self, mock_anthropic_class, mock_sleep
+    ):
         """Test retry logic uses exponential backoff when no retry-after header"""
         interface = AnthropicInterface(api_key=self.api_key)
-        
+
         # Create a RateLimitError without retry-after header
         rate_limit_error = anthropic.RateLimitError(
-            message="Rate limit exceeded",
-            response=MagicMock(headers={}),
-            body=None
+            message="Rate limit exceeded", response=MagicMock(headers={}), body=None
         )
-        
+
         # Mock the client
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
-        
+
         # Create a mock stream that succeeds on fourth attempt
         mock_stream_success = [
-            MagicMock(type="content_block_delta", delta=MagicMock(type="text_delta", text="Success"))
+            MagicMock(
+                type="content_block_delta",
+                delta=MagicMock(type="text_delta", text="Success"),
+            )
         ]
-        
+
         # First three calls raise rate limit error, fourth succeeds
         mock_client.messages.create.side_effect = [
             rate_limit_error,
             rate_limit_error,
             rate_limit_error,
-            mock_stream_success
+            mock_stream_success,
         ]
-        
+
         # Call generate_response
         result = interface.generate_response("test prompt")
-        
+
         # Verify the response
         self.assertEqual(result.content, "Success")
-        
+
         # Verify exponential backoff was used (1, 2, 4 seconds)
         expected_calls = [call(1.0), call(2.0), call(4.0)]
         mock_sleep.assert_has_calls(expected_calls)
-        
+
         # Verify create was called four times
         self.assertEqual(mock_client.messages.create.call_count, 4)
 
-    @patch('time.sleep')
-    @patch('anthropic.Anthropic')
-    def test_rate_limit_retry_max_attempts_exceeded(self, mock_anthropic_class, mock_sleep):
+    @patch("time.sleep")
+    @patch("anthropic.Anthropic")
+    def test_rate_limit_retry_max_attempts_exceeded(
+        self, mock_anthropic_class, mock_sleep
+    ):
         """Test that rate limit error is raised after max retries"""
         interface = AnthropicInterface(api_key=self.api_key)
-        
+
         # Create a RateLimitError
         rate_limit_error = anthropic.RateLimitError(
-            message="Rate limit exceeded",
-            response=MagicMock(headers={}),
-            body=None
+            message="Rate limit exceeded", response=MagicMock(headers={}), body=None
         )
-        
+
         # Mock the client to always raise rate limit error
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
         mock_client.messages.create.side_effect = rate_limit_error
-        
+
         # Call generate_response and expect it to raise after max retries
         with self.assertRaises(anthropic.RateLimitError):
             interface.generate_response("test prompt")
-        
+
         # Verify it tried 5 times (initial + 4 retries)
         self.assertEqual(mock_client.messages.create.call_count, 5)
-        
+
         # Verify exponential backoff for all retries (1, 2, 4, 8 seconds)
         expected_calls = [call(1.0), call(2.0), call(4.0), call(8.0)]
         mock_sleep.assert_has_calls(expected_calls)
@@ -289,7 +301,9 @@ class TestMockLLMInterface(unittest.TestCase):
         # Either way, it should contain valid Python code with process_input function
         self.assertIn("def process_input", result.content)
         # Should contain either markdown formatting or Python shebang
-        self.assertTrue("```python" in result.content or "#!/usr/bin/env python3" in result.content)
+        self.assertTrue(
+            "```python" in result.content or "#!/usr/bin/env python3" in result.content
+        )
 
 
 class TestSuppressLogging(unittest.TestCase):
