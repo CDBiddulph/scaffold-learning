@@ -168,25 +168,15 @@ class MockLLMInterface(LLMInterface):
         """Return appropriate mock response based on context"""
         # If this looks like a scaffolder prompt (contains system prompt about Python generation),
         # return a mock script. Otherwise, return a simple mock response.
-        if "Python code generator" in system_prompt or "process_input" in system_prompt:
+        if any("process_input" in p for p in [prompt, system_prompt]):
             # Load the mock script template
-            try:
-                with open("tests/mock_scaffolder_script.py", "r") as f:
-                    return f.read()
-            except FileNotFoundError:
-                # Fallback if template file is missing
-                return """```python
-#!/usr/bin/env python3
-import logging
-from llm_executor import execute_llm
-
-def process_input(input_string: str) -> str:
-    logging.info("Mock scaffold processing input")
-    return f"Mock result: {input_string}"
-```"""
+            with open("tests/mock_scaffolder_script.py", "r") as f:
+                return LLMResponse(content=f.read())
         else:
             # For executor LLM calls, return a simple mock response
-            return f"Mock LLM response to: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+            return LLMResponse(
+                content=f"Mock LLM response to: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+            )
 
     def get_model_info(self) -> str:
         return "mock"
@@ -217,7 +207,7 @@ class HumanLLMInterface(LLMInterface):
     def _get_user_input(self, prompt: str, system_prompt: str = "") -> str:
         """Get user input with vim option"""
         print(
-            "\nPlease provide your response (end with an empty line, or type 'vim' to use vim editor):"
+            "\nPlease provide your response (end with an empty line, type 'vim' to use vim editor, or type 'exit' to exit):"
         )
 
         # Check if user wants to use vim
@@ -229,6 +219,8 @@ class HumanLLMInterface(LLMInterface):
 
         if first_line.strip().lower() == "vim":
             return self._get_vim_response(prompt, system_prompt)
+        elif first_line.strip().lower() == "exit":
+            raise KeyboardInterrupt()
 
         # Regular CLI input mode
         lines = [first_line] if first_line else []
