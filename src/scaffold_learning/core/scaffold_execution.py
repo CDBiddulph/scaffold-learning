@@ -64,7 +64,8 @@ def _build_docker_command(
             "-e",
             f"EXECUTOR_MODEL_SPEC={model_spec}",
             "-e",
-            "LOG_LEVEL=DEBUG",
+            # TODO: try DEBUG after removing extraneous logs from Anthropic
+            "LOG_LEVEL=INFO",
             "scaffold-runner",
         ]
     )
