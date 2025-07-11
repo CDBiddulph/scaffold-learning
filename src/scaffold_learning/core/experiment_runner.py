@@ -258,7 +258,7 @@ class ExperimentRunner:
         ]
 
         # Log results for top K scaffolds
-        id_score_pairs = [f"{id}: {all_scaffold_scores[id]:.3f}" for id in top_k_ids]
+        id_score_pairs = [f"{id}: {score:.3f}" for id, score in sorted_scaffolds]
         logging.info(f"Got validation scores: {', '.join(id_score_pairs)}")
         logging.info(f"Selected top {len(top_k_ids)} scaffolds: {', '.join(top_k_ids)}")
 
