@@ -70,7 +70,6 @@ def main():
     # Generate scaffold
     scaffold_result = make_prompt_only_scaffold(
         examples=train_sample,
-        input_string="[INPUT_PLACEHOLDER]",
         scoring_fn_code=scoring_fn_code,
     )
 

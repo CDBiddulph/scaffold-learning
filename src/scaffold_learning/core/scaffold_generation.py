@@ -173,13 +173,18 @@ def _build_prompt(
     evolve_examples: Optional[List[ScaffoldRunData]] = None,
     task_description: Optional[str] = None,
     scoring_fn_code: Optional[str] = None,
-    input_for_executor: Optional[str] = None,
+    for_executor: bool = False,
 ) -> str:
     """Build the full prompt for scaffold generation or evolution.
 
+    Exactly one of generate_examples, evolve_examples, or task_description must be provided.
+
     Args:
-        examples: List of DatasetExample or ScaffoldRunData objects
-        is_evolution: If True, the prompt will be for evolution, otherwise it will be for generation
+        generate_examples: List of DatasetExample objects
+        evolve_examples: List of ScaffoldRunData objects
+        task_description: Description of the task to be performed by the scaffold
+        scoring_fn_code: Content of the scoring function to show the executor
+        for_executor: If True, the prompt will be for executor use (for prompt-only scaffolds)
 
     Returns:
         Complete prompt for the scaffolder LLM
@@ -209,9 +214,8 @@ def _build_prompt(
     if examples:
         full_prompt += f"\n{_get_examples_xml(examples)}"
 
-    if input_for_executor:
-        full_prompt += f"\n\n{_PROMPT_ONLY_INSTRUCTIONS}"
-        full_prompt += f"\n\nINPUT:\n{input_for_executor}"
+    if for_executor:
+        full_prompt += f"\n\n{_PROMPT_ONLY_INSTRUCTIONS}\n\nINPUT:\n"
         return full_prompt.lstrip()
 
     # Include the timeout
@@ -244,7 +248,7 @@ def _construct_prompt_only_scaffold(executor_prompt: str) -> str:
 PROMPT = {json.dumps(executor_prompt)}
 
 def process_input(input_string: str) -> str:
-    return execute_llm(PROMPT)
+    return execute_llm(PROMPT + input_string)
 """
 
 
@@ -256,17 +260,16 @@ def _make_scaffold(
     scoring_fn_code: Optional[str] = None,
     iteration: Optional[int] = None,
     parent_scaffold_id: Optional[str] = None,
-    input_for_executor: Optional[str] = None,
 ) -> ScaffoldResult:
     scaffolder_prompt = None
     scaffolder_response = None
     executor_prompt = None
-    if input_for_executor:
+    if not scaffolder_llm:
         # We're making a prompt-only scaffold
         executor_prompt = _build_prompt(
-            generate_examples,
+            generate_examples=generate_examples,
             scoring_fn_code=scoring_fn_code,
-            input_for_executor=input_for_executor,
+            for_executor=True,
         )
         code = _construct_prompt_only_scaffold(executor_prompt)
     else:
@@ -274,7 +277,6 @@ def _make_scaffold(
         scaffolder_prompt = _build_prompt(
             generate_examples, evolve_examples, task_description, scoring_fn_code
         )
-        assert scaffolder_llm is not None
         scaffolder_response = scaffolder_llm.generate_response(scaffolder_prompt)
         code = _extract_python_code(scaffolder_response)
 
@@ -292,7 +294,6 @@ def _make_scaffold(
 
 def make_prompt_only_scaffold(
     examples: List[DatasetExample],
-    input_string: str,
     scoring_fn_code: Optional[str] = None,
 ) -> ScaffoldResult:
     """Make a simple scaffold which only prompts the executor LLM.
@@ -303,7 +304,6 @@ def make_prompt_only_scaffold(
 
     Args:
         examples: Training examples to show the executor
-        input_string: Input string to show the executor
         scoring_fn_code: Content of the scoring function to show the executor
 
     Returns:
@@ -314,7 +314,6 @@ def make_prompt_only_scaffold(
     """
     return _make_scaffold(
         generate_examples=examples,
-        input_for_executor=input_string,
         scoring_fn_code=scoring_fn_code,
     )
 

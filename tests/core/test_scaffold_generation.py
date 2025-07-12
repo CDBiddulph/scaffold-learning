@@ -383,7 +383,6 @@ Improve the existing scaffold.""",
                         )
                     ],
                     "scoring_fn_code": "def score(expected, actual):\n    return 1.0 if expected == actual else 0.0",
-                    "input_string": "solve me",
                     "expected_executor_prompt": """<scoring_function>```python
 def score(expected, actual):
     return 1.0 if expected == actual else 0.0
@@ -396,13 +395,13 @@ def score(expected, actual):
 Maximize your score on the input below using the examples above.
 
 INPUT:
-solve me""",
+""",
                     "expected_code": r"""from llm_executor import execute_llm
 
-PROMPT = "<scoring_function>```python\ndef score(expected, actual):\n    return 1.0 if expected == actual else 0.0\n```</scoring_function>\n<example-1>\n    <input>example input</input>\n    <expected_output>example solution</expected_output>\n</example-1>\n\nMaximize your score on the input below using the examples above.\n\nINPUT:\nsolve me"
+PROMPT = "<scoring_function>```python\ndef score(expected, actual):\n    return 1.0 if expected == actual else 0.0\n```</scoring_function>\n<example-1>\n    <input>example input</input>\n    <expected_output>example solution</expected_output>\n</example-1>\n\nMaximize your score on the input below using the examples above.\n\nINPUT:\n"
 
 def process_input(input_string: str) -> str:
-    return execute_llm(PROMPT)
+    return execute_llm(PROMPT + input_string)
 """,
                 },
                 id="make_prompt_only_scaffold_with_scoring_function",
@@ -479,7 +478,6 @@ def process_input(input_string: str) -> str:
         elif method == "make_prompt_only_scaffold":
             result = make_prompt_only_scaffold(
                 examples=examples,
-                input_string=test_case["input_string"],
                 scoring_fn_code=scoring_fn_code,
             )
             assert result.metadata.parent_scaffold_id is None
