@@ -2,8 +2,9 @@
 """Generate prompts showing scaffold evolution chains for analysis."""
 
 import argparse
+import json
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 
 from scaffold_learning.core.experiment_files import ExperimentFileManager
@@ -12,23 +13,25 @@ from scaffold_learning.core.data_structures import ScaffoldResult
 
 @dataclass
 class ScaffoldWithId:
-    """A scaffold with its ID for evolution tracking."""
+    """A scaffold with its ID and score for evolution tracking."""
 
     scaffold_id: str
     scaffold_result: ScaffoldResult
+    score: Optional[float]
 
 
 def get_evolution_chain(
-    manager: ExperimentFileManager, scaffold_id: str
+    manager: ExperimentFileManager, scaffold_id: str, scores: Dict[str, Optional[float]]
 ) -> List[ScaffoldWithId]:
     """Get the full evolution chain for a scaffold, from root to target.
 
     Args:
         manager: ExperimentFileManager for the experiment
         scaffold_id: The target scaffold ID to trace
+        scores: Dictionary of scaffold scores
 
     Returns:
-        List of scaffolds with IDs from root ancestor to target scaffold
+        List of scaffolds with IDs and scores from root ancestor to target scaffold
     """
     # Trace backwards to root
     ancestors = []
@@ -36,7 +39,8 @@ def get_evolution_chain(
 
     while current_id:
         scaffold = manager.load_scaffold(current_id)
-        ancestors.append(ScaffoldWithId(current_id, scaffold))
+        score = scores.get(current_id)
+        ancestors.append(ScaffoldWithId(current_id, scaffold, score))
         current_id = scaffold.metadata.parent_scaffold_id
 
     if len(ancestors) <= 1:
@@ -49,7 +53,7 @@ def get_evolution_chain(
 def find_scaffolds(
     experiment_name: str, scaffold_id: str
 ) -> tuple[List[ScaffoldWithId], str]:
-    """Find the experiment directory for a given experiment name."""
+    """Find the experiment directory and get evolution chain with scores."""
     experiments_dir = Path("experiments")
     experiment_dirs = [
         d for d in experiments_dir.glob(f"{experiment_name}_*") if d.is_dir()
@@ -71,8 +75,11 @@ def find_scaffolds(
     # Load the experiment
     manager = ExperimentFileManager(experiment_dir)
 
-    # Get the evolution chain
-    chain = get_evolution_chain(manager, scaffold_id)
+    # Get all validation scores
+    all_scores = manager.get_most_recent_validation_scores()
+
+    # Get the evolution chain with scores
+    chain = get_evolution_chain(manager, scaffold_id, all_scores)
     return chain, experiment_dir.name
 
 
@@ -104,11 +111,15 @@ def generate_diff_prompt(experiment_name: str, scaffold_id: str) -> tuple[str, s
     for scaffold_with_id in chain:
         scaffold_id_str = scaffold_with_id.scaffold_id
         scaffold = scaffold_with_id.scaffold_result
+        score = scaffold_with_id.score
+
+        # Format score display
+        score_text = f" (Score: {score:.3f})" if score is not None else " (Score: N/A)"
 
         # Add scaffold header
         prompt_lines.extend(
             [
-                f"## Scaffold {scaffold_id_str}",
+                f"## Scaffold {scaffold_id_str}{score_text}",
                 "",
                 "```python",
                 scaffold.code,
@@ -125,6 +136,8 @@ def generate_diff_prompt(experiment_name: str, scaffold_id: str) -> tuple[str, s
             f"How did the code change from {chain_str}?",
             "",
             "Briefly explain each code diff. I already know the background of the problem that the code is trying to solve, so your explanation should only focus on how the strategy changes over time.",
+            "",
+            "Also briefly mention the validation score of each scaffold as you bring them up.",
         ]
     )
 
