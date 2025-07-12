@@ -53,6 +53,16 @@ class OpenAIInterface(LLMInterface):
         if not self.api_key:
             raise ValueError("OpenAI API key not provided")
 
+    def _extract_thinking(self, response) -> Optional[str]:
+        """Extract thinking from the response, if any"""
+        summaries = []
+        for output_item in response.output:
+            if output_item.type != "reasoning":
+                continue
+            for summary in output_item.summary:
+                summaries.append(summary.text)
+        return "\n".join(summaries) if summaries else None
+
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         client = openai.OpenAI(api_key=self.api_key)
         with suppress_all_except_root():
@@ -64,19 +74,10 @@ class OpenAIInterface(LLMInterface):
                 reasoning={"summary": "detailed", "effort": "medium"},
             )
 
-        logging.info(response)
-        # Extract thinking, if any
-        thinking = None
-        for output_item in response.output:
-            if output_item.type != "reasoning":
-                continue
-            for summary in output_item.summary:
-                if thinking:
-                    raise ValueError("Unexpected multiple reasoning summaries")
-                thinking = summary.text
-
         # Use the output_text property for the actual response
-        return LLMResponse(content=response.output_text, thinking=thinking)
+        return LLMResponse(
+            content=response.output_text, thinking=self._extract_thinking(response)
+        )
 
     def get_model_info(self) -> str:
         return f"openai/{self.model}"
