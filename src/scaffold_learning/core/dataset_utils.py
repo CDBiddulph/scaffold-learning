@@ -69,7 +69,7 @@ def sample_examples(
     Returns:
         List of sampled examples
     """
-    if num_examples >= len(examples):
+    if num_examples > len(examples):
         raise ValueError(
             f"Cannot sample {num_examples} examples from {len(examples)} examples"
         )
