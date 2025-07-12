@@ -171,7 +171,7 @@ class ExperimentRunner:
         self,
         iteration: int,
         validation_sample: List[DatasetExample],
-    ) -> Tuple[Dict[str, float], Dict[str, float]]:
+    ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
         """Run one iteration of scaffold evolution.
 
         Args:
@@ -179,7 +179,8 @@ class ExperimentRunner:
             validation_sample: Validation examples to use for evaluation
 
         Returns:
-            Tuple of (training_scores, validation_scores) - dictionaries mapping scaffold_id to score
+            Tuple of (training_scores, validation_scores) - dictionaries mapping
+            scaffold_id to score dict with "mean_score" and "scores" keys
         """
         # Select top scaffolds to evolve
         top_scaffold_ids, validation_scores = self._select_top_scaffolds(
@@ -239,13 +240,14 @@ class ExperimentRunner:
 
         # Create combined scores for selection (newly validated + previously validated)
         all_scaffold_scores = {}
-        for scaffold_id, score in most_recent_scores.items():
+        for scaffold_id, score_dict in most_recent_scores.items():
             if scaffold_id in newly_validated_scores:
                 all_scaffold_scores[scaffold_id] = newly_validated_scores[scaffold_id][
                     "mean_score"
                 ]
             else:
-                all_scaffold_scores[scaffold_id] = score
+                assert score_dict is not None
+                all_scaffold_scores[scaffold_id] = score_dict["mean_score"]
 
         # Sort scaffolds by score and select top K
         sorted_scaffolds = sorted(

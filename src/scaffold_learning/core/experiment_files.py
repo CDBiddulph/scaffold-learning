@@ -1,8 +1,7 @@
 import json
-import shutil
-import os
+import numpy as np
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata
 from scaffold_learning.core.xml_utils import write_xml_file, read_xml_file
 from scaffold_learning.core.scaffold_files import save_scaffold as save_scaffold_files
@@ -169,8 +168,8 @@ class ExperimentFileManager:
     def save_scores(
         self,
         iteration: int,
-        train_scores: Dict[str, float],
-        valid_scores: Dict[str, float],
+        train_scores: Dict[str, List[float]],
+        valid_scores: Dict[str, List[float]],
     ) -> None:
         """Save training and validation scores for an iteration.
 
@@ -182,7 +181,21 @@ class ExperimentFileManager:
         scoring_dir = self.experiment_dir / "scoring"
         scoring_dir.mkdir(parents=True, exist_ok=True)
 
-        scores_data = {"train": train_scores, "valid": valid_scores}
+        def make_full_dicts(
+            scores: Dict[str, List[float]]
+        ) -> Dict[str, Dict[str, Any]]:
+            result = {}
+            for scaffold_id, scaffold_scores in scores.items():
+                result[scaffold_id] = {
+                    "mean_score": np.mean(scaffold_scores),
+                    "scores": scaffold_scores,
+                }
+            return result
+
+        scores_data = {
+            "train": make_full_dicts(train_scores),
+            "valid": make_full_dicts(valid_scores),
+        }
 
         with open(scoring_dir / f"scores_{iteration}.json", "w") as f:
             json.dump(scores_data, f, indent=2)
@@ -209,11 +222,16 @@ class ExperimentFileManager:
 
         return scores_data
 
-    def get_most_recent_validation_scores(self) -> Dict[str, Optional[float]]:
+    def get_most_recent_validation_scores(
+        self,
+    ) -> Dict[str, Optional[Dict[str, Any]]]:
         """Get the most recent validation scores for all scaffolds.
 
         Returns:
-            Dictionary mapping scaffold_id to most recent validation score (None if never validated)
+            Dictionary mapping scaffold_id to {
+                'mean_score': float,
+                'scores': List[float]
+            }, or None if the scaffold has never been validated
         """
         # Find all scaffold IDs by scanning scaffolds directory
         scaffolds_dir = self.experiment_dir / "scaffolds"
@@ -223,7 +241,9 @@ class ExperimentFileManager:
         all_scaffold_ids = [d.name for d in scaffolds_dir.iterdir() if d.is_dir()]
 
         # Initialize all scaffolds with None (never validated)
-        most_recent_scores = {scaffold_id: None for scaffold_id in all_scaffold_ids}
+        most_recent_scores: Dict[str, Optional[Dict[str, Any]]] = {
+            scaffold_id: None for scaffold_id in all_scaffold_ids
+        }
 
         # Look through all score files to find most recent validation scores
         scores_dir = self.experiment_dir / "scoring"
@@ -248,8 +268,12 @@ class ExperimentFileManager:
                 valid_scores = scores_data.get("valid", {})
 
                 for scaffold_id, score_data in valid_scores.items():
-                    if scaffold_id in most_recent_scores:
-                        most_recent_scores[scaffold_id] = score_data["mean_score"]
+                    if scaffold_id not in most_recent_scores:
+                        continue
+                    most_recent_scores[scaffold_id] = {
+                        "mean_score": score_data.get("mean_score"),
+                        "scores": score_data.get("scores", []),
+                    }
             except (json.JSONDecodeError, KeyError):
                 continue
 

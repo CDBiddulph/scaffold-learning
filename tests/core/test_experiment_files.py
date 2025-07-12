@@ -7,6 +7,21 @@ from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata
 
 
+def _all_floats_are_close(a, b):
+    "Check that all floats in a and b are close and that other types are equal"
+    if isinstance(a, list) and isinstance(b, list):
+        return all(_all_floats_are_close(a_i, b_i) for a_i, b_i in zip(a, b))
+    elif isinstance(a, dict) and isinstance(b, dict):
+        return all(
+            _all_floats_are_close(k1, k2) and _all_floats_are_close(a[k1], b[k2])
+            for k1, k2 in zip(sorted(a.keys()), sorted(b.keys()))
+        )
+    elif isinstance(a, float) and isinstance(b, float):
+        return abs(a - b) < 1e-6
+    # If no floats are involved, check for equality
+    return a == b
+
+
 class TestExperimentFileManager:
     def test_init_creates_directory_structure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -166,14 +181,8 @@ class TestExperimentFileManager:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            train_scores = {
-                "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
-                "1": {"mean_score": 0.6, "scores": [0.6, 0.6]},
-            }
-            valid_scores = {
-                "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
-                "1": {"mean_score": 0.65, "scores": [0.7, 0.6]},
-            }
+            train_scores = {"0": [0.9, 0.7], "1": [0.6, 0.6]}
+            valid_scores = {"0": [0.8, 0.7], "1": [0.7, 0.6]}
 
             manager.save_scores(
                 iteration=1, train_scores=train_scores, valid_scores=valid_scores
@@ -185,8 +194,19 @@ class TestExperimentFileManager:
             with open(scoring_file) as f:
                 saved_scores = json.load(f)
 
-            assert saved_scores["train"] == train_scores
-            assert saved_scores["valid"] == valid_scores
+            assert _all_floats_are_close(
+                saved_scores,
+                {
+                    "train": {
+                        "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
+                        "1": {"mean_score": 0.6, "scores": [0.6, 0.6]},
+                    },
+                    "valid": {
+                        "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
+                        "1": {"mean_score": 0.65, "scores": [0.7, 0.6]},
+                    },
+                },
+            )
 
     def test_load_scores(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -195,22 +215,31 @@ class TestExperimentFileManager:
 
             # Save scores first
             train_scores = {
-                "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
-                "1": {"mean_score": 0.6, "scores": [0.6, 0.6]},
+                "0": [0.9, 0.7],
+                "1": [0.6, 0.6],
             }
             valid_scores = {
-                "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
-                "1": {"mean_score": 0.65, "scores": [0.7, 0.6]},
+                "0": [0.8, 0.7],
+                "1": [0.7, 0.6],
             }
             manager.save_scores(1, train_scores, valid_scores)
 
             # Load them back
-            assert manager.load_scores(iteration=1) == {
-                "train": train_scores,
-                "valid": valid_scores,
-            }
+            assert _all_floats_are_close(
+                manager.load_scores(iteration=1),
+                {
+                    "train": {
+                        "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
+                        "1": {"mean_score": 0.6, "scores": [0.6, 0.6]},
+                    },
+                    "valid": {
+                        "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
+                        "1": {"mean_score": 0.65, "scores": [0.7, 0.6]},
+                    },
+                },
+            )
 
-    def test_scaffold_flat_structure(self):
+    def test_fold_flat_structure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
@@ -259,18 +288,72 @@ class TestExperimentFileManager:
 
             # Save scores for multiple iterations
             for iteration in [0, 1, 2]:
-                train_scores = {
-                    f"scaffold_{iteration}": {"mean_score": 0.5, "scores": [0.5]}
-                }
-                valid_scores = {
-                    f"scaffold_{iteration}": {"mean_score": 0.6, "scores": [0.6]}
-                }
+                train_scores = {f"scaffold_{iteration}": [0.5]}
+                valid_scores = {f"scaffold_{iteration}": [0.6]}
                 manager.save_scores(iteration, train_scores, valid_scores)
 
             # Check all scores are in scoring directory
             assert (experiment_dir / "scoring" / "scores_0.json").exists()
             assert (experiment_dir / "scoring" / "scores_1.json").exists()
             assert (experiment_dir / "scoring" / "scores_2.json").exists()
+
+    def test_get_most_recent_validation_scores(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiment_dir = Path(temp_dir)
+            manager = ExperimentFileManager(experiment_dir)
+
+            # Create scaffolds first
+            scaffold_ids = ["0", "1", "2"]
+            for scaffold_id in scaffold_ids:
+                metadata = ScaffoldMetadata(
+                    created_at="2024-01-01T12:00:00",
+                    parent_scaffold_id=None,
+                    iteration=0,
+                )
+                result = ScaffoldResult(code="code", metadata=metadata)
+                manager.save_scaffold(scaffold_id=scaffold_id, result=result)
+
+            # Save scores for multiple iterations
+            # Iteration 0: only scaffold_0 and scaffold_1 have scores
+            train_scores_0 = {"0": [0.4, 0.6], "1": [0.7]}
+            valid_scores_0 = {"0": [0.5, 0.7], "1": [0.8]}
+            manager.save_scores(0, train_scores_0, valid_scores_0)
+
+            # Iteration 1: scaffold_0 gets new score, scaffold_2 gets first score
+            train_scores_1 = {"0": [0.9, 0.9], "2": [0.2, 0.4]}
+            valid_scores_1 = {"0": [0.9, 1.0], "2": [0.3, 0.4]}
+            manager.save_scores(1, train_scores_1, valid_scores_1)
+
+            # Get most recent validation scores
+            recent_scores = manager.get_most_recent_validation_scores()
+
+            # Check that we get the expected structure
+            assert _all_floats_are_close(
+                recent_scores,
+                {
+                    "0": {"mean_score": 0.95, "scores": [0.9, 1.0]},
+                    "1": {"mean_score": 0.8, "scores": [0.8]},
+                    "2": {"mean_score": 0.35, "scores": [0.3, 0.4]},
+                },
+            )
+
+    def test_get_most_recent_validation_scores_no_scores(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentFileManager(Path(temp_dir))
+            empty_scores = manager.get_most_recent_validation_scores()
+            assert empty_scores == {}
+
+    def test_get_most_recent_validation_scores_no_scoring_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentFileManager(Path(temp_dir))
+            # Save the scaffold, but not the scores
+            metadata = ScaffoldMetadata(
+                created_at="2024-01-01T12:00:00", parent_scaffold_id=None, iteration=0
+            )
+            result = ScaffoldResult(code="code", metadata=metadata)
+            manager.save_scaffold(scaffold_id="test", result=result)
+
+            assert manager.get_most_recent_validation_scores() == {"test": None}
 
     def test_logs_directory_structure(self):
         with tempfile.TemporaryDirectory() as temp_dir:

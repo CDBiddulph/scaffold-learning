@@ -2,9 +2,8 @@
 """Generate prompts showing scaffold evolution chains for analysis."""
 
 import argparse
-import json
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
 from scaffold_learning.core.experiment_files import ExperimentFileManager
@@ -13,22 +12,25 @@ from scaffold_learning.core.data_structures import ScaffoldResult
 
 @dataclass
 class ScaffoldWithId:
-    """A scaffold with its ID and score for evolution tracking."""
+    """A scaffold with its ID and score details for evolution tracking."""
 
     scaffold_id: str
     scaffold_result: ScaffoldResult
-    score: Optional[float]
+    mean_score: Optional[float]
+    scores: Optional[List[float]]
 
 
 def get_evolution_chain(
-    manager: ExperimentFileManager, scaffold_id: str, scores: Dict[str, Optional[float]]
+    manager: ExperimentFileManager,
+    scaffold_id: str,
+    detailed_scores: Dict[str, Optional[Dict[str, Any]]],
 ) -> List[ScaffoldWithId]:
     """Get the full evolution chain for a scaffold, from root to target.
 
     Args:
         manager: ExperimentFileManager for the experiment
         scaffold_id: The target scaffold ID to trace
-        scores: Dictionary of scaffold scores
+        detailed_scores: Dictionary of scaffold detailed scores
 
     Returns:
         List of scaffolds with IDs and scores from root ancestor to target scaffold
@@ -39,8 +41,16 @@ def get_evolution_chain(
 
     while current_id:
         scaffold = manager.load_scaffold(current_id)
-        score = scores.get(current_id)
-        ancestors.append(ScaffoldWithId(current_id, scaffold, score))
+        score_info = detailed_scores[current_id]
+        assert score_info is not None
+        ancestors.append(
+            ScaffoldWithId(
+                current_id,
+                scaffold,
+                score_info["mean_score"],
+                score_info["scores"],
+            )
+        )
         current_id = scaffold.metadata.parent_scaffold_id
 
     if len(ancestors) <= 1:
@@ -75,11 +85,11 @@ def find_scaffolds(
     # Load the experiment
     manager = ExperimentFileManager(experiment_dir)
 
-    # Get all validation scores
-    all_scores = manager.get_most_recent_validation_scores()
+    # Get all detailed validation scores
+    detailed_scores = manager.get_most_recent_validation_scores()
 
     # Get the evolution chain with scores
-    chain = get_evolution_chain(manager, scaffold_id, all_scores)
+    chain = get_evolution_chain(manager, scaffold_id, detailed_scores)
     return chain, experiment_dir.name
 
 
@@ -111,10 +121,12 @@ def generate_diff_prompt(experiment_name: str, scaffold_id: str) -> tuple[str, s
     for scaffold_with_id in chain:
         scaffold_id_str = scaffold_with_id.scaffold_id
         scaffold = scaffold_with_id.scaffold_result
-        score = scaffold_with_id.score
+        mean_score = scaffold_with_id.mean_score
 
         # Format score display
-        score_text = f" (Score: {score:.3f})" if score is not None else " (Score: N/A)"
+        score_text = (
+            f" (Score: {mean_score:.3f})" if mean_score is not None else " (Score: N/A)"
+        )
 
         # Add scaffold header
         prompt_lines.extend(
@@ -137,9 +149,32 @@ def generate_diff_prompt(experiment_name: str, scaffold_id: str) -> tuple[str, s
             "",
             "Briefly explain each code diff. I already know the background of the problem that the code is trying to solve, so your explanation should only focus on how the strategy changes over time.",
             "",
-            "Also briefly mention the validation score of each scaffold as you bring them up.",
+            "Also mention the average and individual validation scores of each scaffold as you discuss them.",
+            "",
+            "Score details:",
         ]
     )
+
+    # Add detailed score information
+    for scaffold_with_id in chain:
+        scaffold_id_str = scaffold_with_id.scaffold_id
+        mean_score = scaffold_with_id.mean_score
+        scores = scaffold_with_id.scores or []
+
+        if mean_score is not None:
+            if scores:
+                scores_str = ", ".join([f"{score:.3f}" for score in scores])
+                prompt_lines.append(
+                    f"- {scaffold_id_str}: {mean_score:.3f} (individual runs: {scores_str})"
+                )
+            else:
+                prompt_lines.append(
+                    f"- {scaffold_id_str}: {mean_score:.3f} (single run)"
+                )
+        else:
+            prompt_lines.append(f"- {scaffold_id_str}: N/A")
+
+    prompt_lines.append("")  # Add blank line after scores
 
     return "\n".join(prompt_lines), full_experiment_name
 
