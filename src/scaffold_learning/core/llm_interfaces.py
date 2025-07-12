@@ -60,8 +60,23 @@ class OpenAIInterface(LLMInterface):
                 model=self.model,
                 instructions=system_prompt,
                 input=prompt,
+                # TODO: configure the amount of reasoning
+                reasoning={"summary": "detailed", "effort": "medium"},
             )
-        return LLMResponse(content=response.output[0].content[0].text)
+
+        logging.info(response)
+        # Extract thinking, if any
+        thinking = None
+        for output_item in response.output:
+            if output_item.type != "reasoning":
+                continue
+            for summary in output_item.summary:
+                if thinking:
+                    raise ValueError("Unexpected multiple reasoning summaries")
+                thinking = summary.text
+
+        # Use the output_text property for the actual response
+        return LLMResponse(content=response.output_text, thinking=thinking)
 
     def get_model_info(self) -> str:
         return f"openai/{self.model}"
