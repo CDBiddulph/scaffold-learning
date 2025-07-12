@@ -183,7 +183,7 @@ class AnthropicInterface(LLMInterface):
                     wait_time = self.base_delay * (2**attempt)
 
                 logging.warning(
-                    f"Rate limit hit for {self.model}. Retrying in {wait_time} seconds "
+                    f"Failed to generate response from {self.model}: {e}\nRetrying in {wait_time} seconds "
                     f"(determined from {'retry-after header' if retry_after else 'exponential backoff'})... "
                     f"(attempt {attempt + 1}/{self.max_retries})"
                 )
