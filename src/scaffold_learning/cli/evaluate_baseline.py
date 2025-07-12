@@ -82,6 +82,7 @@ def main():
         build_docker_image()
 
     # Load datasets
+    print("Loading datasets...")
     training_data, validation_data = load_datasets(args.data_dir)
 
     # Sample examples
@@ -90,12 +91,14 @@ def main():
     eval_sample = sample_examples(validation_data, args.num_validation_examples)
 
     # Create scoring function
+    print(f"Setting up {args.domain} domain...")
     scoring_fn = create_scoring_function(args.domain)
     scoring_fn_code = (
         get_scoring_function_code(args.domain) if args.show_scoring_function else None
     )
 
     # Generate scaffold
+    print("Making prompt-only scaffold...")
     scaffold_result = make_prompt_only_scaffold(
         examples=train_sample,
         scoring_fn_code=scoring_fn_code,
@@ -110,6 +113,7 @@ def main():
     # Evaluate
     scores = []
     execution_times = []
+    print(f"Evaluating {len(eval_sample)} examples...")
     for i, example in enumerate(eval_sample):
         result = execute_scaffold(
             scaffold_dir=scaffold_dir,
