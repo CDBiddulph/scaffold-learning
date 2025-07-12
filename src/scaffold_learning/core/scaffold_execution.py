@@ -15,7 +15,11 @@ from scaffold_learning.core.llm_interfaces import LLMFactory
 
 
 def _build_docker_command(
-    scaffold_dir: Path, model_spec: str, timeout: int, interactive: bool = False
+    scaffold_dir: Path,
+    model_spec: str,
+    timeout: int,
+    python_script: str,
+    interactive: bool = False,
 ) -> list[str]:
     """Build the Docker command with all necessary flags and environment variables."""
     docker_cmd = ["docker", "run", "--rm"]
@@ -23,9 +27,6 @@ def _build_docker_command(
     # Add interactive flags for human model
     if interactive:
         docker_cmd.extend(["-it"])
-
-    # Add timeout
-    docker_cmd.extend(["--stop-timeout", str(timeout)])
 
     docker_cmd.extend(
         [
@@ -44,20 +45,29 @@ def _build_docker_command(
     if env_file.exists():
         docker_cmd.extend(["--env-file", str(env_file.absolute())])
 
-    # Add environment variables for API keys
+    # Add environment variables for API keys and other settings
+    env_vars = []
     for key in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]:
         if key in os.environ:
-            docker_cmd.extend(["-e", f"{key}={os.environ[key]}"])
-
-    docker_cmd.extend(
+            env_vars.append(f"{key}={os.environ[key]}")
+    env_vars.extend(
         [
-            "-e",
             f"EXECUTOR_MODEL_SPEC={model_spec}",
-            "-e",
             "LOG_LEVEL=DEBUG",
-            "scaffold-runner",
         ]
     )
+    docker_cmd.extend(["-e", key for key in env_vars])
+
+    docker_cmd.append("scaffold-runner")
+
+    # Build the Linux command that runs in Docker
+
+    # Add timeout if needed. The container itself will enforce the time limit.
+    if timeout and not interactive:
+        docker_cmd.extend(["timeout", str(timeout)])
+
+    # Add the Python script as the command to run
+    docker_cmd.extend(["python", "-c", python_script])
 
     return docker_cmd
 
@@ -280,26 +290,20 @@ def execute_scaffold(
     model_spec = LLMFactory.resolve_model_spec(model_spec)
     is_interactive = model_spec == "human/human"
 
-    # Build Docker command
-    docker_cmd = _build_docker_command(
-        scaffold_dir=scaffold_dir,
-        model_spec=model_spec,
-        timeout=timeout,
-        interactive=is_interactive,
-    )
-
     # Generate Python script to run in container
     python_script = _generate_python_script(
         input_string=input_string,
         model_spec=model_spec,
     )
 
-    # Add timeout command. The container itself will enforce the time limit.
-    if not is_interactive:
-        docker_cmd.extend(["timeout", str(timeout)])
-
-    # Add the Python script as the command to run
-    docker_cmd.extend(["python", "-c", python_script])
+    # Build Docker command
+    docker_cmd = _build_docker_command(
+        scaffold_dir=scaffold_dir,
+        model_spec=model_spec,
+        timeout=timeout,
+        python_script=python_script,
+        interactive=is_interactive,
+    )
 
     error_message = None
     stdout = ""
