@@ -10,7 +10,6 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, TextIO
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
-from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.llm_interfaces import LLMFactory
 
 
@@ -20,6 +19,7 @@ def _build_docker_command(
     timeout: int,
     python_script: str,
     interactive: bool = False,
+    thinking_budget_tokens: int = 0,
 ) -> list[str]:
     """Build the Docker command with all necessary flags and environment variables."""
     docker_cmd = ["docker", "run", "--rm"]
@@ -73,6 +73,7 @@ def _build_docker_command(
     env_vars.extend(
         [
             f"EXECUTOR_MODEL_SPEC={model_spec}",
+            f"THINKING_BUDGET_TOKENS={thinking_budget_tokens}",
             "LOG_LEVEL=DEBUG",
         ]
     )
@@ -294,6 +295,7 @@ def execute_scaffold(
     model_spec: str,
     timeout: int = 120,
     console_output: bool = False,
+    thinking_budget_tokens: int = 0,
 ) -> ScaffoldExecutionResult:
     """Execute a scaffold in a Docker container with the given input.
 
@@ -304,6 +306,7 @@ def execute_scaffold(
         model_spec: Model spec for the executor LLM
         timeout: Maximum execution time in seconds
         console_output: If True, print output to console in real-time
+        thinking_budget_tokens: Budget for thinking tokens
 
     Returns:
         ScaffoldExecutionResult with output, stderr, exit code, and execution time
@@ -324,6 +327,7 @@ def execute_scaffold(
         timeout=timeout,
         python_script=python_script,
         interactive=is_interactive,
+        thinking_budget_tokens=thinking_budget_tokens,
     )
 
     error_message = None

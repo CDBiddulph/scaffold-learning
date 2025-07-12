@@ -28,7 +28,7 @@ def _parse_args() -> argparse.Namespace:
         "data_dir", type=Path, help="Directory containing train.jsonl and valid.jsonl"
     )
     parser.add_argument("--domain", default="crosswords", help="Problem domain")
-    parser.add_argument("--model", default="gpt-4o", help="Model to evaluate")
+    parser.add_argument("--model", help="Model to evaluate")
     parser.add_argument(
         "--num-train-examples", type=int, default=5, help="Training examples in prompt"
     )
@@ -44,6 +44,12 @@ def _parse_args() -> argparse.Namespace:
         help="Include scoring function in prompt",
     )
     parser.add_argument("--seed", type=int, help="Random seed")
+    parser.add_argument(
+        "--thinking-budget",
+        type=int,
+        default=10000,
+        help="Thinking budget tokens (0 to disable)",
+    )
 
     return parser.parse_args()
 
@@ -87,6 +93,7 @@ def main():
             input_string=example.input,
             model_spec=args.model,
             console_output=False,
+            thinking_budget_tokens=args.thinking_budget,
         )
 
         if result.error_message is None:
