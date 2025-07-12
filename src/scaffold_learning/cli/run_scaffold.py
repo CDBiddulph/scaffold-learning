@@ -4,26 +4,13 @@ Run a generated scaffold script in a Docker container.
 """
 
 import argparse
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from scaffold_learning.core.scaffold_execution import execute_scaffold
-
-
-def _ensure_docker_image():
-    """Ensure the Docker image is built."""
-    # Check if image exists
-    result = subprocess.run(
-        ["docker", "inspect", "scaffold-runner"], capture_output=True, check=False
-    )
-
-    if result.returncode != 0:
-        print("Building Docker image...")
-        subprocess.run(["docker", "build", "-t", "scaffold-runner", "."], check=True)
-        print("Docker image built successfully!")
+from scaffold_learning.core.docker_utils import build_docker_image
 
 
 def run_scaffold(
@@ -32,11 +19,13 @@ def run_scaffold(
     input_string: str,
     model_spec: str,
     timeout: Optional[int] = None,
+    build_docker: bool = True,
 ) -> None:
     """Run a scaffold in Docker container."""
 
-    # Ensure Docker image exists
-    _ensure_docker_image()
+    if build_docker:
+        print("Building Docker image...")
+        build_docker_image()
 
     # Prepare directories and paths
     scaffold_dir = Path(scaffold_base_dir) / scaffold_name
@@ -107,6 +96,11 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         help="Timeout in seconds for scaffold execution (default: no timeout)",
     )
+    parser.add_argument(
+        "--no-build",
+        action="store_true",
+        help="Skip building Docker image (assume it already exists)",
+    )
 
     args = parser.parse_args()
 
@@ -138,6 +132,7 @@ def main():
         input_string,
         args.model,
         args.timeout,
+        build_docker=not args.no_build,
     )
 
 

@@ -11,6 +11,7 @@ from scaffold_learning.core.scoring_utils import (
     create_scoring_function,
     get_scoring_function_code,
 )
+from scaffold_learning.core.docker_utils import build_docker_image
 
 
 def main():
@@ -86,6 +87,11 @@ def main():
         default=Path("experiments"),
         help="Base directory for experiment outputs",
     )
+    parser.add_argument(
+        "--no-build",
+        action="store_true",
+        help="Skip building Docker image (assume it already exists)",
+    )
 
     args = parser.parse_args()
 
@@ -95,6 +101,10 @@ def main():
 
     if args.scaffolds_per_iter > args.initial_scaffolds:
         raise ValueError("scaffolds-per-iter cannot be greater than initial-scaffolds")
+
+    if not args.no_build:
+        print("Building Docker image...")
+        build_docker_image()
 
     # Load datasets
     print("Loading datasets...")

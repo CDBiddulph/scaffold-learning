@@ -16,6 +16,7 @@ from scaffold_learning.core.scoring_utils import (
 from scaffold_learning.core.scaffold_generation import make_prompt_only_scaffold
 from scaffold_learning.core.scaffold_execution import execute_scaffold
 from scaffold_learning.core.scaffold_files import save_scaffold
+from scaffold_learning.core.docker_utils import build_docker_image
 
 
 def _parse_args() -> argparse.Namespace:
@@ -56,6 +57,11 @@ def _parse_args() -> argparse.Namespace:
         default=600,
         help="Maximum execution time for each run in seconds",
     )
+    parser.add_argument(
+        "--no-build",
+        action="store_true",
+        help="Skip building Docker image (assume it already exists)",
+    )
 
     return parser.parse_args()
 
@@ -65,6 +71,10 @@ def main():
 
     if args.seed:
         random.seed(args.seed)
+
+    if not args.no_build:
+        print("Building Docker image...")
+        build_docker_image()
 
     # Load datasets
     training_data, validation_data = load_datasets(args.data_dir)
