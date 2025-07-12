@@ -53,8 +53,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--timeout",
         type=int,
-        default=120,
-        help="Maximum execution time in seconds",
+        default=600,
+        help="Maximum execution time for each run in seconds",
     )
 
     return parser.parse_args()
@@ -70,6 +70,7 @@ def main():
     training_data, validation_data = load_datasets(args.data_dir)
 
     # Sample examples
+    # TODO: make multiple scaffold variants with different training examples
     train_sample = sample_examples(training_data, args.num_train_examples)
     eval_sample = sample_examples(validation_data, args.num_validation_examples)
 
@@ -92,6 +93,7 @@ def main():
 
     # Evaluate
     scores = []
+    execution_times = []
     for i, example in enumerate(eval_sample):
         result = execute_scaffold(
             scaffold_dir=scaffold_dir,
@@ -110,13 +112,15 @@ def main():
             score = 0.0
 
         scores.append(score)
-        print(f"{i+1}/{len(eval_sample)}: {score:.3f}")
+        execution_times.append(result.execution_time)
+        print(f"{i+1}/{len(eval_sample)}: {score:.3f} ({result.execution_time:.1f}s)")
 
     # Save and print results
     results = {
         "mean_score": np.mean(scores),
         "std_score": np.std(scores),
         "scores": scores,
+        "execution_times": execution_times,
     }
 
     with open(scaffold_dir / "results.json", "w") as f:
