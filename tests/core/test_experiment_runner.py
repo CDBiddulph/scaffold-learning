@@ -237,7 +237,9 @@ Execution completed successfully
         for call in mock_generate.call_args_list:
             _, kwargs = call
             assert kwargs["scaffolder_llm"] == runner.scaffolder_llm
-            assert len(kwargs["examples"]) == 1  # Each gets one random training example
+            assert (
+                len(kwargs["examples"]) == 2
+            )  # Each gets num_training_examples training examples
             assert kwargs["examples"][0] in training_data
 
         # Assert on evolve_scaffold calls
