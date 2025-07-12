@@ -108,20 +108,19 @@ class TestScaffoldExecution:
         assert result.execution_time == 1.5
 
     def test_execute_scaffold_with_timeout(self):
-        result, mock_process = self.run_execute_scaffold_test(
+        result, _ = self.run_execute_scaffold_test(
             stdout_lines=["Starting\n", "Processing\n"],
             stderr_lines=[""],
-            returncode=None,
-            poll_sequence=[None, None, None, None],  # Never finishes
-            timeout=1,
-            time_values=[0.0, 0.5, 1.0, 1.5, 2.0],  # Need extra value for end_time
-            expect_kill=True,
+            returncode=124,  # Exit code 124 indicates timeout from timeout command
+            poll_sequence=[None, None, 124],  # Process finishes with timeout exit code
+            timeout=2,
+            time_values=[0.0, 1.0, 2.0, 3.0, 4.0],  # Need extra value for end_time
+            expect_kill=False,  # No need to kill, timeout command handles it
         )
 
-        mock_process.kill.assert_called_once()
         assert "Starting" in result.output
         assert result.error_message is not None
-        assert "timed out" in result.error_message.lower()
+        assert result.error_message == "Execution timed out after 2 seconds"
 
     def test_execute_scaffold_with_error(self):
         result, _ = self.run_execute_scaffold_test(
