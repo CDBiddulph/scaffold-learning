@@ -49,6 +49,7 @@ class ScaffoldMetadata:
         iteration: Iteration number when created
         scaffolder_prompt: Prompt that was sent to the scaffolder LLM
         scaffolder_response: Full response from the scaffolder LLM
+        executor_prompt: Prompt to be sent to the executor LLM (for prompt-only scaffolds)
     """
 
     created_at: str
@@ -56,6 +57,7 @@ class ScaffoldMetadata:
     iteration: Optional[int]
     scaffolder_prompt: Optional[str] = None
     scaffolder_response: Optional[LLMResponse] = None
+    executor_prompt: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert metadata to dictionary for JSON serialization.

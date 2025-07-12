@@ -7,6 +7,7 @@ from scaffold_learning.core.data_structures import (
 from scaffold_learning.core.scaffold_generation import (
     generate_scaffold,
     evolve_scaffold,
+    make_prompt_only_scaffold,
     ScaffoldRunData,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
@@ -19,6 +20,9 @@ TEST_EXAMPLES_INSTRUCTIONS = "Use the examples above."
 TEST_EVOLUTION_INSTRUCTIONS = "Improve the existing scaffold."
 TEST_COMMON_TIPS = "- Common tip 1\n- Common tip 2"
 TEST_EVOLUTION_TIPS = "- Evolution tip 1\n- Evolution tip 2"
+TEST_PROMPT_ONLY_INSTRUCTIONS = (
+    "Maximize your score on the input below using the examples above."
+)
 
 
 class TestScaffoldGeneration:
@@ -42,6 +46,10 @@ class TestScaffoldGeneration:
         "scaffold_learning.core.scaffold_generation._EVOLUTION_TIPS",
         TEST_EVOLUTION_TIPS,
     )
+    @patch(
+        "scaffold_learning.core.scaffold_generation._PROMPT_ONLY_INSTRUCTIONS",
+        TEST_PROMPT_ONLY_INSTRUCTIONS,
+    )
     @pytest.mark.parametrize(
         "method,test_case",
         [
@@ -55,11 +63,11 @@ class TestScaffoldGeneration:
                             scoring_data={"solution": "LION"},
                         )
                     ],
-                    "expected_prompt": """<timeout>120</timeout>
-<example-1>
+                    "expected_prompt": """<example-1>
     <input>5 across: Large feline (4)</input>
     <expected_output>LION</expected_output>
 </example-1>
+<timeout>120</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -86,8 +94,7 @@ Use the examples above.""",
                             scoring_data={"solution": "BAT"},
                         ),
                     ],
-                    "expected_prompt": """<timeout>120</timeout>
-<example-1>
+                    "expected_prompt": """<example-1>
     <input>5 across: Large feline (4)</input>
     <expected_output>LION</expected_output>
 </example-1>
@@ -95,6 +102,7 @@ Use the examples above.""",
     <input>1 down: Flying mammal (3)</input>
     <expected_output>BAT</expected_output>
 </example-2>
+<timeout>120</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -150,7 +158,6 @@ def process_input(input_string: str) -> str:
                     "expected_code": 'def process_input(input_string: str) -> str:\n    return "ANSWER"',
                     "expected_prompt": """<timeout>120</timeout>
 
-
 Write a scaffold that implements process_input().
 
 Tips:
@@ -186,7 +193,6 @@ def process_input(input_string: str) -> str:
 def process_input(input_string: str) -> str:
     return "TIGER"
 ```</code>
-<timeout>120</timeout>
 <example-1>
     <input>5 across: Large feline (4)</input>
     <expected_output>LION</expected_output>
@@ -195,6 +201,7 @@ def process_input(input_string: str) -> str:
 Returned: TIGER</execution_log>
     <score>0.0</score>
 </example-1>
+<timeout>120</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -246,7 +253,6 @@ def process_input(input_string: str) -> str:
 def process_input(input_string: str) -> str:
     return "WRONG1"
 ```</code>
-<timeout>120</timeout>
 <example-1>
     <input>First clue</input>
     <expected_output>FIRST</expected_output>
@@ -261,6 +267,7 @@ def process_input(input_string: str) -> str:
     <execution_log>Log 2</execution_log>
     <score>0.5</score>
 </example-2>
+<timeout>120</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -296,11 +303,11 @@ def process_input(input_string: str) -> str:
 def score(expected, actual):
     return 1.0 if expected == actual else 0.0
 ```</scoring_function>
-<timeout>120</timeout>
 <example-1>
     <input>test input</input>
     <expected_output>test solution</expected_output>
 </example-1>
+<timeout>120</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -342,7 +349,6 @@ def process_input(input_string: str) -> str:
 def score(expected, actual):
     return 1.0 if expected == actual else 0.0
 ```</scoring_function>
-<timeout>120</timeout>
 <example-1>
     <input>test clue</input>
     <expected_output>ANSWER</expected_output>
@@ -350,6 +356,7 @@ def score(expected, actual):
     <execution_log>Execution log here</execution_log>
     <score>0.5</score>
 </example-1>
+<timeout>120</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -365,6 +372,41 @@ Improve the existing scaffold.""",
                 },
                 id="evolve_scaffold_with_scoring_function",
             ),
+            pytest.param(
+                "make_prompt_only_scaffold",
+                {
+                    "examples": [
+                        DatasetExample(
+                            id="0-1-2-3",
+                            input="example input",
+                            scoring_data={"solution": "example solution"},
+                        )
+                    ],
+                    "scoring_fn_code": "def score(expected, actual):\n    return 1.0 if expected == actual else 0.0",
+                    "input_string": "solve me",
+                    "expected_executor_prompt": """<scoring_function>```python
+def score(expected, actual):
+    return 1.0 if expected == actual else 0.0
+```</scoring_function>
+<example-1>
+    <input>example input</input>
+    <expected_output>example solution</expected_output>
+</example-1>
+
+Maximize your score on the input below using the examples above.
+
+INPUT:
+solve me""",
+                    "expected_code": r"""from llm_executor import execute_llm
+
+PROMPT = "<scoring_function>```python\ndef score(expected, actual):\n    return 1.0 if expected == actual else 0.0\n```</scoring_function>\n<example-1>\n    <input>example input</input>\n    <expected_output>example solution</expected_output>\n</example-1>\n\nMaximize your score on the input below using the examples above.\n\nINPUT:\nsolve me"
+
+def process_input(input_string: str) -> str:
+    return execute_llm(PROMPT)
+""",
+                },
+                id="make_prompt_only_scaffold_with_scoring_function",
+            ),
         ],
     )
     def test_scaffold_generation(self, method, test_case):
@@ -375,7 +417,7 @@ Improve the existing scaffold.""",
 
         scoring_fn_code = test_case.get("scoring_fn_code", None)
 
-        if method == "generate_scaffold":
+        if method in ["generate_scaffold", "make_prompt_only_scaffold"]:
             task_description = test_case.get("task_description", None)
             # Only provide default examples if no task_description is provided
             if task_description is not None:
@@ -404,7 +446,7 @@ Improve the existing scaffold.""",
                         scoring_fn_code=scoring_fn_code,
                         iteration=0,
                     )
-                else:  # evolve_scaffold
+                elif method == "evolve_scaffold":
                     evolve_scaffold(
                         run_data=test_case["run_data"],
                         scoring_fn_code=scoring_fn_code,
@@ -424,7 +466,7 @@ Improve the existing scaffold.""",
             )
             assert result.metadata.parent_scaffold_id is None
             assert result.metadata.iteration == 0
-        else:  # evolve_scaffold
+        elif method == "evolve_scaffold":
             result = evolve_scaffold(
                 run_data=test_case["run_data"],
                 scoring_fn_code=scoring_fn_code,
@@ -434,6 +476,15 @@ Improve the existing scaffold.""",
             )
             assert result.metadata.parent_scaffold_id == "test-parent"
             assert result.metadata.iteration == 1
+        elif method == "make_prompt_only_scaffold":
+            result = make_prompt_only_scaffold(
+                examples=examples,
+                input_string=test_case["input_string"],
+                scoring_fn_code=scoring_fn_code,
+            )
+            assert result.metadata.parent_scaffold_id is None
+            assert result.metadata.iteration == None
+            assert result.metadata.scaffolder_prompt is None
 
         assert isinstance(result, ScaffoldResult)
         if test_case.get("expected_code", None):
@@ -443,4 +494,8 @@ Improve the existing scaffold.""",
             assert (
                 mock_llm.generate_response.call_args[0][0]
                 == test_case["expected_prompt"]
+            )
+        if test_case.get("expected_executor_prompt", None):
+            assert (
+                result.metadata.executor_prompt == test_case["expected_executor_prompt"]
             )
