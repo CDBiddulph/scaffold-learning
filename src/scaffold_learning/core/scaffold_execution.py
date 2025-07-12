@@ -56,7 +56,8 @@ def _build_docker_command(
             "LOG_LEVEL=DEBUG",
         ]
     )
-    docker_cmd.extend(["-e", key for key in env_vars])
+    for key in env_vars:
+        docker_cmd.extend(["-e", key])
 
     docker_cmd.append("scaffold-runner")
 
