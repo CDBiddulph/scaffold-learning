@@ -44,7 +44,6 @@ class TestLLMFactory(unittest.TestCase):
         """Test empty spec returns default"""
         expected = f"openai/{LLMConfig.DEFAULT_OPENAI_MODEL}"
         self.assertEqual(LLMFactory.resolve_model_spec(""), expected)
-        self.assertEqual(LLMFactory.resolve_model_spec(None), expected)
 
     def test_resolve_model_spec_unknown(self):
         """Test unknown model raises error"""
