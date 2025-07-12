@@ -13,17 +13,6 @@ from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.llm_interfaces import LLMFactory
 
 
-class ScaffoldTimeoutError(Exception):
-    """Exception raised when scaffold execution times out."""
-
-    def __init__(
-        self, message: str, partial_stdout: str = "", partial_stderr: str = ""
-    ):
-        super().__init__(message)
-        self.partial_stdout = partial_stdout
-        self.partial_stderr = partial_stderr
-
-
 def _build_docker_command(
     scaffold_dir: Path, model_spec: str, timeout: int, interactive: bool = False
 ) -> list[str]:
@@ -190,8 +179,6 @@ def _stream_output(pipe: TextIO, output_queue: queue.Queue, stream_name: str) ->
 
 def _stream_process_output(
     process: subprocess.Popen,
-    timeout: int,
-    start_time: float,
     log_file: Optional[TextIO],
     console_output: bool,
 ) -> tuple[str, str]:
@@ -199,16 +186,11 @@ def _stream_process_output(
 
     Args:
         process: The subprocess.Popen process
-        timeout: Maximum execution time in seconds
-        start_time: When execution started (for timeout calculation)
         log_file: Optional file handle to write real-time logs to
         console_output: If True, print output to console in real-time
 
     Returns:
         Tuple of (stdout, stderr) as strings
-
-    Raises:
-        Exception: If timeout is exceeded, kills process and raises with partial output
     """
 
     # Set up output streaming
@@ -228,29 +210,6 @@ def _stream_process_output(
 
     # Process output in real-time
     while process.poll() is None:
-        # Check timeout
-        current_time = time.time()
-        if timeout and (current_time - start_time) > timeout:
-            process.kill()
-
-            # Collect any remaining output
-            while not output_queue.empty():
-                try:
-                    stream_name, line = output_queue.get_nowait()
-                    lines[stream_name].append(line)
-                except queue.Empty:
-                    break
-
-            # Create exception with partial output
-            collected_stdout = "".join(lines["stdout"])
-            collected_stderr = "".join(lines["stderr"])
-
-            raise ScaffoldTimeoutError(
-                f"Execution timed out after {timeout} seconds",
-                partial_stdout=collected_stdout,
-                partial_stderr=collected_stderr,
-            )
-
         # Get output with short timeout to avoid blocking
         new_stream = _process_output_from_queue(
             output_queue, lines, log_file, console_output, current_stream, timeout=0.1
@@ -317,6 +276,10 @@ def execute_scaffold(
         model_spec=model_spec,
     )
 
+    # Add timeout command. The container itself will enforce the time limit.
+    if not is_interactive:
+        docker_cmd.extend(["timeout", str(timeout)])
+
     # Add the Python script as the command to run
     docker_cmd.extend(["python", "-c", python_script])
 
@@ -360,20 +323,18 @@ def execute_scaffold(
 
                 # Stream output and collect it
                 stdout, stderr = _stream_process_output(
-                    process, timeout, start_time, log_file, console_output
+                    process, log_file=log_file, console_output=console_output
                 )
                 exit_code = process.returncode
 
-            if exit_code != 0:
+            # Check for timeout (exit code 124 from timeout command)
+            if exit_code == 124:
+                error_message = f"Execution timed out after {timeout} seconds"
+            elif exit_code != 0:
                 error_message = (
                     f"Error from scaffold (exit code {exit_code}):\n{stderr}"
                 )
 
-        except ScaffoldTimeoutError as e:
-            # Handle timeout case - collect any output that was captured
-            stdout = e.partial_stdout
-            stderr = e.partial_stderr
-            error_message = str(e)
         except Exception as e:
             raise RuntimeError(f"Error from Docker when executing scaffold: {e}") from e
 
