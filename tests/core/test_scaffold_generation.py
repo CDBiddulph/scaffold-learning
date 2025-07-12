@@ -77,7 +77,7 @@ class TestScaffoldGeneration:
     <input>5 across: Large feline (4)</input>
     <expected_output>LION</expected_output>
 </example-1>
-<timeout>120</timeout>
+<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -112,7 +112,7 @@ Use the examples above.""",
     <input>1 down: Flying mammal (3)</input>
     <expected_output>BAT</expected_output>
 </example-2>
-<timeout>120</timeout>
+<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -166,7 +166,7 @@ def process_input(input_string: str) -> str:
     return "ANSWER"
 ```""",
                     "expected_code": 'def process_input(input_string: str) -> str:\n    return "ANSWER"',
-                    "expected_prompt": """<timeout>120</timeout>
+                    "expected_prompt": """<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -211,7 +211,7 @@ def process_input(input_string: str) -> str:
 Returned: TIGER</execution_log>
     <score>0.0</score>
 </example-1>
-<timeout>120</timeout>
+<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -277,7 +277,7 @@ def process_input(input_string: str) -> str:
     <execution_log>Log 2</execution_log>
     <score>0.5</score>
 </example-2>
-<timeout>120</timeout>
+<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -317,7 +317,7 @@ def score(expected, actual):
     <input>test input</input>
     <expected_output>test solution</expected_output>
 </example-1>
-<timeout>120</timeout>
+<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -366,7 +366,7 @@ def score(expected, actual):
     <execution_log>Execution log here</execution_log>
     <score>0.5</score>
 </example-1>
-<timeout>120</timeout>
+<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -435,7 +435,7 @@ def process_input(input_string: str) -> str:
     <input>test input</input>
     <expected_output>test output</expected_output>
 </example-1>
-<timeout>120</timeout>
+<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 
@@ -482,7 +482,7 @@ def process_input(input_string: str) -> str:
 Returned: TIGER</execution_log>
     <score>0.0</score>
 </example-1>
-<timeout>120</timeout>
+<timeout>120 seconds</timeout>
 
 Write a scaffold that implements process_input().
 

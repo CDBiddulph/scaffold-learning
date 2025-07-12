@@ -91,7 +91,8 @@ _TASK_DESCRIPTION_INSTRUCTIONS = "The scaffold should do the following task:"
 _EXAMPLES_INSTRUCTIONS = """Your goal is for your scaffold to maximize its score on held-out examples.
 Based on the scaffold's output, you will get a score from 0 to 1.
 In the example(s) above, returning <expected-output> would get you a score of 1.
-Your code will automatically get a score of 0 if it takes any more than <timeout> seconds to run, so you may want to implement measures to ensure that it stops before that point."""
+Your code will automatically get a score of 0 if it takes any more than <timeout> seconds to run, so it's important to ensure that it stops before that point.
+Consider adding code to keep track of the time and automatically stop if you're approaching the timeout."""
 
 _EVOLUTION_INSTRUCTIONS = """There is an attempted Python scaffold in <code>.
 You can use this scaffold as a reference or write something completely different.
@@ -229,7 +230,7 @@ def _build_prompt(
 
     # Include the timeout
     timeout_seconds = 120  # TODO: make this configurable
-    full_prompt += f"\n<timeout>{timeout_seconds}</timeout>"
+    full_prompt += f"\n<timeout>{timeout_seconds} seconds</timeout>"
 
     # Add the shared instructions and tips
     full_prompt += f"\n\n{_COMMON_INSTRUCTIONS}"
