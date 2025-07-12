@@ -5,6 +5,7 @@ import time
 import json
 import threading
 import queue
+import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, TextIO
@@ -174,7 +175,9 @@ def _stream_output(pipe: TextIO, output_queue: queue.Queue, stream_name: str) ->
             output_queue.put((stream_name, line))
         pipe.close()
     except Exception as e:
-        output_queue.put((stream_name, f"Error reading {stream_name}: {e}\n"))
+        message = f"Error reading from {stream_name} stream: {e}"
+        logging.error(message)
+        output_queue.put((stream_name, message))
 
 
 def _stream_process_output(
@@ -218,18 +221,33 @@ def _stream_process_output(
             current_stream = new_stream
 
     # Process any remaining output after process finishes
-    while not output_queue.empty():
+    # Use a timeout to prevent hanging if queue operations fail
+    timeout_count = 0
+    max_timeout_attempts = 10
+    while not output_queue.empty() and timeout_count < max_timeout_attempts:
         new_stream = _process_output_from_queue(
-            output_queue, lines, log_file, console_output, current_stream
+            output_queue, lines, log_file, console_output, current_stream, timeout=0.1
         )
         if new_stream:
             current_stream = new_stream
+            timeout_count = 0  # Reset counter on successful read
         else:
-            break
+            timeout_count += 1
+    if not output_queue.empty():
+        logging.warning("Failed to read all output from the queue")
+
+    # Force close pipes to ensure threads can exit
+    for pipe in [process.stdout, process.stderr]:
+        if pipe:
+            pipe.close()
 
     # Wait for threads to finish
-    for thread in threads.values():
+    for stream_name, thread in threads.items():
         thread.join(timeout=1)
+        if thread.is_alive():
+            logging.warning(
+                f"Thread for {stream_name} did not terminate after 1 second timeout"
+            )
 
     # Return collected output
     stdout = "".join(lines["stdout"])
