@@ -30,7 +30,6 @@ def run_scaffold(
     scaffold_name: str,
     scaffold_base_dir: str,
     input_string: str,
-    log_level: str,
     model_spec: str,
     timeout: Optional[int] = None,
 ) -> None:
@@ -137,7 +136,6 @@ def main():
         args.scaffold_name,
         args.scaffold_dir,
         input_string,
-        args.log_level,
         args.model,
         args.timeout,
     )
