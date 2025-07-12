@@ -88,7 +88,7 @@ def main():
 
     # Save scaffold
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    scaffold_dir = Path("scaffold-baselines") / f"{args.name}-{timestamp}"
+    scaffold_dir = Path("scaffold-baselines") / args.name / timestamp
     save_scaffold(scaffold_dir, scaffold_result)
 
     # Evaluate
