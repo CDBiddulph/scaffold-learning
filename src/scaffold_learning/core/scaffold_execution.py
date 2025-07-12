@@ -28,12 +28,32 @@ def _build_docker_command(
     if interactive:
         docker_cmd.extend(["-it"])
 
+    # Security constraints for untrusted code execution
     docker_cmd.extend(
         [
+            # User and filesystem
             "--user",
             f"{os.getuid()}:{os.getgid()}",
             "-v",
             f"{scaffold_dir.absolute()}:/workspace/scaffold:ro",
+            "--read-only",
+            "--tmpfs",
+            "/tmp:size=100M,noexec",
+            # Resource limits
+            "--memory",
+            "1G",
+            "--memory-swap",
+            "1G",
+            "--cpus",
+            "1.0",
+            "--pids-limit",
+            "100",
+            # Security options
+            "--security-opt",
+            "no-new-privileges",
+            "--cap-drop",
+            "ALL",
+            # TODO: Add network isolation without restricting calls to LLM APIs
             # TODO: consider uncommenting if we need to write the result as a txt file
             # "-v",
             # f"{logs_dir.absolute()}:/workspace/logs",

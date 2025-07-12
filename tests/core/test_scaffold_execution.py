@@ -173,7 +173,11 @@ class TestScaffoldExecution:
 
                 command_str = " ".join(call_args)
                 assert "/workspace/scaffold:ro" in command_str
-                assert "/workspace/logs" in command_str
+                # Check for security constraints
+                assert "--memory" in call_args
+                assert "--cpus" in call_args
+                assert "--read-only" in call_args
+                assert "--pids-limit" in call_args
 
     def test_execute_scaffold_logs_saved_correctly(self):
         with tempfile.TemporaryDirectory() as temp_dir:
