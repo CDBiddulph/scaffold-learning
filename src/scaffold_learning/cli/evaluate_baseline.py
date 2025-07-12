@@ -45,6 +45,12 @@ def _parse_args() -> argparse.Namespace:
         help="Include scoring function in prompt",
     )
     parser.add_argument(
+        "--no-show-scoring-function",
+        action="store_false",
+        dest="show_scoring_function",
+        help="Disable scoring function in prompt",
+    )
+    parser.add_argument(
         "--suggest-hack",
         action="store_true",
         help="Include text encouraging the model to find exploits/hacks",
