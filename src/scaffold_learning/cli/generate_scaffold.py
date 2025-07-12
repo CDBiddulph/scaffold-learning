@@ -17,7 +17,7 @@ from scaffold_learning.core.llm_interfaces import LLMFactory
 from scaffold_learning.core.scaffold_generation import (
     generate_scaffold,
 )
-from scaffold_learning.core.xml_utils import write_xml_file
+from scaffold_learning.core.scaffold_files import save_scaffold
 import shutil
 import logging
 
@@ -75,25 +75,16 @@ def main() -> None:
             task_description=args.task_description,
             iteration=0,
         )
-        generated_script = result.code
 
         # Only delete and create output directory after script is generated successfully
         if os.path.exists(output_dir):
             shutil.rmtree(output_dir)
-        os.makedirs(output_dir, exist_ok=True)
 
-        # Write the generated script to file
-        scaffold_file = os.path.join(output_dir, "scaffold.py")
-        with open(scaffold_file, "w") as f:
-            f.write(generated_script)
+        # Save scaffold to output directory
+        save_scaffold(Path(output_dir), result)
 
-        # Create metadata file using ScaffoldMetadata from result
-        metadata_file = os.path.join(output_dir, "metadata.xml")
-        write_xml_file(result.metadata.to_dict(), Path(metadata_file), "metadata")
-
-        logger.info(f"Generated script saved to: {scaffold_file}")
-        logger.info(f"Metadata saved to: {metadata_file}")
-        print(f"\nGeneration complete! To run the generated script:")
+        logger.info(f"Scaffold saved to: {output_dir}")
+        print(f"\nGeneration complete! To run the generated scaffold:")
         print(f"  run-scaffold {args.scaffold_name} 'your input string' --model haiku")
 
     except Exception as e:

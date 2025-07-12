@@ -19,6 +19,7 @@ from scaffold_learning.core.scaffold_execution import (
     execute_scaffold,
     ScaffoldExecutionResult,
 )
+from scaffold_learning.core.dataset_utils import sample_examples
 
 
 class ExperimentRunner:
@@ -121,7 +122,9 @@ class ExperimentRunner:
         self._create_initial_scaffolds()
 
         # Sample validation examples once for the entire experiment
-        validation_sample = self._sample_validation_examples()
+        validation_sample = sample_examples(
+            self.validation_data, self.num_validation_examples
+        )
         self.logger.info(
             f"Using {len(validation_sample)} validation examples for all iterations"
         )
@@ -160,13 +163,6 @@ class ExperimentRunner:
                 f"Experiment complete. Best scaffold: {best_scaffold_id} (score: {best_score:.3f})"
             )
         return best_scaffold_id, best_score
-
-    def _sample_validation_examples(self) -> List[DatasetExample]:
-        """Sample validation examples."""
-        return random.sample(
-            self.validation_data,
-            min(self.num_validation_examples, len(self.validation_data)),
-        )
 
     def _run_evolution_iteration(
         self,
@@ -373,19 +369,17 @@ class ExperimentRunner:
         Returns:
             List of scaffold IDs created
         """
-        scaffold_ids = []
+        # This will end up just being ["0", "1", "2", ...]
+        scaffold_ids = [
+            self._get_next_scaffold_id() for _ in range(self.initial_scaffolds)
+        ]
 
         self.logger.info(f"Creating {self.initial_scaffolds} initial scaffolds")
 
-        for _ in range(self.initial_scaffolds):
-            scaffold_id = self._get_next_scaffold_id()
-
-            # Select random training example
-            example = random.choice(self.training_data)
-
+        for scaffold_id, examples in self._get_training_examples(scaffold_ids).items():
             # Generate scaffold
             result = generate_scaffold(
-                examples=[example],  # TODO: show multiple examples
+                examples=examples,
                 scaffolder_llm=self.scaffolder_llm,
                 scoring_fn_code=self.scoring_fn_code,
                 iteration=0,
@@ -497,8 +491,8 @@ class ExperimentRunner:
 
         return scores
 
-    # TODO: add test cases that check that this works
-    # (don't test directly, since it's private)
+    # TODO: move to dataset_utils and add test cases that check that this works
+    # TODO: make this work for validation examples too
     def _get_training_examples(
         self, scaffold_ids: List[str]
     ) -> Dict[str, List[DatasetExample]]:

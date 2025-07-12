@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata
 from scaffold_learning.core.xml_utils import write_xml_file, read_xml_file
+from scaffold_learning.core.scaffold_files import save_scaffold as save_scaffold_files
 
 
 class ExperimentFileManager:
@@ -43,21 +44,7 @@ class ExperimentFileManager:
             OSError: If scaffold cannot be saved
         """
         scaffold_dir = self.experiment_dir / "scaffolds" / scaffold_id
-        scaffold_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write scaffold.py
-        (scaffold_dir / "scaffold.py").write_text(result.code)
-
-        # Write metadata.xml
-        write_xml_file(
-            result.metadata.to_dict(), scaffold_dir / "metadata.xml", "metadata"
-        )
-
-        # TODO: This is wrong, we shouldn't copy at all. Fix this.
-        shutil.copy2(
-            Path("src/scaffold_learning/core/llm_interfaces.py"),
-            scaffold_dir / "llm_interfaces.py",
-        )
+        save_scaffold_files(scaffold_dir, result)
 
     def load_scaffold(self, scaffold_id: str) -> ScaffoldResult:
         """Load a scaffold from disk.

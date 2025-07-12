@@ -2,15 +2,15 @@
 """CLI for running scaffold learning experiments."""
 
 import argparse
-import json
 from pathlib import Path
-from typing import Callable, Dict, List
 
-from scaffold_learning.core.data_structures import DatasetExample
 from scaffold_learning.core.experiment_runner import ExperimentRunner
 from scaffold_learning.core.llm_interfaces import LLMFactory
-from scaffold_learning.core.dataset_utils import load_dataset
-from scaffold_learning.core.scoring_utils import create_scoring_function, get_scoring_function_code
+from scaffold_learning.core.dataset_utils import load_datasets
+from scaffold_learning.core.scoring_utils import (
+    create_scoring_function,
+    get_scoring_function_code,
+)
 
 
 def main():
@@ -98,8 +98,7 @@ def main():
 
     # Load datasets
     print("Loading datasets...")
-    training_data = load_dataset(args.data_dir / "train.jsonl")
-    validation_data = load_dataset(args.data_dir / "valid.jsonl")
+    training_data, validation_data = load_datasets(args.data_dir)
 
     # Create scoring function and get a code representation of it
     print(f"Setting up {args.domain} domain...")
