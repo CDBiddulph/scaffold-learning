@@ -53,18 +53,11 @@ class ExperimentFileManager:
             result.metadata.to_dict(), scaffold_dir / "metadata.xml", "metadata"
         )
 
-        # Copy support files
-        support_files = ["llm_executor.py", "llm_interfaces.py"]
-
-        for support_file in support_files:
-            source_path = Path("scaffold-scripts") / support_file
-            if source_path.exists():
-                shutil.copy2(source_path, scaffold_dir / support_file)
-            else:
-                # Try alternative location
-                source_path = Path("src/scaffold_learning/core") / support_file
-                if source_path.exists():
-                    shutil.copy2(source_path, scaffold_dir / support_file)
+        # TODO: This is wrong, we shouldn't copy at all. Fix this.
+        shutil.copy2(
+            Path("src/scaffold_learning/core/llm_interfaces.py"),
+            scaffold_dir / "llm_interfaces.py",
+        )
 
     def load_scaffold(self, scaffold_id: str) -> ScaffoldResult:
         """Load a scaffold from disk.
