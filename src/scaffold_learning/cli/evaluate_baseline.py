@@ -50,6 +50,12 @@ def _parse_args() -> argparse.Namespace:
         default=10000,
         help="Thinking budget tokens (0 to disable)",
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=120,
+        help="Maximum execution time in seconds",
+    )
 
     return parser.parse_args()
 
@@ -92,6 +98,7 @@ def main():
             log_file_path=scaffold_dir / f"eval_{i}.log",
             input_string=example.input,
             model_spec=args.model,
+            timeout=args.timeout,
             console_output=False,
             thinking_budget_tokens=args.thinking_budget,
         )
