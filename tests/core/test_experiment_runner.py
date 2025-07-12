@@ -189,7 +189,7 @@ Execution completed successfully
 
         # Create mocks to track calls
         def mock_generate_func(
-            examples, scaffolder_llm, iteration, scoring_fn_code=None
+            examples, scaffolder_llm, iteration, scoring_fn_code=None, suggest_hack=False
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
@@ -206,6 +206,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
+            suggest_hack=False,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
@@ -283,7 +284,7 @@ Execution completed successfully
 
         # Create mocks for scaffold generation and evolution
         def mock_generate_func(
-            examples, scaffolder_llm, iteration, scoring_fn_code=None
+            examples, scaffolder_llm, iteration, scoring_fn_code=None, suggest_hack=False
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -300,6 +301,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
+            suggest_hack=False,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
@@ -476,7 +478,7 @@ Execution completed successfully
 
         # Create mocks that track calls automatically
         def mock_generate_func(
-            examples, scaffolder_llm, iteration, scoring_fn_code=None
+            examples, scaffolder_llm, iteration, scoring_fn_code=None, suggest_hack=False
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -497,6 +499,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
+            suggest_hack=False,
         ):
             # run_data is a list of ScaffoldRunData objects
             first_run_data = run_data[0]
@@ -633,7 +636,7 @@ Execution completed successfully
             )
 
         def mock_generate_func(
-            examples, scaffolder_llm, iteration, scoring_fn_code=None
+            examples, scaffolder_llm, iteration, scoring_fn_code=None, suggest_hack=False
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -650,6 +653,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
+            suggest_hack=False,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
@@ -820,7 +824,7 @@ Execution completed successfully
             )
 
         def mock_generate_func(
-            examples, scaffolder_llm, iteration, scoring_fn_code=None
+            examples, scaffolder_llm, iteration, scoring_fn_code=None, suggest_hack=False
         ):
             return ScaffoldResult(
                 code='def process_input(s): return "result"',
@@ -837,6 +841,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
+            suggest_hack=False,
         ):
             return ScaffoldResult(
                 code='def process_input(s): return "evolved"',

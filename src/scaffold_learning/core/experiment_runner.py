@@ -171,7 +171,7 @@ class ExperimentRunner:
         self,
         iteration: int,
         validation_sample: List[DatasetExample],
-    ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    ) -> Tuple[Dict[str, List[float]], Dict[str, List[float]]]:
         """Run one iteration of scaffold evolution.
 
         Args:
@@ -180,7 +180,7 @@ class ExperimentRunner:
 
         Returns:
             Tuple of (training_scores, validation_scores) - dictionaries mapping
-            scaffold_id to score dict with "mean_score" and "scores" keys
+            scaffold_id to list of scores
         """
         # Select top scaffolds to evolve
         top_scaffold_ids, validation_scores = self._select_top_scaffolds(
@@ -197,10 +197,7 @@ class ExperimentRunner:
         training_scores = {}
         for scaffold_id, run_data_list in top_scaffold_runs.items():
             scores = [run_data.score for run_data in run_data_list]
-            training_scores[scaffold_id] = {
-                "mean_score": np.mean(scores),
-                "scores": scores,
-            }
+            training_scores[scaffold_id] = scores
 
         # Evolve selected scaffolds
         self._evolve_scaffolds(iteration, top_scaffold_runs)
@@ -211,7 +208,7 @@ class ExperimentRunner:
         self,
         iteration: int,
         validation_sample: List[DatasetExample],
-    ) -> Tuple[List[str], Dict[str, Dict[str, Any]]]:
+    ) -> Tuple[List[str], Dict[str, List[float]]]:
         """Select top scaffolds to evolve.
 
         Args:
@@ -220,7 +217,7 @@ class ExperimentRunner:
 
         Returns:
             Tuple of (top_scaffold_ids, validation_scores) where validation_scores
-            maps scaffold_id to dict with 'mean_score' and 'scores' keys
+            maps scaffold_id to list of individual validation scores
         """
         # Get most recent validation scores for ranking
         most_recent_scores = self.file_manager.get_most_recent_validation_scores()
@@ -233,18 +230,15 @@ class ExperimentRunner:
                 scores = self._run_scaffold_on_examples(
                     iteration, scaffold_id, validation_sample, "valid"
                 )
-                newly_validated_scores[scaffold_id] = {
-                    "mean_score": np.mean(scores),
-                    "scores": scores,
-                }
+                newly_validated_scores[scaffold_id] = scores
 
         # Create combined scores for selection (newly validated + previously validated)
         all_scaffold_scores = {}
         for scaffold_id, score_dict in most_recent_scores.items():
             if scaffold_id in newly_validated_scores:
-                all_scaffold_scores[scaffold_id] = newly_validated_scores[scaffold_id][
-                    "mean_score"
-                ]
+                all_scaffold_scores[scaffold_id] = np.mean(
+                    newly_validated_scores[scaffold_id]
+                )
             else:
                 assert score_dict is not None
                 all_scaffold_scores[scaffold_id] = score_dict["mean_score"]
@@ -309,13 +303,13 @@ class ExperimentRunner:
     def _find_best_scaffold_from_scores(
         self,
         iteration: int,
-        scores: Dict[str, Dict[str, Any]],
+        scores: Dict[str, List[float]],
     ) -> Tuple[Optional[str], float]:
         """Find the best scaffold from current iteration scores.
 
         Args:
             iteration: Current iteration number
-            scores: Dictionary mapping scaffold_id to score data dict
+            scores: Dictionary mapping scaffold_id to list of scores
 
         Returns:
             Tuple of (best_scaffold_id, best_score) from this iteration
@@ -323,8 +317,8 @@ class ExperimentRunner:
         best_scaffold_id = None
         best_score = -1.0
 
-        for scaffold_id, score_data in scores.items():
-            score = score_data["mean_score"]
+        for scaffold_id, score_list in scores.items():
+            score = float(np.mean(score_list))
             if score > best_score:
                 best_score = score
                 best_scaffold_id = scaffold_id
@@ -332,12 +326,12 @@ class ExperimentRunner:
         return best_scaffold_id, best_score
 
     def _log_iteration_results(
-        self, iteration: int, validation_scores: Dict[str, Dict[str, Any]]
+        self, iteration: int, validation_scores: Dict[str, List[float]]
     ) -> None:
         """Log summary statistics for the current iteration."""
         if validation_scores:
             mean_scores = [
-                score_data["mean_score"] for score_data in validation_scores.values()
+                float(np.mean(score_list)) for score_list in validation_scores.values()
             ]
             avg_score = np.mean(mean_scores)
             max_score = max(mean_scores)
