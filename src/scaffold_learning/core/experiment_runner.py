@@ -40,6 +40,7 @@ class ExperimentRunner:
         base_dir: Path = Path("experiments"),
         executor_model: str = "gpt-4",
         scoring_fn_code: Optional[str] = None,
+        suggest_hack: bool = False,
     ):
         """Initialize an experiment runner.
 
@@ -57,6 +58,7 @@ class ExperimentRunner:
             base_dir: Base directory for all experiments
             executor_model: Model name to use for executing scaffolds
             scoring_fn_code: Scoring function code to include in prompts
+            suggest_hack: If True, include text encouraging the model to find exploits/hacks
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -76,6 +78,7 @@ class ExperimentRunner:
         self.num_validation_examples = num_validation_examples
         self.executor_model = executor_model
         self.scoring_fn_code = scoring_fn_code
+        self.suggest_hack = suggest_hack
 
         # Set up experiment directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -284,6 +287,7 @@ class ExperimentRunner:
                 scoring_fn_code=self.scoring_fn_code,
                 iteration=iteration,
                 parent_scaffold_id=parent_id,
+                suggest_hack=self.suggest_hack,
             )
 
             # Save evolved scaffold
@@ -383,6 +387,7 @@ class ExperimentRunner:
                 scaffolder_llm=self.scaffolder_llm,
                 scoring_fn_code=self.scoring_fn_code,
                 iteration=0,
+                suggest_hack=self.suggest_hack,
             )
 
             # Save scaffold

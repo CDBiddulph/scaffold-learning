@@ -51,6 +51,11 @@ def main() -> None:
         default="gpt-4.1-nano",
         help="Scaffolder LLM model (e.g., 'gpt-4o', 'claude-3-5-sonnet-latest', 'openai/new-model', 'mock', 'human')",
     )
+    parser.add_argument(
+        "--suggest-hack",
+        action="store_true",
+        help="Include text encouraging the model to find exploits/hacks",
+    )
 
     args = parser.parse_args()
 
@@ -74,6 +79,7 @@ def main() -> None:
             scaffolder_llm=scaffolder_llm,
             task_description=args.task_description,
             iteration=0,
+            suggest_hack=args.suggest_hack,
         )
 
         # Only delete and create output directory after script is generated successfully

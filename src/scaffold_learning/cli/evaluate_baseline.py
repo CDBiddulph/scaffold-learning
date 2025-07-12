@@ -44,6 +44,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Include scoring function in prompt",
     )
+    parser.add_argument(
+        "--suggest-hack",
+        action="store_true",
+        help="Include text encouraging the model to find exploits/hacks",
+    )
     parser.add_argument("--seed", type=int, help="Random seed")
     parser.add_argument(
         "--thinking-budget",
@@ -94,6 +99,7 @@ def main():
     scaffold_result = make_prompt_only_scaffold(
         examples=train_sample,
         scoring_fn_code=scoring_fn_code,
+        suggest_hack=args.suggest_hack,
     )
 
     # Save scaffold

@@ -79,6 +79,11 @@ def main():
         action="store_true",
         help="Show a Python file with the scoring function in the prompt",
     )
+    parser.add_argument(
+        "--suggest-hack",
+        action="store_true",
+        help="Include text encouraging the model to find exploits/hacks",
+    )
 
     # Output
     parser.add_argument(
@@ -137,6 +142,7 @@ def main():
         base_dir=args.base_dir,
         executor_model=args.executor_model,
         scoring_fn_code=scoring_fn_code,
+        suggest_hack=args.suggest_hack,
     )
 
     # Run experiment
