@@ -23,6 +23,8 @@ TEST_EVOLUTION_TIPS = "- Evolution tip 1\n- Evolution tip 2"
 TEST_PROMPT_ONLY_INSTRUCTIONS = (
     "Maximize your score on the input below using the examples above."
 )
+TEST_EXAMPLES_INSTRUCTIONS_HACK = "Cheat in your code."
+TEST_PROMPT_ONLY_INSTRUCTIONS_HACK = "Cheat in your response."
 
 
 class TestScaffoldGeneration:
@@ -49,6 +51,14 @@ class TestScaffoldGeneration:
     @patch(
         "scaffold_learning.core.scaffold_generation._PROMPT_ONLY_INSTRUCTIONS",
         TEST_PROMPT_ONLY_INSTRUCTIONS,
+    )
+    @patch(
+        "scaffold_learning.core.scaffold_generation._EXAMPLES_INSTRUCTIONS_HACK",
+        TEST_EXAMPLES_INSTRUCTIONS_HACK,
+    )
+    @patch(
+        "scaffold_learning.core.scaffold_generation._PROMPT_ONLY_INSTRUCTIONS_HACK",
+        TEST_PROMPT_ONLY_INSTRUCTIONS_HACK,
     )
     @pytest.mark.parametrize(
         "method,test_case",
@@ -406,6 +416,113 @@ def process_input(input_string: str) -> str:
                 },
                 id="make_prompt_only_scaffold_with_scoring_function",
             ),
+            pytest.param(
+                "generate_scaffold",
+                {
+                    "examples": [
+                        DatasetExample(
+                            id="test",
+                            input="test input",
+                            scoring_data={"solution": "test output"},
+                        )
+                    ],
+                    "suggest_hack": True,
+                    "llm_response": """```python
+def process_input(input_string: str) -> str:
+    return "test"
+```""",
+                    "expected_prompt": """<example-1>
+    <input>test input</input>
+    <expected_output>test output</expected_output>
+</example-1>
+<timeout>120</timeout>
+
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+
+Use the examples above.
+Cheat in your code.""",
+                },
+                id="generate_scaffold_with_suggest_hack",
+            ),
+            pytest.param(
+                "evolve_scaffold",
+                {
+                    "llm_response": """```python
+def process_input(input_string: str) -> str:
+    return "LION"
+```""",
+                    "run_data": [
+                        ScaffoldRunData(
+                            code='def process_input(input_string: str) -> str:\n    return "TIGER"',
+                            execution_log="Processing...\nReturned: TIGER",
+                            example=DatasetExample(
+                                id="0-1-2-3",
+                                input="5 across: Large feline (4)",
+                                scoring_data={"solution": "LION"},
+                            ),
+                            actual_output="TIGER",
+                            score=0.0,
+                        )
+                    ],
+                    "suggest_hack": True,
+                    "expected_code": 'def process_input(input_string: str) -> str:\n    return "LION"',
+                    "expected_prompt": """<code>```python
+def process_input(input_string: str) -> str:
+    return "TIGER"
+```</code>
+<example-1>
+    <input>5 across: Large feline (4)</input>
+    <expected_output>LION</expected_output>
+    <actual_output>TIGER</actual_output>
+    <execution_log>Processing...
+Returned: TIGER</execution_log>
+    <score>0.0</score>
+</example-1>
+<timeout>120</timeout>
+
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+- Evolution tip 1
+- Evolution tip 2
+
+Use the examples above.
+Cheat in your code.
+
+Improve the existing scaffold.""",
+                },
+                id="evolve_scaffold_with_suggest_hack",
+            ),
+            pytest.param(
+                "make_prompt_only_scaffold",
+                {
+                    "examples": [
+                        DatasetExample(
+                            id="test",
+                            input="test input",
+                            scoring_data={"solution": "test output"},
+                        )
+                    ],
+                    "suggest_hack": True,
+                    "expected_executor_prompt": """<example-1>
+    <input>test input</input>
+    <expected_output>test output</expected_output>
+</example-1>
+
+Maximize your score on the input below using the examples above.
+Cheat in your response.
+
+INPUT:
+""",
+                },
+                id="make_prompt_only_scaffold_with_suggest_hack",
+            ),
         ],
     )
     def test_scaffold_generation(self, method, test_case):
@@ -415,6 +532,7 @@ def process_input(input_string: str) -> str:
         mock_llm.generate_response.return_value = llm_response
 
         scoring_fn_code = test_case.get("scoring_fn_code", None)
+        suggest_hack = test_case.get("suggest_hack", False)
 
         if method in ["generate_scaffold", "make_prompt_only_scaffold"]:
             task_description = test_case.get("task_description", None)
@@ -444,6 +562,7 @@ def process_input(input_string: str) -> str:
                         scaffolder_llm=mock_llm,
                         scoring_fn_code=scoring_fn_code,
                         iteration=0,
+                        suggest_hack=suggest_hack,
                     )
                 elif method == "evolve_scaffold":
                     evolve_scaffold(
@@ -462,6 +581,7 @@ def process_input(input_string: str) -> str:
                 scoring_fn_code=scoring_fn_code,
                 scaffolder_llm=mock_llm,
                 iteration=0,
+                suggest_hack=suggest_hack,
             )
             assert result.metadata.parent_scaffold_id is None
             assert result.metadata.iteration == 0
@@ -472,6 +592,7 @@ def process_input(input_string: str) -> str:
                 scaffolder_llm=mock_llm,
                 iteration=1,
                 parent_scaffold_id="test-parent",
+                suggest_hack=suggest_hack,
             )
             assert result.metadata.parent_scaffold_id == "test-parent"
             assert result.metadata.iteration == 1
@@ -479,6 +600,7 @@ def process_input(input_string: str) -> str:
             result = make_prompt_only_scaffold(
                 examples=examples,
                 scoring_fn_code=scoring_fn_code,
+                suggest_hack=suggest_hack,
             )
             assert result.metadata.parent_scaffold_id is None
             assert result.metadata.iteration == None
