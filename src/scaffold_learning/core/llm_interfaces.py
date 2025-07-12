@@ -61,7 +61,7 @@ class OpenAIInterface(LLMInterface):
                 continue
             for summary in output_item.summary:
                 summaries.append(summary.text)
-        return "\n".join(summaries) if summaries else None
+        return "\n\n".join(summaries) if summaries else None
 
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         client = openai.OpenAI(api_key=self.api_key)
