@@ -90,7 +90,6 @@ class ExperimentRunner:
         self.next_initial_id = 0
 
         # Set up logging
-        logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
         # Save experiment metadata

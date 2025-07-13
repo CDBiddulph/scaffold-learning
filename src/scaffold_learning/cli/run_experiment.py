@@ -2,6 +2,7 @@
 """CLI for running scaffold learning experiments."""
 
 import argparse
+import logging
 from pathlib import Path
 
 from scaffold_learning.core.experiment_runner import ExperimentRunner
@@ -15,6 +16,12 @@ from scaffold_learning.core.docker_utils import build_docker_image
 
 
 def main():
+    # Configure logging first before anything else
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+    
     parser = argparse.ArgumentParser(
         description="Run scaffold learning experiments",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
