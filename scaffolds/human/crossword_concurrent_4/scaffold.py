@@ -353,6 +353,125 @@ Return ONLY the JSON object. You MUST return both across and down clues."""
     return candidates
 
 
+RATE_MIN_SCORE = 4
+
+
+def rate_candidates(candidates, across_clues, down_clues):
+    """Rate candidate answers using an LLM rater"""
+    # Prepare all candidates for rating
+    rating_items = []
+
+    for direction in ["across", "down"]:
+        clues = across_clues if direction == "across" else down_clues
+        for clue_num, answer_list in candidates[direction].items():
+            if clue_num in clues:
+                clue_text = clues[clue_num]
+                for answer in answer_list:
+                    rating_items.append(
+                        {
+                            "id": f"{direction}_{clue_num}_{answer}",
+                            "direction": direction,
+                            "number": clue_num,
+                            "clue": clue_text,
+                            "answer": answer,
+                        }
+                    )
+
+    if not rating_items:
+        return candidates
+
+    # Prepare prompt for rater
+    prompt = """You are rating crossword puzzle answers. For each clue and answer pair, rate how well the answer fits the clue on a scale from 1 to 10:
+
+1-3: Definitely wrong (typos, nonsense words, completely unrelated)
+4-6: Possibly related but unlikely
+7-9: Good fit
+10: Perfect fit
+
+IMPORTANT: Any typo or made-up word should immediately get a score of 1. For example:
+- "BATMAN" for "Famous superhero" = 10 (perfect)
+- "BATMYN" for "Famous superhero" = 1 (typo/nonsense)
+
+Return a JSON object where keys are the provided IDs and values are the numeric ratings.
+
+Items to rate:
+"""
+
+    # Add items in batches to avoid too long prompts
+    items_dict = {}
+    for item in rating_items:
+        items_dict[item["id"]] = {
+            "clue": f"{item['clue']} ({len(item['answer'])} letters)",
+            "answer": item["answer"],
+        }
+
+    prompt += json.dumps(items_dict, indent=2)
+    prompt += "\n\nReturn ONLY the JSON object with ratings."
+
+    logging.info(f"Rating {len(rating_items)} candidate answers")
+    response = execute_llm(prompt)
+
+    # Parse ratings
+    try:
+        json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
+        if json_match:
+            ratings = json.loads(json_match.group())
+        else:
+            ratings = json.loads(response)
+    except:
+        logging.warning("Failed to parse rater response, keeping all candidates")
+        return candidates
+
+    # Filter candidates based on ratings
+    filtered_candidates = {"across": {}, "down": {}}
+
+    for direction in ["across", "down"]:
+        for clue_num, answer_list in candidates[direction].items():
+            filtered_answers = []
+            for answer in answer_list:
+                rating_id = f"{direction}_{clue_num}_{answer}"
+                if rating_id in ratings:
+                    rating = ratings[rating_id]
+                    logging.debug(f"{direction} {clue_num} '{answer}': rating {rating}")
+                    if rating >= RATE_MIN_SCORE:
+                        filtered_answers.append(answer)
+                    else:
+                        logging.info(
+                            f"Filtered out {direction} {clue_num} '{answer}' (rating {rating})"
+                        )
+                else:
+                    # If no rating, keep the answer
+                    filtered_answers.append(answer)
+
+            if filtered_answers:
+                filtered_candidates[direction][clue_num] = filtered_answers
+
+    return filtered_candidates
+
+
+def merge_with_iteration1_candidates(current_candidates, iteration1_candidates):
+    """Merge current candidates with iteration 1 candidates (appending iter1 at end)"""
+    merged = {"across": {}, "down": {}}
+
+    for direction in ["across", "down"]:
+        for clue_num in set(current_candidates[direction].keys()) | set(
+            iteration1_candidates[direction].keys()
+        ):
+            current_answers = current_candidates[direction].get(clue_num, [])
+            iter1_answers = iteration1_candidates[direction].get(clue_num, [])
+
+            # Current answers first, then iteration 1 answers (avoiding duplicates)
+            merged_answers = current_answers[:]
+            for answer in iter1_answers:
+                if answer not in merged_answers:
+                    merged_answers.append(answer)
+
+            if merged_answers:
+                merged[direction][clue_num] = merged_answers
+
+    return merged
+
+
 def get_first_valid_words(candidates):
     """Extract the first valid word for each clue"""
     first_valid = {"across": {}, "down": {}}
@@ -616,6 +735,7 @@ def process_input(input_string: str) -> str:
     # Multi-iteration process
     final_locked_words = {}
     final_candidates = None
+    iteration1_candidates = None
 
     for main_iteration in range(1, MAX_ITERATIONS + 1):
         logging.info(f"\n=== MAIN ITERATION {main_iteration} ===")
@@ -623,10 +743,20 @@ def process_input(input_string: str) -> str:
         # Step 1: Elicit all answers (with or without partial grid)
         if main_iteration == 1:
             candidates = elicit_all_answers(across_clues, down_clues, grid)
+            # Store iteration 1 candidates for later use
+            iteration1_candidates = candidates
         else:
             # Use locked words from previous iteration to show partial grid
             candidates = elicit_all_answers(
                 across_clues, down_clues, grid, final_locked_words
+            )
+
+            # Rate and filter candidates in iteration 2+
+            candidates = rate_candidates(candidates, across_clues, down_clues)
+
+            # Merge with iteration 1 candidates
+            candidates = merge_with_iteration1_candidates(
+                candidates, iteration1_candidates
             )
 
         # Step 2: Get first valid words and reset locked words for this iteration
