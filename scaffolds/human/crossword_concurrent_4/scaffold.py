@@ -154,7 +154,6 @@ def get_crossing_letters(
     opposite_dir = "down" if direction == "across" else "across"
 
     for pos in word_positions:
-        row, col = pos
         letter = "-"
 
         # Find which opposite-direction word crosses at this position
@@ -309,10 +308,12 @@ IMPORTANT RULES:
 1. Be exactly the specified length
 2. Be a REAL English word or phrase - NEVER make up fake words
 3. Make sense as an answer to the clue
-4. If crossing_letters are provided (like "B - T M Y N"), you may consider them but do NOT force your answer to match them exactly
-5. It is perfectly acceptable to give answers that conflict with the given crossing letters
-6. ABSOLUTELY DO NOT create fake words just to match letters (e.g., if given "B - T M Y N", "BATMAN" is fine but "BATMYN" is absolutely forbidden)
-7. If you think of words that fit the clue and number of letters but don't fit the crossing letters, please include them anyway"""
+4. Write your answers without spaces between the letters. Answers with multiple words should be written with spaces between the words, like 'APPLE PIE'
+5. If crossing_letters are provided (like "B - T M Y N"), you may consider them but do NOT force your answer to match them exactly
+6. It is perfectly acceptable to give answers that conflict with the given crossing letters
+7. ABSOLUTELY DO NOT create fake words just to match letters (e.g., if given "B - T M Y N", "BATMAN" is fine but "BATMYN" is absolutely forbidden)
+8. If you think of words that fit the clue and number of letters but don't fit the crossing letters, please include them anyway
+"""
 
         example_input_dict = {
             "across_1": {
@@ -333,6 +334,7 @@ Each answer must:
 1. Be exactly the specified length
 2. Be a real English word or phrase
 3. Make sense as an answer to the clue
+4. Write your answers without spaces between the letters. Answers with multiple words should be written with spaces between the words, like 'APPLE PIE'
 
 If you can't think of any valid answers for a clue, return an empty list."""
 
@@ -353,18 +355,18 @@ If you can't think of any valid answers for a clue, return an empty list."""
         if USE_REASONING:
             example_output_dict["across_1"][
                 "reasoning"
-            ] = "B A T M A N fits perfectly. There aren't any other superheroes in Gotham."
+            ] = "BATMAN fits perfectly. There aren't any other superheroes in Gotham."
             example_output_dict["down_2"][
                 "reasoning"
-            ] = "P O N D or P O O L fits perfectly. Ignoring crossing letters, L A K E, G U L F, and L O C H could also work."
+            ] = "POND or POOL fits perfectly. Ignoring crossing letters, LAKE, GULF, and LOCH could also work."
         # We have to put this second so that reasoning goes first in the prompt
-        example_output_dict["across_1"]["answers"] = ["B A T M A N"]
+        example_output_dict["across_1"]["answers"] = ["BATMAN"]
         example_output_dict["down_2"]["answers"] = [
-            "P O N D",
-            "P O O L",
-            "L A K E",
-            "G U L F",
-            "L O C H",
+            "POND",
+            "POOL",
+            "LAKE",
+            "GULF",
+            "LOCH",
         ]
     else:
         example_output_dict = {"across_1": {}, "down_2": {}}
@@ -374,14 +376,14 @@ If you can't think of any valid answers for a clue, return an empty list."""
             ] = "This is asking for the capital city of France, which is definitely Paris."
             example_output_dict["down_2"][
                 "reasoning"
-            ] = "I think of P O N D, P O O L, L A K E, O C E A N, G U L F, and L O C H. But O C E A N has 5 letters, not 4."
-        example_output_dict["across_1"]["answers"] = ["P A R I S"]
+            ] = "I think of POND, POOL, LAKE, OCEAN, GULF, and LOCH. But OCEAN has 5 letters, not 4."
+        example_output_dict["across_1"]["answers"] = ["PARIS"]
         example_output_dict["down_2"]["answers"] = [
-            "P O N D",
-            "L A K E",
-            "G U L F",
-            "P O O L",
-            "L O C H",
+            "POND",
+            "LAKE",
+            "GULF",
+            "POOL",
+            "LOCH",
         ]
 
     # Add reasoning format if enabled
