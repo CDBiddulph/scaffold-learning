@@ -3,15 +3,11 @@
 
 import argparse
 import json
-import os
 import random
-import re
-import sys
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
-from urllib.request import urlopen, Request
-import gzip
+from .puz import Puzzle
 
-from . import puz
 from .puzzle_utils import (
     get_data,
     iterate_puzzles,
@@ -20,10 +16,7 @@ from .puzzle_utils import (
 )
 
 
-# get_data function moved to puzzle_utils.py
-
-
-def puzzle_to_text(puzzle):
+def puzzle_to_text(puzzle: Puzzle) -> Tuple[str, str]:
     """Convert puzzle to input and solution text strings"""
     numbering = puzzle.clue_numbering()
 
@@ -33,7 +26,14 @@ def puzzle_to_text(puzzle):
     return input_text, solution_text
 
 
-def collect_puzzles(data, header, target_count, source, day_pattern, day_of_week=None):
+def collect_puzzles(
+    data: Dict[str, Dict[str, Dict[str, Dict[str, List[int]]]]],
+    header: bytes,
+    target_count: int,
+    source: str,
+    day_pattern: str,
+    day_of_week: Optional[str] = None,
+) -> List[Dict[str, str]]:
     """Collect puzzles and convert to text format"""
     puzzles = []
 
@@ -53,37 +53,28 @@ def collect_puzzles(data, header, target_count, source, day_pattern, day_of_week
     return puzzles
 
 
-def save_puzzles_to_dir(puzzles, output_dir, num_train, num_valid, seed):
+def save_puzzles_to_dir(puzzles, output_dir, puzzle_counts, seed) -> None:
     """Save puzzles to train.jsonl and valid.jsonl in the given directory"""
     # Shuffle with deterministic seed
     random.seed(seed)
     random.shuffle(puzzles)
 
-    # Split into train and validation
-    train_puzzles = puzzles[:num_train]
-    valid_puzzles = puzzles[num_train : num_train + num_valid]
+    total_puzzles = sum(puzzle_counts.values())
+    assert len(puzzles) == total_puzzles
 
-    # Save training set
-    train_file = output_dir / "train.jsonl"
-    with open(train_file, "w", encoding="utf-8") as f:
-        for puzzle in train_puzzles:
-            f.write(json.dumps(puzzle) + "\n")
-
-    # Save validation set
-    valid_file = output_dir / "valid.jsonl"
-    with open(valid_file, "w", encoding="utf-8") as f:
-        for puzzle in valid_puzzles:
-            f.write(json.dumps(puzzle) + "\n")
-
-    print(f"Saved {len(train_puzzles)} training puzzles to {train_file}")
-    print(f"Saved {len(valid_puzzles)} validation puzzles to {valid_file}")
-
-    return len(train_puzzles), len(valid_puzzles)
+    # Split into train, validation, and test and save to files
+    for file, count in puzzle_counts.items():
+        puzzles_for_file, puzzles = puzzles[:count], puzzles[count:]
+        file_path = output_dir / f"{file}.jsonl"
+        with open(file_path, "w", encoding="utf-8") as f:
+            for puzzle in puzzles_for_file:
+                f.write(json.dumps(puzzle) + "\n")
+        print(f"Saved {len(puzzles_for_file)} {file} puzzles to {file_path}")
 
 
 def create_all_day_datasets(
-    data, header, output_dir, num_train, num_valid, source, day_filter, seed
-):
+    data, header, output_dir, puzzle_counts, source, day_filter, seed
+) -> None:
     """Create datasets for all days of the week in separate directories"""
     days_of_week = [
         "monday",
@@ -94,8 +85,6 @@ def create_all_day_datasets(
         "saturday",
         "sunday",
     ]
-    total_train = 0
-    total_valid = 0
 
     for day in days_of_week:
         print(f"\nProcessing {day}s...")
@@ -103,23 +92,18 @@ def create_all_day_datasets(
         day_dir.mkdir(parents=True, exist_ok=True)
 
         # Collect puzzles for this day
+        total_puzzles = sum(puzzle_counts.values())
         day_puzzles = collect_puzzles(
-            data, header, num_train + num_valid, source, day_filter, day
+            data, header, total_puzzles, source, day_filter, day
         )
 
-        if len(day_puzzles) < num_train + num_valid:
-            print(
-                f"Warning: Only found {len(day_puzzles)} {day} puzzles, needed {num_train + num_valid}"
+        if len(day_puzzles) < total_puzzles:
+            raise ValueError(
+                f"Only found {len(day_puzzles)} {day} puzzles, needed {total_puzzles}"
             )
 
         # Save puzzles to this day's directory (different seed for each day)
-        train_count, valid_count = save_puzzles_to_dir(
-            day_puzzles, day_dir, num_train, num_valid, seed + hash(day)
-        )
-        total_train += train_count
-        total_valid += valid_count
-
-    return total_train, total_valid
+        save_puzzles_to_dir(day_puzzles, day_dir, puzzle_counts, seed + hash(day))
 
 
 def main():
@@ -134,14 +118,17 @@ def main():
     parser.add_argument(
         "--num-train",
         type=int,
-        default=50,
-        help="Number of training puzzles (default: 50)",
+        help="Number of training puzzles",
     )
     parser.add_argument(
         "--num-valid",
         type=int,
-        default=50,
-        help="Number of validation puzzles (default: 50)",
+        help="Number of validation puzzles",
+    )
+    parser.add_argument(
+        "--num-test",
+        type=int,
+        help="Number of test puzzles",
     )
     parser.add_argument(
         "-s",
@@ -186,37 +173,42 @@ def main():
     header = get_data(*meta[5:8], mode="raw")
     data = get_data(*meta[2:5], mode="gzip", header=header)
 
+    puzzle_counts = {
+        "train": args.num_train,
+        "valid": args.num_valid,
+        "test": args.num_test,
+    }
+
     if args.day_of_week == "all":
-        return create_all_day_datasets(
+        # Create datasets for all days of the week
+        create_all_day_datasets(
             data,
             header,
             output_dir,
-            args.num_train,
-            args.num_valid,
+            puzzle_counts,
             args.source,
             args.day_filter,
             args.seed,
         )
-    else:
-        # Original behavior for single day or no day filter
-        total_needed = args.num_train + args.num_valid
-        day_filter_msg = f" on {args.day_of_week}s" if args.day_of_week else ""
-        print(
-            f"Searching for {total_needed} suitable puzzles from {args.source}{day_filter_msg}..."
+        return
+
+    # Single day or no day filter
+    total_needed = sum(puzzle_counts.values())
+    day_filter_msg = f" on {args.day_of_week}s" if args.day_of_week else ""
+    print(
+        f"Searching for {total_needed} suitable puzzles from {args.source}{day_filter_msg}..."
+    )
+
+    all_puzzles = collect_puzzles(
+        data, header, total_needed, args.source, args.day_filter, args.day_of_week
+    )
+
+    if len(all_puzzles) < total_needed:
+        raise ValueError(
+            f"Only found {len(all_puzzles)} puzzles, needed {total_needed}"
         )
 
-        all_puzzles = collect_puzzles(
-            data, header, total_needed, args.source, args.day_filter, args.day_of_week
-        )
-
-        if len(all_puzzles) < total_needed:
-            print(
-                f"Warning: Only found {len(all_puzzles)} puzzles, needed {total_needed}"
-            )
-
-        return save_puzzles_to_dir(
-            all_puzzles, output_dir, args.num_train, args.num_valid, args.seed
-        )
+    save_puzzles_to_dir(all_puzzles, output_dir, puzzle_counts, args.seed)
 
 
 if __name__ == "__main__":

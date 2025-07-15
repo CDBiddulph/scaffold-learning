@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Shared utilities for crossword puzzle processing"""
 
+from typing import Dict, List, Optional, Generator, Tuple
 import json
 import gzip
 import re
@@ -166,8 +167,13 @@ def puzzle_to_solution_text(puzzle, numbering):
 
 
 def iterate_puzzles(
-    data, header, source, day_pattern, max_count=None, day_of_week=None
-):
+    data: Dict[str, Dict[str, Dict[str, Dict[str, List[int]]]]],
+    header: bytes,
+    source: str,
+    day_pattern: str,
+    max_count: Optional[int] = None,
+    day_of_week: Optional[str] = None,
+) -> Generator[Tuple[puz.Puzzle, str, str, str, str, str], None, None]:
     """
     Generator that yields puzzle objects from the GitHub archive
 
