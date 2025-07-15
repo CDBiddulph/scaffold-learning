@@ -341,47 +341,50 @@ def try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, gr
         if clue_num in locked_words.get(direction, {}):
             continue
 
-        # Check for conflicts with existing locked words
-        conflict = False
-        conflicting_word = None
-
+        # Find all conflicting locked words
+        conflicting_words = []
+        opposite_dir = "down" if direction == "across" else "across"
+        
         for i, pos in enumerate(positions):
             if i >= len(answer):
                 break
 
             # Check opposite direction locked words
-            opposite_dir = "down" if direction == "across" else "across"
             for other_num, other_answer in locked_words.get(opposite_dir, {}).items():
                 other_positions = get_word_positions(other_num, grid, opposite_dir)
                 if pos in other_positions:
                     idx = other_positions.index(pos)
                     if idx < len(other_answer) and other_answer[idx] != answer[i]:
-                        conflict = True
-                        conflicting_word = (opposite_dir, other_num, other_answer)
-                        break
-            if conflict:
-                break
+                        # This is a conflict - add to list if not already there
+                        conflict_info = (opposite_dir, other_num, other_answer)
+                        if conflict_info not in conflicting_words:
+                            conflicting_words.append(conflict_info)
 
-        if conflict:
-            # Compare probabilities to decide which to keep
-            opp_dir, opp_num, opp_answer = conflicting_word
+        if conflicting_words:
+            # Check if new word has lower probability than ALL conflicting words
+            can_replace_all = True
+            conflict_probs = []
+            
+            for opp_dir, opp_num, opp_answer in conflicting_words:
+                # Get crossing letters for the conflicting word
+                opp_positions = get_word_positions(opp_num, grid, opp_dir)
+                opp_crossing = get_crossing_letters(
+                    opp_positions, locked_words, first_valid_words, grid, opp_dir
+                )
+                opp_prob = coincidence_prob(opp_answer, opp_crossing)
+                conflict_probs.append((opp_dir, opp_num, opp_answer, opp_prob))
+                
+                if prob_info["probability"] >= opp_prob:
+                    can_replace_all = False
+                    break
 
-            # Get crossing letters for the conflicting word
-            opp_positions = get_word_positions(opp_num, grid, opp_dir)
-            opp_crossing = get_crossing_letters(
-                opp_positions, locked_words, first_valid_words, grid, opp_dir
-            )
-            opp_prob = coincidence_prob(opp_answer, opp_crossing)
-
-            logging.debug(
-                f"Conflict: {direction} {clue_num} '{answer}' (p={prob_info['probability']:.6f}) "
-                f"vs {opp_dir} {opp_num} '{opp_answer}' (p={opp_prob:.6f})"
-            )
-
-            if prob_info["probability"] < opp_prob:
-                # Current word is less likely to be coincidence, so keep it
-                logging.info(f"Unlocking {opp_dir} {opp_num} due to conflict")
-                del locked_words[opp_dir][opp_num]
+            if can_replace_all:
+                # New word beats all conflicting words - unlock them all and lock new word
+                logging.info(f"New word {direction} {clue_num} '{answer}' (p={prob_info['probability']:.6f}) beats all conflicts:")
+                
+                for opp_dir, opp_num, opp_answer, opp_prob in conflict_probs:
+                    logging.info(f"  Unlocking {opp_dir} {opp_num} '{opp_answer}' (p={opp_prob:.6f})")
+                    del locked_words[opp_dir][opp_num]
 
                 if direction not in locked_words:
                     locked_words[direction] = {}
@@ -391,7 +394,8 @@ def try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, gr
                 )
                 return True
             else:
-                logging.debug(f"Keeping existing {opp_dir} {opp_num}")
+                # New word doesn't beat all conflicts - skip it
+                logging.debug(f"Cannot lock {direction} {clue_num} '{answer}' - conflicts with better words")
                 continue  # Try next word
         else:
             # No conflict, lock it in
