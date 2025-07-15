@@ -21,7 +21,7 @@ def main():
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
-    
+
     parser = argparse.ArgumentParser(
         description="Run scaffold learning experiments",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -91,6 +91,12 @@ def main():
         action="store_true",
         help="Include text encouraging the model to find exploits/hacks",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducible experiments",
+    )
 
     # Output
     parser.add_argument(
@@ -150,6 +156,7 @@ def main():
         executor_model=args.executor_model,
         scoring_fn_code=scoring_fn_code,
         suggest_hack=args.suggest_hack,
+        seed=args.seed,
     )
 
     # Run experiment

@@ -1,9 +1,9 @@
 """Utilities for loading and working with datasets."""
 
+import random
 import json
 from pathlib import Path
-from typing import List, Tuple
-import random
+from typing import List, Dict, Collection
 
 from scaffold_learning.core.data_structures import DatasetExample
 
@@ -43,35 +43,38 @@ def _load_dataset(dataset_path: Path) -> List[DatasetExample]:
 
 def load_datasets(
     dataset_path: Path,
-) -> Tuple[List[DatasetExample], List[DatasetExample]]:
-    """Load train and validation datasets from JSONL files.
+    splits: Collection[str],
+) -> Dict[str, List[DatasetExample]]:
+    """Load datasets from JSONL files.
 
     Args:
-        dataset_path: Path to directory containing train.jsonl and valid.jsonl files
+        dataset_path: Path to directory containing train.jsonl, valid.jsonl, and test.jsonl files
 
     Returns:
-        Tuple of (train_examples, valid_examples)
+        Dictionary of split name to list of examples
     """
-    train_examples = _load_dataset(dataset_path / "train.jsonl")
-    valid_examples = _load_dataset(dataset_path / "valid.jsonl")
-    return train_examples, valid_examples
+    return {split: _load_dataset(dataset_path / f"{split}.jsonl") for split in splits}
 
 
-def sample_examples(
-    examples: List[DatasetExample], num_examples: int
-) -> List[DatasetExample]:
-    """Randomly sample examples from a dataset.
+class ExampleSampler:
+    def __init__(self, seed: int, dataset: List[DatasetExample], allow_resample: bool):
+        self._random_gen = random.Random(seed)
+        self._dataset = dataset
+        # Sort by id to make sampling deterministic
+        self._dataset.sort(key=lambda x: x.id)
+        self._allow_resample = allow_resample
+        self._refresh_remaining_data()
 
-    Args:
-        examples: List of examples to sample from
-        num_examples: Number of examples to sample
+    def _refresh_remaining_data(self) -> None:
+        self._remaining_data = list(self._dataset)
+        self._random_gen.shuffle(self._remaining_data)
 
-    Returns:
-        List of sampled examples
-    """
-    if num_examples > len(examples):
-        raise ValueError(
-            f"Cannot sample {num_examples} examples from {len(examples)} examples"
-        )
+    def _yield_example(self) -> DatasetExample:
+        if not self._remaining_data:
+            if not self._allow_resample:
+                raise ValueError("No remaining data to sample from")
+            self._refresh_remaining_data()
+        return self._remaining_data.pop(0)
 
-    return random.sample(examples, num_examples)
+    def sample(self, num_examples: int) -> List[DatasetExample]:
+        return [self._yield_example() for _ in range(num_examples)]

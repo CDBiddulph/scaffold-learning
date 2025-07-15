@@ -19,7 +19,7 @@ from scaffold_learning.core.scaffold_execution import (
     execute_scaffold,
     ScaffoldExecutionResult,
 )
-from scaffold_learning.core.dataset_utils import sample_examples
+from scaffold_learning.core.dataset_utils import ExampleSampler
 
 
 class ExperimentRunner:
@@ -41,6 +41,8 @@ class ExperimentRunner:
         executor_model: str = "gpt-4",
         scoring_fn_code: Optional[str] = None,
         suggest_hack: bool = False,
+        train_seed: Optional[int] = None,
+        valid_seed: Optional[int] = None,
     ):
         """Initialize an experiment runner.
 
@@ -59,6 +61,8 @@ class ExperimentRunner:
             executor_model: Model name to use for executing scaffolds
             scoring_fn_code: Scoring function code to include in prompts
             suggest_hack: If True, include text encouraging the model to find exploits/hacks
+            train_seed: Seed for training examples
+            valid_seed: Seed for validation examples
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -79,6 +83,11 @@ class ExperimentRunner:
         self.executor_model = executor_model
         self.scoring_fn_code = scoring_fn_code
         self.suggest_hack = suggest_hack
+
+        train_seed = train_seed
+        valid_seed = valid_seed
+        self.train_random = random.Random(train_seed)
+        self.valid_random = random.Random(valid_seed)
 
         # Set up experiment directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -101,13 +110,14 @@ class ExperimentRunner:
             "initial_scaffolds": initial_scaffolds,
             "num_training_examples": num_training_examples,
             "num_validation_examples": num_validation_examples,
-            "random_seed": random.randint(0, 1000000),
+            "train_seed": train_seed,
+            "valid_seed": valid_seed,
         }
-        random.seed(metadata["random_seed"])
         self.file_manager.save_experiment_metadata(metadata)
 
         self.logger.info(f"Initialized experiment: {experiment_name}")
-        self.logger.info(f"Random seed: {metadata['random_seed']}")
+        self.logger.info(f"Random training seed: {metadata['train_seed']}")
+        self.logger.info(f"Random validation seed: {metadata['valid_seed']}")
 
     def run(self) -> Tuple[Optional[str], float]:
         """Run the complete experiment.
@@ -124,9 +134,9 @@ class ExperimentRunner:
         self._create_initial_scaffolds()
 
         # Sample validation examples once for the entire experiment
-        validation_sample = sample_examples(
-            self.validation_data, self.num_validation_examples
-        )
+        validation_sample = ExampleSampler(
+            self.valid_random.getrandbits(32), self.validation_data, allow_resample=False
+        ).sample(self.num_validation_examples)
         self.logger.info(
             f"Using {len(validation_sample)} validation examples for all iterations"
         )
@@ -498,10 +508,10 @@ class ExperimentRunner:
     ) -> Dict[str, List[DatasetExample]]:
         """Randomly sample training examples, minimizing duplicates."""
         n = len(scaffold_ids) * self.num_training_examples
-        flat_examples = (
-            self.training_data * (n // len(self.training_data))
-        ) + random.sample(self.training_data, n % len(self.training_data))
-        random.shuffle(flat_examples)
+        flat_examples = self.training_data * (
+            n // len(self.training_data)
+        ) + self.train_random.sample(self.training_data, n % len(self.training_data))
+        self.train_random.shuffle(flat_examples)
         examples_by_scaffold = {}
         i = 0
         for scaffold_id in scaffold_ids:

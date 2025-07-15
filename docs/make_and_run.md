@@ -114,13 +114,13 @@ experiments/             # Existing experiment structure (unchanged)
 - Approximately 500 lines
 
 **Modified file: `pyproject.toml`**
-- Remove old console_scripts entries: `generate-scaffold`, `run-scaffold`, `evaluate-baseline`
 - Add new entry: `scaffold = "scaffold_learning.cli.make_and_run:main"`
+- Remove old console_scripts entries: `generate-scaffold`, `run-scaffold`, `evaluate-baseline`
 
-**Files to delete (after implementation):**
-- `src/scaffold_learning/cli/evaluate_baseline.py`
-- `src/scaffold_learning/cli/generate_scaffold.py`
-- `src/scaffold_learning/cli/run_scaffold.py`
+**Files deleted:**
+- `src/scaffold_learning/cli/evaluate_baseline.py` ✅
+- `src/scaffold_learning/cli/generate_scaffold.py` ✅
+- `src/scaffold_learning/cli/run_scaffold.py` ✅
 
 ### Core Functions
 
