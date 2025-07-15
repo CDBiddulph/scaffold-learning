@@ -424,16 +424,19 @@ def build_completed_grid(grid, locked_words, first_valid_words, candidates):
                 if i < len(answer):
                     completed[row][col] = answer[i]
 
-    # For any remaining - positions, use the word with lowest coincidence probability
+    # For any remaining - positions, use the letter from the word with lowest coincidence probability
     for row in range(height):
         for col in range(width):
             if grid[row][col] != "." and completed[row][col] == "-":
-                # Find all words that pass through this position
-                best_letter = "-"
-                best_prob = 1.0
+                # Collect all candidate letters for this position
+                candidate_letters = []
 
                 for direction in ["across", "down"]:
                     for clue_num, answer_list in candidates[direction].items():
+                        # Skip if this clue is already locked
+                        if clue_num in locked_words.get(direction, {}):
+                            continue
+                            
                         positions = get_word_positions(clue_num, grid, direction)
                         if (row, col) in positions:
                             idx = positions.index((row, col))
@@ -442,8 +445,11 @@ def build_completed_grid(grid, locked_words, first_valid_words, candidates):
                             for answer in answer_list:
                                 if idx < len(answer):
                                     # Calculate crossing letters for this specific answer
-                                    # Temporarily use this answer for calculation
-                                    temp_first_valid = first_valid_words.copy()
+                                    # Create a proper deep copy of first_valid_words
+                                    temp_first_valid = {
+                                        "across": first_valid_words.get("across", {}).copy(),
+                                        "down": first_valid_words.get("down", {}).copy()
+                                    }
                                     temp_first_valid[direction][clue_num] = answer
 
                                     crossing_letters = get_crossing_letters(
@@ -454,16 +460,27 @@ def build_completed_grid(grid, locked_words, first_valid_words, candidates):
                                         direction,
                                     )
                                     prob = coincidence_prob(answer, crossing_letters)
+                                    
+                                    candidate_letters.append({
+                                        "letter": answer[idx],
+                                        "probability": prob,
+                                        "direction": direction,
+                                        "clue_num": clue_num,
+                                        "answer": answer
+                                    })
 
-                                    if prob < best_prob:
-                                        best_prob = prob
-                                        best_letter = answer[idx]
-                                        logging.debug(
-                                            f"Position ({row},{col}): {direction} {clue_num} '{answer}' "
-                                            f"gives letter '{best_letter}' with prob {prob:.6f}"
-                                        )
-
-                if best_letter == "-":
+                if candidate_letters:
+                    # Sort by probability and pick the letter from the lowest probability word
+                    candidate_letters.sort(key=lambda x: x["probability"])
+                    best_candidate = candidate_letters[0]
+                    best_letter = best_candidate["letter"]
+                    
+                    logging.debug(
+                        f"Position ({row},{col}): chose '{best_letter}' from "
+                        f"{best_candidate['direction']} {best_candidate['clue_num']} "
+                        f"'{best_candidate['answer']}' (p={best_candidate['probability']:.6f})"
+                    )
+                else:
                     # This shouldn't happen if we have valid candidates
                     logging.warning(
                         f"No letter found for position ({row},{col}), using 'E'"
