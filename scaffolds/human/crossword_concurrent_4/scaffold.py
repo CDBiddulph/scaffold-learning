@@ -7,6 +7,7 @@ from llm_executor import execute_llm
 
 
 MAX_ITERATIONS = 10
+USE_RATING = False
 
 
 def parse_crossword_input(input_string):
@@ -824,8 +825,9 @@ def process_input(input_string: str) -> str:
                 across_clues, down_clues, grid, final_locked_words, final_candidates
             )
 
-            # Rate and filter candidates in iteration 2+
-            candidates = rate_candidates(candidates, across_clues, down_clues)
+            # Rate and filter candidates in iteration 2+ (if enabled)
+            if USE_RATING:
+                candidates = rate_candidates(candidates, across_clues, down_clues)
 
             # Merge with iteration 1 candidates
             candidates = merge_with_iteration1_candidates(
