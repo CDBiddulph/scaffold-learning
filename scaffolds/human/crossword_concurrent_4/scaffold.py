@@ -180,14 +180,57 @@ def get_crossing_letters(
     return "".join(crossing_letters)
 
 
-def elicit_all_answers(across_clues, down_clues, grid, locked_words=None):
+def is_word_fully_constrained(clue_num, direction, grid, locked_words):
+    """Check if a word is fully constrained (all crossing words are locked)"""
+    if not locked_words:
+        return False
+
+    positions = get_word_positions(clue_num, grid, direction)
+    opposite_dir = "down" if direction == "across" else "across"
+
+    for pos in positions:
+        # Check if any word in the opposite direction crosses this position
+        crossing_word_found = False
+        for other_clue_num in locked_words.get(opposite_dir, {}):
+            other_positions = get_word_positions(other_clue_num, grid, opposite_dir)
+            if pos in other_positions:
+                crossing_word_found = True
+                break
+
+        # If no crossing word is locked at this position, word is not fully constrained
+        if not crossing_word_found:
+            return False
+
+    return True
+
+
+def elicit_all_answers(
+    across_clues, down_clues, grid, locked_words=None, previous_candidates=None
+):
     """Elicit up to 5 answers for each clue in a single LLM call"""
-    # Collect all clue data first
+    # Collect clues that need elicitation (not fully constrained)
     clue_data_list = []
+    reused_candidates = {"across": {}, "down": {}}
 
     for clue_num, clue_text in across_clues.items():
         length = get_clue_length(clue_num, grid, "across")
         if length:
+            # Check if word is fully constrained
+            if (
+                locked_words
+                and previous_candidates
+                and is_word_fully_constrained(clue_num, "across", grid, locked_words)
+            ):
+                # Reuse previous candidates
+                if clue_num in previous_candidates["across"]:
+                    reused_candidates["across"][clue_num] = previous_candidates[
+                        "across"
+                    ][clue_num]
+                    logging.debug(
+                        f"Reusing candidates for fully constrained across {clue_num}"
+                    )
+                continue
+
             clue_info = {
                 "direction": "across",
                 "number": clue_num,
@@ -209,6 +252,22 @@ def elicit_all_answers(across_clues, down_clues, grid, locked_words=None):
     for clue_num, clue_text in down_clues.items():
         length = get_clue_length(clue_num, grid, "down")
         if length:
+            # Check if word is fully constrained
+            if (
+                locked_words
+                and previous_candidates
+                and is_word_fully_constrained(clue_num, "down", grid, locked_words)
+            ):
+                # Reuse previous candidates
+                if clue_num in previous_candidates["down"]:
+                    reused_candidates["down"][clue_num] = previous_candidates["down"][
+                        clue_num
+                    ]
+                    logging.debug(
+                        f"Reusing candidates for fully constrained down {clue_num}"
+                    )
+                continue
+
             clue_info = {
                 "direction": "down",
                 "number": clue_num,
@@ -227,7 +286,7 @@ def elicit_all_answers(across_clues, down_clues, grid, locked_words=None):
 
             clue_data_list.append((f"down_{clue_num}", clue_info))
 
-    # Randomize the order of clues
+    # Randomize the order of clues that need elicitation
     random.shuffle(clue_data_list)
 
     # Build the dictionary in randomized order
@@ -235,7 +294,9 @@ def elicit_all_answers(across_clues, down_clues, grid, locked_words=None):
     for key, clue_info in clue_data_list:
         all_clues[key] = clue_info
 
-    logging.info(f"Eliciting answers for {len(all_clues)} clues")
+    logging.info(
+        f"Eliciting answers for {len(all_clues)} clues (reused {len(reused_candidates['across'])} across, {len(reused_candidates['down'])} down)"
+    )
 
     # Determine if this is a partial grid iteration
     has_crossing_info = any("crossing_letters" in clue for clue in all_clues.values())
@@ -310,6 +371,11 @@ Clues:
 
 Return ONLY the JSON object. You MUST return both across and down clues."""
 
+    # If there are no clues to elicit, just return reused candidates
+    if not all_clues:
+        logging.info("No new clues to elicit, using only reused candidates")
+        return reused_candidates
+
     response = execute_llm(prompt)
 
     # Extract JSON from response
@@ -319,8 +385,12 @@ Return ONLY the JSON object. You MUST return both across and down clues."""
     else:
         results = json.loads(response)
 
-    # Process results
+    # Process results and combine with reused candidates
     candidates = {"across": {}, "down": {}}
+
+    # Start with reused candidates
+    for direction in ["across", "down"]:
+        candidates[direction].update(reused_candidates[direction])
 
     for key, result in results.items():
         if isinstance(result, dict) and "answers" in result:
@@ -747,8 +817,9 @@ def process_input(input_string: str) -> str:
             iteration1_candidates = candidates
         else:
             # Use locked words from previous iteration to show partial grid
+            # Pass previous candidates to allow reusing fully constrained words
             candidates = elicit_all_answers(
-                across_clues, down_clues, grid, final_locked_words
+                across_clues, down_clues, grid, final_locked_words, final_candidates
             )
 
             # Rate and filter candidates in iteration 2+
