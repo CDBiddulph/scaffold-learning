@@ -1,6 +1,8 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import json
+import re
+import logging
 
 from scaffold_learning.core.data_structures import (
     DatasetExample,
@@ -119,7 +121,7 @@ Be careful not to attempt exploits that would actually attain a lower score than
 
 
 def _extract_python_code(response: LLMResponse) -> str:
-    """Extract Python code from LLM response.
+    """Extract the last Python code block from an LLM response.
 
     Args:
         response: Raw LLM response that may contain markdown formatting
@@ -130,14 +132,16 @@ def _extract_python_code(response: LLMResponse) -> str:
     Raises:
         ValueError: If no Python code block is found
     """
-    content = response.content
-    if "```python" in content:
-        code = content.split("```python")[1].split("```")[0].strip()
-    elif "```" in content:
-        code = content.split("```")[1].split("```")[0].strip()
-    else:
-        raise ValueError("LLM response doesn't contain valid Python code")
-    return code
+    # Regex to match code block like ```python\n...\n``` or ```\n...\n```
+    pattern = re.compile(r"```(?:python)?\n(.*?)(?=\n```)", re.DOTALL | re.IGNORECASE)
+
+    matches = pattern.findall(response.content)
+    if not matches:
+        raise ValueError("LLM response doesn't contain a valid Python code block")
+    elif len(matches) > 1:
+        logging.warning(f"LLM response contains multiple Python code blocks: {matches}")
+
+    return matches[-1]
 
 
 def _get_expected_output(scoring_data: Dict[str, Any]) -> str:

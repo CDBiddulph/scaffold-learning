@@ -128,9 +128,17 @@ Use the examples above.""",
                 "generate_scaffold",
                 {
                     "llm_response": "I don't know how to write code.",
-                    "expected_error": "LLM response doesn't contain valid Python code",
+                    "expected_error": "LLM response doesn't contain a valid Python code block",
                 },
                 id="generate_scaffold_no_code_block_raises_error",
+            ),
+            pytest.param(
+                "generate_scaffold",
+                {
+                    "llm_response": "```\n  ```\n   These spaces are important\n   ```\n```",
+                    "expected_code": "  ```\n   These spaces are important\n   ```",
+                },
+                id="generate_scaffold_code_block_with_backticks_inside",
             ),
             pytest.param(
                 "generate_scaffold",
