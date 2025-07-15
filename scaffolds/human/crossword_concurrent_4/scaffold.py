@@ -2,6 +2,7 @@ import logging
 import re
 import json
 import math
+import random
 from llm_executor import execute_llm
 
 
@@ -181,8 +182,8 @@ def get_crossing_letters(
 
 def elicit_all_answers(across_clues, down_clues, grid, locked_words=None):
     """Elicit up to 5 answers for each clue in a single LLM call"""
-    # Prepare clue data
-    all_clues = {}
+    # Collect all clue data first
+    clue_data_list = []
 
     for clue_num, clue_text in across_clues.items():
         length = get_clue_length(clue_num, grid, "across")
@@ -203,7 +204,7 @@ def elicit_all_answers(across_clues, down_clues, grid, locked_words=None):
                 if crossing_letters and crossing_letters != "-" * len(crossing_letters):
                     clue_info["crossing_letters"] = crossing_letters
 
-            all_clues[f"across_{clue_num}"] = clue_info
+            clue_data_list.append((f"across_{clue_num}", clue_info))
 
     for clue_num, clue_text in down_clues.items():
         length = get_clue_length(clue_num, grid, "down")
@@ -224,7 +225,15 @@ def elicit_all_answers(across_clues, down_clues, grid, locked_words=None):
                 if crossing_letters and crossing_letters != "-" * len(crossing_letters):
                     clue_info["crossing_letters"] = crossing_letters
 
-            all_clues[f"down_{clue_num}"] = clue_info
+            clue_data_list.append((f"down_{clue_num}", clue_info))
+
+    # Randomize the order of clues
+    random.shuffle(clue_data_list)
+
+    # Build the dictionary in randomized order
+    all_clues = {}
+    for key, clue_info in clue_data_list:
+        all_clues[key] = clue_info
 
     logging.info(f"Eliciting answers for {len(all_clues)} clues")
 
@@ -381,11 +390,6 @@ def calculate_all_probabilities(candidates, locked_words, first_valid_words, gri
                         "crossing_letters": crossing_letters,
                         "positions": positions,
                     }
-                )
-
-                logging.debug(
-                    f"{direction} {clue_num} '{answer}' vs '{crossing_letters}': "
-                    f"p={prob:.6f}"
                 )
 
     # Sort by probability (ascending - least likely coincidence first)
