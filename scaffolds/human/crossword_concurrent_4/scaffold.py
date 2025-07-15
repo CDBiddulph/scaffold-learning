@@ -8,6 +8,7 @@ from llm_executor import execute_llm
 
 MAX_ITERATIONS = 10
 USE_RATING = False
+USE_REASONING = False
 
 
 def parse_crossword_input(input_string):
@@ -233,8 +234,6 @@ def elicit_all_answers(
                 continue
 
             clue_info = {
-                "direction": "across",
-                "number": clue_num,
                 "clue": clue_text,
                 "length": length,
             }
@@ -270,8 +269,6 @@ def elicit_all_answers(
                 continue
 
             clue_info = {
-                "direction": "down",
-                "number": clue_num,
                 "clue": clue_text,
                 "length": length,
             }
@@ -302,8 +299,9 @@ def elicit_all_answers(
     # Determine if this is a partial grid iteration
     has_crossing_info = any("crossing_letters" in clue for clue in all_clues.values())
 
+    # Build base prompt based on whether we have crossing info
     if has_crossing_info:
-        prompt = """You are solving a crossword puzzle. Some letters may already be filled in from previous solving, but these letters are VERY likely to contain errors. Use them as inspiration but do NOT anchor on them.
+        base_rules = """You are solving a crossword puzzle. Some letters may already be filled in from previous solving, but these letters are VERY likely to contain errors. Use them as inspiration but do NOT anchor on them.
 
 For each clue, provide up to 5 possible answers, ordered from most to least likely.
 
@@ -313,59 +311,94 @@ IMPORTANT RULES:
 3. Make sense as an answer to the clue
 4. If crossing_letters are provided (like "B - T M Y N"), you may consider them but do NOT force your answer to match them exactly
 5. It is perfectly acceptable to give answers that conflict with the given crossing letters
-6. ABSOLUTELY DO NOT create fake words just to match letters (e.g., if given "B - T M Y N", "B A T M A N" is fine but "B A T M Y N" is absolutely forbidden)
+6. ABSOLUTELY DO NOT create fake words just to match letters (e.g., if given "B - T M Y N", "BATMAN" is fine but "BATMYN" is absolutely forbidden)
+7. If you think of words that fit the clue and number of letters but don't fit the crossing letters, please include them anyway"""
 
-Return a JSON object where keys match the input keys and values are objects with:
-- "answers": A list of up to 5 answers, each in uppercase with spaces between letters (e.g., "P A R I S")
-
-Example input:
-{
-    "across_1": {
-        "direction": "across",
-        "number": 1,
-        "clue": "Famous superhero",
-        "length": 6,
-        "crossing_letters": "B - T M Y N"
-    }
-}
-
-Example output:
-{
-    "across_1": {
-        "answers": ["B A T M A N", "S H A Z A M", "V I S I O N", "G A M B I T", "L U T H O R"]
-    }
-}"""
+        example_input_dict = {
+            "across_1": {
+                "clue": "Gotham superhero",
+                "length": 6,
+                "crossing_letters": "B - T M Y N",
+            },
+            "down_2": {
+                "clue": "Body of water",
+                "length": 4,
+                "crossing_letters": "P O - -",
+            },
+        }
     else:
-        prompt = """You are solving a crossword puzzle. For each clue, provide up to 5 possible answers, ordered from most to least likely.
+        base_rules = """You are solving a crossword puzzle. For each clue, provide up to 5 possible answers, ordered from most to least likely.
 
 Each answer must:
 1. Be exactly the specified length
 2. Be a real English word or phrase
 3. Make sense as an answer to the clue
 
+If you can't think of any valid answers for a clue, return an empty list."""
+
+        example_input_dict = {
+            "across_1": {
+                "clue": "Capital of France",
+                "length": 5,
+            },
+            "down_2": {
+                "clue": "Body of water",
+                "length": 4,
+            },
+        }
+
+    # Build example output using Python dicts
+    if has_crossing_info:
+        example_output_dict = {"across_1": {}, "down_2": {}}
+        if USE_REASONING:
+            example_output_dict["across_1"][
+                "reasoning"
+            ] = "B A T M A N fits perfectly. There aren't any other superheroes in Gotham."
+            example_output_dict["down_2"][
+                "reasoning"
+            ] = "P O N D or P O O L fits perfectly. Ignoring crossing letters, L A K E, G U L F, and L O C H could also work."
+        # We have to put this second so that reasoning goes first in the prompt
+        example_output_dict["across_1"]["answers"] = ["B A T M A N"]
+        example_output_dict["down_2"]["answers"] = [
+            "P O N D",
+            "P O O L",
+            "L A K E",
+            "G U L F",
+            "L O C H",
+        ]
+    else:
+        example_output_dict = {"across_1": {}, "down_2": {}}
+        if USE_REASONING:
+            example_output_dict["across_1"][
+                "reasoning"
+            ] = "This is asking for the capital city of France, which is definitely Paris."
+            example_output_dict["down_2"][
+                "reasoning"
+            ] = "I think of P O N D, P O O L, L A K E, O C E A N, G U L F, and L O C H. But O C E A N has 5 letters, not 4."
+        example_output_dict["across_1"]["answers"] = ["P A R I S"]
+        example_output_dict["down_2"]["answers"] = [
+            "P O N D",
+            "L A K E",
+            "G U L F",
+            "P O O L",
+            "L O C H",
+        ]
+
+    # Add reasoning format if enabled
+    reasoning_line = (
+        '- "reasoning": Brief explanation of your thinking\n' if USE_REASONING else ""
+    )
+
+    prompt = f"""{base_rules}
+
 Return a JSON object where keys match the input keys and values are objects with:
-- "answers": A list of up to 5 answers, each in uppercase with spaces between letters (e.g., "P A R I S")
+{reasoning_line}- "answers": A list of up to 5 answers, each in uppercase with spaces between letters (e.g., "P A R I S")
 
-If you can't think of any valid answers for a clue, return an empty list.
+Example clues:
+{json.dumps(example_input_dict, indent=2)}
 
-Example input:
-{
-    "across_1": {
-        "direction": "across",
-        "number": 1,
-        "clue": "Capital of France",
-        "length": 5
-    }
-}
-
-Example output:
-{
-    "across_1": {
-        "answers": ["P A R I S", "L Y O N S", "T O U R S", "N I C E S", "L I L L E"]
-    }
-}"""
-
-    prompt += f"""
+Example response:
+{json.dumps(example_output_dict, indent=2)}
 
 Clues:
 {json.dumps(all_clues, indent=2)}
@@ -401,8 +434,22 @@ Return ONLY the JSON object. You MUST return both across and down clues."""
                 clue_num = int(parts[1])
 
                 # Filter valid answers by length
-                expected_length = all_clues[key]["length"]
+                clue_info = all_clues[key]
+                expected_length = clue_info["length"]
+                clue_text = clue_info["clue"]
+                crossing_letters = (
+                    f", given {clue_info['crossing_letters']}"
+                    if "crossing_letters" in clue_info
+                    else ""
+                )
+                reasoning_text = (
+                    f" '{result['reasoning']}'" if "reasoning" in result else ""
+                )
                 valid_answers = []
+
+                logging.debug(
+                    f"Elicited '{direction} {clue_num}. {clue_text}' ({expected_length} letters, given {crossing_letters}):{reasoning_text} {result['answers']}"
+                )
 
                 for answer_str in result["answers"]:
                     answer = "".join(answer_str.split()).upper()
