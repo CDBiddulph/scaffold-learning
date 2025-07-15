@@ -502,12 +502,14 @@ Items to rate:
                 rating_id = f"{direction}_{clue_num}_{answer}"
                 if rating_id in ratings:
                     rating = ratings[rating_id]
-                    logging.debug(f"{direction} {clue_num} '{answer}': rating {rating}")
+                    logging.debug(
+                        f"{direction} {clue_num} '{answer}' for clue '{clue_text}': rating {rating}"
+                    )
                     if rating >= RATE_MIN_SCORE:
                         filtered_answers.append(answer)
                     else:
                         logging.info(
-                            f"Filtered out {direction} {clue_num} '{answer}' (rating {rating})"
+                            f"Filtered out {direction} {clue_num} '{answer}' for clue '{clue_text}' (rating {rating})"
                         )
                 else:
                     # If no rating, keep the answer
