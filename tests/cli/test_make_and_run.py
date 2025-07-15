@@ -229,6 +229,47 @@ class TestArgumentParsing:
 
         assert args.no_build is True
 
+    def test_parse_args_console_output_flag(self):
+        """Test --console-output flag parsing."""
+        args = parse_args(
+            [
+                "run",
+                "--name",
+                "test",
+                "--base-dir",
+                "scaffolds/generated",
+                "--executor-model",
+                "gpt-4o",
+                "--input",
+                "test",
+                "--timeout",
+                "120",
+                "--console-output",
+            ]
+        )
+
+        assert args.console_output is True
+
+    def test_parse_args_console_output_default_false(self):
+        """Test console_output defaults to False."""
+        args = parse_args(
+            [
+                "run",
+                "--name",
+                "test",
+                "--base-dir",
+                "scaffolds/generated",
+                "--executor-model",
+                "gpt-4o",
+                "--input",
+                "test",
+                "--timeout",
+                "120",
+            ]
+        )
+
+        assert args.console_output is False
+
 
 class TestArgumentValidation:
     """Test validation of argument combinations."""
@@ -381,6 +422,23 @@ class TestArgumentValidation:
         with pytest.raises(ValueError, match="Must specify exactly one input mode"):
             _validate_arguments(config)
 
+    def test_validate_console_output_only_with_run(self):
+        """Test that console-output can only be used with run mode."""
+        from scaffold_learning.cli.make_and_run import _validate_arguments
+        
+        config = ScaffoldConfig(
+            do_make=True,
+            name="test",
+            baseline=True,
+            data_dir=Path("data"),
+            num_train_examples=5,
+            train_seed=42,
+            console_output=True,  # Should be forbidden in make-only mode
+        )
+        
+        with pytest.raises(ValueError, match="--console-output can only be used with run mode"):
+            _validate_arguments(config)
+
     def test_validate_valid_configurations_pass(self):
         """Test that valid configurations pass validation."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
@@ -418,6 +476,18 @@ class TestArgumentValidation:
             executor_model="gpt-4o",
             input_string="test input",
             timeout=120,
+        )
+        _validate_arguments(config)  # Should not raise
+        
+        # Valid run with console output
+        config = ScaffoldConfig(
+            do_run=True,
+            name="test",
+            base_dir=Path("scaffolds"),
+            executor_model="gpt-4o",
+            input_string="test input",
+            timeout=120,
+            console_output=True,
         )
         _validate_arguments(config)  # Should not raise
 

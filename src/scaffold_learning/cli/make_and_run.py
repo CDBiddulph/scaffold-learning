@@ -60,6 +60,7 @@ class ScaffoldConfig:
     timeout: Optional[int] = None
     no_build: bool = False
     thinking_budget: int = 0
+    console_output: bool = False
 
 
 def parse_args(argv: Optional[List[str]] = None) -> ScaffoldConfig:
@@ -157,6 +158,11 @@ Examples:
         default=0,
         help="Thinking budget tokens (default: 0)",
     )
+    parser.add_argument(
+        "--console-output",
+        action="store_true",
+        help="Enable console output during scaffold execution",
+    )
 
     args = parser.parse_args(remaining_args)
 
@@ -186,6 +192,7 @@ Examples:
         "timeout",
         "no_build",
         "thinking_budget",
+        "console_output",
     ]:
         setattr(config, attr, getattr(args, attr, None))
 
@@ -299,6 +306,10 @@ def _validate_arguments(config: ScaffoldConfig) -> None:
         errors.append("--train-seed can only be used with --data-dir in make mode")
     if config.test_seed and not (config.do_run and config.data_dir):
         errors.append("--test-seed can only be used with --data-dir in run mode")
+    
+    # Console output validation
+    if config.console_output and not config.do_run:
+        errors.append("--console-output can only be used with run mode")
 
     # Raise all errors at once
     if errors:
@@ -496,7 +507,7 @@ def _run_scaffold(
                 input_string=example.input,
                 model_spec=config.executor_model,
                 timeout=config.timeout,
-                console_output=False,
+                console_output=config.console_output,
                 thinking_budget_tokens=config.thinking_budget,
             )
 
