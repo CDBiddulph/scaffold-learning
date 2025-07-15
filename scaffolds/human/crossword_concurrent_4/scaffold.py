@@ -5,7 +5,7 @@ import math
 from llm_executor import execute_llm
 
 
-MAX_ITERATIONS = 2
+MAX_ITERATIONS = 10
 
 
 def parse_crossword_input(input_string):
@@ -301,7 +301,6 @@ Clues:
 
 Return ONLY the JSON object. You MUST return both across and down clues."""
 
-
     response = execute_llm(prompt)
 
     # Extract JSON from response
@@ -310,7 +309,6 @@ Return ONLY the JSON object. You MUST return both across and down clues."""
         results = json.loads(json_match.group())
     else:
         results = json.loads(response)
-
 
     # Process results
     candidates = {"across": {}, "down": {}}
