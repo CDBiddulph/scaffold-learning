@@ -194,20 +194,24 @@ Examples:
 
 def _validate_arguments(config: ScaffoldConfig) -> None:
     """Validate argument combinations and requirements."""
+    errors = []
+
     # Make validation
     if config.do_make:
         if not config.name:
-            raise ValueError("--name is required for make")
+            errors.append("--name is required for make")
 
         # Check generation mode requirements
         generation_modes = [
             config.baseline and config.data_dir is not None,
-            config.data_dir is not None and config.scaffolder_model is not None and not config.baseline,
+            config.data_dir is not None
+            and config.scaffolder_model is not None
+            and not config.baseline,
             config.task is not None and config.scaffolder_model is not None,
         ]
 
         if sum(generation_modes) != 1:
-            raise ValueError(
+            errors.append(
                 "Must specify exactly one generation mode:\n"
                 "  - --baseline with --data-dir\n"
                 "  - --data-dir with --scaffolder-model\n"
@@ -217,47 +221,45 @@ def _validate_arguments(config: ScaffoldConfig) -> None:
         # Baseline-specific validation
         if config.baseline:
             if config.scaffolder_model:
-                raise ValueError("--scaffolder-model cannot be used with --baseline")
+                errors.append("--scaffolder-model cannot be used with --baseline")
             if config.task:
-                raise ValueError("--task cannot be used with --baseline")
+                errors.append("--task cannot be used with --baseline")
 
         # Data-dir mode validation
         if config.data_dir:
             if not config.num_train_examples:
-                raise ValueError(
-                    "--num-train-examples is required when using --data-dir"
-                )
+                errors.append("--num-train-examples is required when using --data-dir")
             if not config.train_seed:
-                raise ValueError("--train-seed is required when using --data-dir")
+                errors.append("--train-seed is required when using --data-dir")
 
         # Show scoring function validation
         if config.show_scoring_function and config.data_dir and not config.domain:
-            raise ValueError("--domain is required when using --show-scoring-function")
+            errors.append("--domain is required when using --show-scoring-function")
 
         # Task mode validation
         if config.task:
             if config.data_dir:
-                raise ValueError("Cannot use both --task and --data-dir")
+                errors.append("Cannot use both --task and --data-dir")
             if config.num_train_examples:
-                raise ValueError("--num-train-examples cannot be used with --task")
+                errors.append("--num-train-examples cannot be used with --task")
             if config.train_seed:
-                raise ValueError("--train-seed cannot be used with --task")
+                errors.append("--train-seed cannot be used with --task")
 
     # Run validation
     if config.do_run:
         if not config.executor_model:
-            raise ValueError("--executor-model is required for run")
+            errors.append("--executor-model is required for run")
 
         if not config.timeout:
-            raise ValueError("--timeout is required for run")
+            errors.append("--timeout is required for run")
 
         # Need name unless we just made a scaffold
         if not config.do_make and not config.name:
-            raise ValueError("--name is required for run (unless after make)")
+            errors.append("--name is required for run (unless after make)")
 
         # Need base-dir unless we just made a scaffold
         if not config.do_make and not config.base_dir:
-            raise ValueError("--base-dir is required for run (unless after make)")
+            errors.append("--base-dir is required for run (unless after make)")
 
         # Check input mode
         input_modes = [
@@ -267,37 +269,40 @@ def _validate_arguments(config: ScaffoldConfig) -> None:
         ]
 
         if sum(input_modes) != 1:
-            raise ValueError(
+            errors.append(
                 "Must specify exactly one input mode:\n"
                 "  - --input <string>\n"
                 "  - --file <path>\n"
                 "  - --data-dir <path> with --num-test-examples"
             )
-
-        # Data-dir run validation
-        if config.data_dir:
+        elif config.data_dir:
+            # Data-dir run validation
             if not config.num_test_examples:
-                raise ValueError(
+                errors.append(
                     "--num-test-examples is required when using --data-dir for run"
                 )
             if not config.domain:
-                raise ValueError("--domain is required when using --data-dir for run")
+                errors.append("--domain is required when using --data-dir for run")
             if not config.test_seed:
-                raise ValueError("--test-seed is required when using --data-dir for run")
+                errors.append("--test-seed is required when using --data-dir for run")
         else:
             # Single input validation
             if config.domain:
-                raise ValueError("--domain can only be used with --data-dir")
+                errors.append("--domain can only be used with --data-dir")
             if config.num_test_examples:
-                raise ValueError("--num-test-examples can only be used with --data-dir")
+                errors.append("--num-test-examples can only be used with --data-dir")
             if config.test_seed:
-                raise ValueError("--test-seed can only be used with --data-dir")
+                errors.append("--test-seed can only be used with --data-dir")
 
     # Seed validation
     if config.train_seed and not (config.do_make and config.data_dir):
-        raise ValueError("--train-seed can only be used with --data-dir in make mode")
+        errors.append("--train-seed can only be used with --data-dir in make mode")
     if config.test_seed and not (config.do_run and config.data_dir):
-        raise ValueError("--test-seed can only be used with --data-dir in run mode")
+        errors.append("--test-seed can only be used with --data-dir in run mode")
+
+    # Raise all errors at once
+    if errors:
+        raise ValueError("\n".join(errors))
 
 
 def _infer_base_dir(config: ScaffoldConfig) -> Path:
@@ -544,11 +549,7 @@ def main():
     """Main entry point."""
     config = parse_args()
 
-    try:
-        _validate_arguments(config)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    _validate_arguments(config)
 
     scaffold_dir = None
 
