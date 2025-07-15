@@ -291,17 +291,16 @@ def get_first_valid_words(candidates):
 
 
 def calculate_all_probabilities(
-    candidates, locked_words, first_valid_words, grid, threshold
+    candidates, locked_words, first_valid_words, grid
 ):
-    """Calculate coincidence probabilities for all candidate words"""
-    probabilities = {"across": {}, "down": {}}
+    """Calculate coincidence probabilities for all candidate words and return sorted list"""
+    all_probabilities = []
 
     for direction in ["across", "down"]:
         for clue_num, answer_list in candidates[direction].items():
             if clue_num in locked_words.get(direction, {}):
                 continue  # Skip already locked words
 
-            probabilities[direction][clue_num] = []
             positions = get_word_positions(clue_num, grid, direction)
 
             for answer in answer_list:
@@ -309,11 +308,14 @@ def calculate_all_probabilities(
                     positions, locked_words, first_valid_words, grid, direction
                 )
                 prob = coincidence_prob(answer, crossing_letters)
-                probabilities[direction][clue_num].append(
+                all_probabilities.append(
                     {
+                        "direction": direction,
+                        "clue_num": clue_num,
                         "answer": answer,
                         "probability": prob,
                         "crossing_letters": crossing_letters,
+                        "positions": positions,
                     }
                 )
 
@@ -322,108 +324,86 @@ def calculate_all_probabilities(
                     f"p={prob:.6f}"
                 )
 
-    return probabilities
+    # Sort by probability (ascending - least likely coincidence first)
+    all_probabilities.sort(key=lambda x: x["probability"])
+    return all_probabilities
 
 
-def lock_in_words(probabilities, locked_words, first_valid_words, grid, threshold):
-    """Lock in words that meet the probability threshold"""
-    new_locks = []
+def try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, grid):
+    """Try to lock in the next word with lowest probability that doesn't conflict"""
+    for prob_info in sorted_probabilities:
+        direction = prob_info["direction"]
+        clue_num = prob_info["clue_num"]
+        answer = prob_info["answer"]
+        positions = prob_info["positions"]
 
-    for direction in ["across", "down"]:
-        for clue_num, prob_list in probabilities[direction].items():
-            if clue_num in locked_words.get(direction, {}):
-                continue
+        # Skip if already locked
+        if clue_num in locked_words.get(direction, {}):
+            continue
 
-            for prob_info in prob_list:
-                if prob_info["probability"] <= threshold:
-                    answer = prob_info["answer"]
+        # Check for conflicts with existing locked words
+        conflict = False
+        conflicting_word = None
 
-                    # Check for conflicts with existing locked words
-                    positions = get_word_positions(clue_num, grid, direction)
-                    conflict = False
-                    conflicting_word = None
+        for i, pos in enumerate(positions):
+            if i >= len(answer):
+                break
 
-                    for i, pos in enumerate(positions):
-                        if i >= len(answer):
-                            break
+            # Check opposite direction locked words
+            opposite_dir = "down" if direction == "across" else "across"
+            for other_num, other_answer in locked_words.get(opposite_dir, {}).items():
+                other_positions = get_word_positions(other_num, grid, opposite_dir)
+                if pos in other_positions:
+                    idx = other_positions.index(pos)
+                    if idx < len(other_answer) and other_answer[idx] != answer[i]:
+                        conflict = True
+                        conflicting_word = (opposite_dir, other_num, other_answer)
+                        break
+            if conflict:
+                break
 
-                        # Check opposite direction locked words
-                        opposite_dir = "down" if direction == "across" else "across"
-                        for other_num, other_answer in locked_words.get(
-                            opposite_dir, {}
-                        ).items():
-                            other_positions = get_word_positions(
-                                other_num, grid, opposite_dir
-                            )
-                            if pos in other_positions:
-                                idx = other_positions.index(pos)
-                                if (
-                                    idx < len(other_answer)
-                                    and other_answer[idx] != answer[i]
-                                ):
-                                    conflict = True
-                                    conflicting_word = (
-                                        opposite_dir,
-                                        other_num,
-                                        other_answer,
-                                    )
-                                    break
-                        if conflict:
-                            break
+        if conflict:
+            # Compare probabilities to decide which to keep
+            opp_dir, opp_num, opp_answer = conflicting_word
 
-                    if conflict:
-                        # Compare probabilities to decide which to keep
-                        opp_dir, opp_num, opp_answer = conflicting_word
+            # Get crossing letters for the conflicting word
+            opp_positions = get_word_positions(opp_num, grid, opp_dir)
+            opp_crossing = get_crossing_letters(
+                opp_positions, locked_words, first_valid_words, grid, opp_dir
+            )
+            opp_prob = coincidence_prob(opp_answer, opp_crossing)
 
-                        # Get crossing letters for the conflicting word
-                        opp_positions = get_word_positions(opp_num, grid, opp_dir)
-                        opp_crossing = get_crossing_letters(
-                            opp_positions,
-                            locked_words,
-                            first_valid_words,
-                            grid,
-                            opp_dir,
-                        )
-                        opp_prob = coincidence_prob(opp_answer, opp_crossing)
+            logging.debug(
+                f"Conflict: {direction} {clue_num} '{answer}' (p={prob_info['probability']:.6f}) "
+                f"vs {opp_dir} {opp_num} '{opp_answer}' (p={opp_prob:.6f})"
+            )
 
-                        logging.debug(
-                            f"Conflict: {direction} {clue_num} '{answer}' (p={prob_info['probability']:.6f}) "
-                            f"vs {opp_dir} {opp_num} '{opp_answer}' (p={opp_prob:.6f})"
-                        )
+            if prob_info["probability"] < opp_prob:
+                # Current word is less likely to be coincidence, so keep it
+                logging.info(f"Unlocking {opp_dir} {opp_num} due to conflict")
+                del locked_words[opp_dir][opp_num]
 
-                        if prob_info["probability"] < opp_prob:
-                            # Current word is less likely to be coincidence, so keep it
-                            logging.info(
-                                f"Unlocking {opp_dir} {opp_num} due to conflict"
-                            )
-                            del locked_words[opp_dir][opp_num]
-                            if opp_num in first_valid_words[opp_dir]:
-                                first_valid_words[opp_dir][opp_num] = first_valid_words[
-                                    opp_dir
-                                ][opp_num]
+                if direction not in locked_words:
+                    locked_words[direction] = {}
+                locked_words[direction][clue_num] = answer
+                logging.info(
+                    f"Locked in {direction} {clue_num}: {answer} (p={prob_info['probability']:.6f})"
+                )
+                return True
+            else:
+                logging.debug(f"Keeping existing {opp_dir} {opp_num}")
+                continue  # Try next word
+        else:
+            # No conflict, lock it in
+            if direction not in locked_words:
+                locked_words[direction] = {}
+            locked_words[direction][clue_num] = answer
+            logging.info(
+                f"Locked in {direction} {clue_num}: {answer} (p={prob_info['probability']:.6f})"
+            )
+            return True
 
-                            if direction not in locked_words:
-                                locked_words[direction] = {}
-                            locked_words[direction][clue_num] = answer
-                            new_locks.append((direction, clue_num, answer))
-                            logging.info(
-                                f"Locked in {direction} {clue_num}: {answer} (p={prob_info['probability']:.6f})"
-                            )
-                        else:
-                            logging.debug(f"Keeping existing {opp_dir} {opp_num}")
-                    else:
-                        # No conflict, lock it in
-                        if direction not in locked_words:
-                            locked_words[direction] = {}
-                        locked_words[direction][clue_num] = answer
-                        new_locks.append((direction, clue_num, answer))
-                        logging.info(
-                            f"Locked in {direction} {clue_num}: {answer} (p={prob_info['probability']:.6f})"
-                        )
-
-                    break  # Only lock the first valid answer
-
-    return new_locks
+    return False  # No word could be locked
 
 
 def build_completed_grid(grid, locked_words, first_valid_words, candidates):
@@ -514,9 +494,6 @@ def log_grid(grid, message=""):
         logging.info("  " + " ".join(row))
 
 
-THRESHOLD = 0.001
-
-
 def process_input(input_string: str) -> str:
     grid, across_clues, down_clues = parse_crossword_input(input_string)
     logging.info(f"Parsed grid of size {len(grid)}x{len(grid[0]) if grid else 0}")
@@ -531,45 +508,27 @@ def process_input(input_string: str) -> str:
     first_valid_words = get_first_valid_words(candidates)
     locked_words = {}
 
-    # Step 3: Initial probability calculation and locking
-    probabilities = calculate_all_probabilities(
-        candidates, locked_words, first_valid_words, grid, THRESHOLD
-    )
-
-    new_locks = lock_in_words(
-        probabilities, locked_words, first_valid_words, grid, THRESHOLD
-    )
-
-    if new_locks:
-        # Log grid after initial locking
-        if new_locks:
-            # Log grid after initial locking (with - for unlocked)
-            temp_grid = build_grid_for_logging(grid, locked_words)
-            log_grid(
-                temp_grid, f"\nGrid after locking {len(new_locks)} words initially:"
-            )
-
-    # Step 4: Search process - iterate through all candidates
+    # Step 3: Search process - lock words one at a time in order of probability
     iteration = 0
+    total_locked = 0
+    
     while True:
         iteration += 1
         logging.info(f"\n--- Search iteration {iteration} ---")
 
-        # Recalculate probabilities with updated locked words
-        probabilities = calculate_all_probabilities(
-            candidates, locked_words, first_valid_words, grid, THRESHOLD
+        # Calculate probabilities for all unlocked words
+        sorted_probabilities = calculate_all_probabilities(
+            candidates, locked_words, first_valid_words, grid
         )
 
-        new_locks = lock_in_words(
-            probabilities, locked_words, first_valid_words, grid, THRESHOLD
-        )
-
-        if new_locks:
+        # Try to lock the next best word
+        if try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, grid):
+            total_locked += 1
             # Log grid after each new lock (with - for unlocked)
             temp_grid = build_grid_for_logging(grid, locked_words)
-            log_grid(temp_grid, f"\nGrid after locking {len(new_locks)} new words:")
+            log_grid(temp_grid, f"\nGrid after locking word #{total_locked}:")
         else:
-            logging.info("No new words locked in this iteration")
+            logging.info("No more words can be locked")
             break
 
     # Step 5: Build final grid
