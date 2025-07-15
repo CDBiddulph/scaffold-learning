@@ -5,6 +5,9 @@ import math
 from llm_executor import execute_llm
 
 
+MAX_ITERATIONS = 2
+
+
 def parse_crossword_input(input_string):
     """Parse the input crossword puzzle into grid and clues"""
     lines = input_string.strip().split("\n")
@@ -176,7 +179,7 @@ def get_crossing_letters(
     return "".join(crossing_letters)
 
 
-def elicit_all_answers(across_clues, down_clues, grid):
+def elicit_all_answers(across_clues, down_clues, grid, locked_words=None):
     """Elicit up to 5 answers for each clue in a single LLM call"""
     # Prepare clue data
     all_clues = {}
@@ -184,26 +187,85 @@ def elicit_all_answers(across_clues, down_clues, grid):
     for clue_num, clue_text in across_clues.items():
         length = get_clue_length(clue_num, grid, "across")
         if length:
-            all_clues[f"across_{clue_num}"] = {
+            clue_info = {
                 "direction": "across",
                 "number": clue_num,
                 "clue": clue_text,
                 "length": length,
             }
 
+            # Add crossing letters if we have locked words
+            if locked_words:
+                positions = get_word_positions(clue_num, grid, "across")
+                crossing_letters = get_crossing_letters(
+                    positions, locked_words, {}, grid, "across"
+                )
+                if crossing_letters and crossing_letters != "-" * len(crossing_letters):
+                    clue_info["crossing_letters"] = crossing_letters
+
+            all_clues[f"across_{clue_num}"] = clue_info
+
     for clue_num, clue_text in down_clues.items():
         length = get_clue_length(clue_num, grid, "down")
         if length:
-            all_clues[f"down_{clue_num}"] = {
+            clue_info = {
                 "direction": "down",
                 "number": clue_num,
                 "clue": clue_text,
                 "length": length,
             }
 
+            # Add crossing letters if we have locked words
+            if locked_words:
+                positions = get_word_positions(clue_num, grid, "down")
+                crossing_letters = get_crossing_letters(
+                    positions, locked_words, {}, grid, "down"
+                )
+                if crossing_letters and crossing_letters != "-" * len(crossing_letters):
+                    clue_info["crossing_letters"] = crossing_letters
+
+            all_clues[f"down_{clue_num}"] = clue_info
+
     logging.info(f"Eliciting answers for {len(all_clues)} clues")
 
-    prompt = f"""You are solving a crossword puzzle. For each clue, provide up to 5 possible answers, ordered from most to least likely.
+    # Determine if this is a partial grid iteration
+    has_crossing_info = any("crossing_letters" in clue for clue in all_clues.values())
+
+    if has_crossing_info:
+        prompt = """You are solving a crossword puzzle. Some letters may already be filled in from previous solving, but these letters are VERY likely to contain errors. Use them as inspiration but do NOT anchor on them.
+
+For each clue, provide up to 5 possible answers, ordered from most to least likely.
+
+IMPORTANT RULES:
+1. Be exactly the specified length
+2. Be a REAL English word or phrase - NEVER make up fake words
+3. Make sense as an answer to the clue
+4. If crossing_letters are provided (like "B - T M Y N"), you may consider them but do NOT force your answer to match them exactly
+5. It is perfectly acceptable to give answers that conflict with the given crossing letters
+6. ABSOLUTELY DO NOT create fake words just to match letters (e.g., if given "B - T M Y N", "B A T M A N" is fine but "B A T M Y N" is absolutely forbidden)
+
+Return a JSON object where keys match the input keys and values are objects with:
+- "answers": A list of up to 5 answers, each in uppercase with spaces between letters (e.g., "P A R I S")
+
+Example input:
+{
+    "across_1": {
+        "direction": "across",
+        "number": 1,
+        "clue": "Famous superhero",
+        "length": 6,
+        "crossing_letters": "B - T M Y N"
+    }
+}
+
+Example output:
+{
+    "across_1": {
+        "answers": ["B A T M A N", "S H A Z A M", "V I S I O N", "G A M B I T", "L U T H O R"]
+    }
+}"""
+    else:
+        prompt = """You are solving a crossword puzzle. For each clue, provide up to 5 possible answers, ordered from most to least likely.
 
 Each answer must:
 1. Be exactly the specified length
@@ -216,26 +278,29 @@ Return a JSON object where keys match the input keys and values are objects with
 If you can't think of any valid answers for a clue, return an empty list.
 
 Example input:
-{{
-    "across_1": {{
+{
+    "across_1": {
         "direction": "across",
         "number": 1,
         "clue": "Capital of France",
         "length": 5
-    }}
-}}
+    }
+}
 
 Example output:
-{{
-    "across_1": {{
+{
+    "across_1": {
         "answers": ["P A R I S", "L Y O N S", "T O U R S", "N I C E S", "L I L L E"]
-    }}
-}}
+    }
+}"""
+
+    prompt += f"""
 
 Clues:
 {json.dumps(all_clues, indent=2)}
 
-Return ONLY the JSON object."""
+Return ONLY the JSON object. You MUST return both across and down clues."""
+
 
     response = execute_llm(prompt)
 
@@ -245,6 +310,7 @@ Return ONLY the JSON object."""
         results = json.loads(json_match.group())
     else:
         results = json.loads(response)
+
 
     # Process results
     candidates = {"across": {}, "down": {}}
@@ -262,6 +328,7 @@ Return ONLY the JSON object."""
 
                 for answer_str in result["answers"]:
                     answer = "".join(answer_str.split()).upper()
+                    answer = "".join(c for c in answer if c.isalpha())
                     if len(answer) == expected_length:
                         valid_answers.append(answer)
                     else:
@@ -274,7 +341,8 @@ Return ONLY the JSON object."""
                     logging.debug(
                         f"{direction} {clue_num}: {len(valid_answers)} valid answers"
                     )
-
+                else:
+                    logging.warning(f"No valid answers for {direction} {clue_num}")
     return candidates
 
 
@@ -290,9 +358,7 @@ def get_first_valid_words(candidates):
     return first_valid
 
 
-def calculate_all_probabilities(
-    candidates, locked_words, first_valid_words, grid
-):
+def calculate_all_probabilities(candidates, locked_words, first_valid_words, grid):
     """Calculate coincidence probabilities for all candidate words and return sorted list"""
     all_probabilities = []
 
@@ -344,7 +410,7 @@ def try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, gr
         # Find all conflicting locked words
         conflicting_words = []
         opposite_dir = "down" if direction == "across" else "across"
-        
+
         for i, pos in enumerate(positions):
             if i >= len(answer):
                 break
@@ -364,7 +430,7 @@ def try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, gr
             # Check if new word has lower probability than ALL conflicting words
             can_replace_all = True
             conflict_probs = []
-            
+
             for opp_dir, opp_num, opp_answer in conflicting_words:
                 # Get crossing letters for the conflicting word
                 opp_positions = get_word_positions(opp_num, grid, opp_dir)
@@ -373,17 +439,21 @@ def try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, gr
                 )
                 opp_prob = coincidence_prob(opp_answer, opp_crossing)
                 conflict_probs.append((opp_dir, opp_num, opp_answer, opp_prob))
-                
+
                 if prob_info["probability"] >= opp_prob:
                     can_replace_all = False
                     break
 
             if can_replace_all:
                 # New word beats all conflicting words - unlock them all and lock new word
-                logging.info(f"New word {direction} {clue_num} '{answer}' (p={prob_info['probability']:.6f}) beats all conflicts:")
-                
+                logging.info(
+                    f"New word {direction} {clue_num} '{answer}' (p={prob_info['probability']:.6f}) beats all conflicts:"
+                )
+
                 for opp_dir, opp_num, opp_answer, opp_prob in conflict_probs:
-                    logging.info(f"  Unlocking {opp_dir} {opp_num} '{opp_answer}' (p={opp_prob:.6f})")
+                    logging.info(
+                        f"  Unlocking {opp_dir} {opp_num} '{opp_answer}' (p={opp_prob:.6f})"
+                    )
                     del locked_words[opp_dir][opp_num]
 
                 if direction not in locked_words:
@@ -395,7 +465,9 @@ def try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, gr
                 return True
             else:
                 # New word doesn't beat all conflicts - skip it
-                logging.debug(f"Cannot lock {direction} {clue_num} '{answer}' - conflicts with better words")
+                logging.debug(
+                    f"Cannot lock {direction} {clue_num} '{answer}' - conflicts with better words"
+                )
                 continue  # Try next word
         else:
             # No conflict, lock it in
@@ -436,7 +508,7 @@ def build_completed_grid(grid, locked_words, first_valid_words, candidates):
                         # Skip if this clue is already locked
                         if clue_num in locked_words.get(direction, {}):
                             continue
-                            
+
                         positions = get_word_positions(clue_num, grid, direction)
                         if (row, col) in positions:
                             idx = positions.index((row, col))
@@ -447,8 +519,12 @@ def build_completed_grid(grid, locked_words, first_valid_words, candidates):
                                     # Calculate crossing letters for this specific answer
                                     # Create a proper deep copy of first_valid_words
                                     temp_first_valid = {
-                                        "across": first_valid_words.get("across", {}).copy(),
-                                        "down": first_valid_words.get("down", {}).copy()
+                                        "across": first_valid_words.get(
+                                            "across", {}
+                                        ).copy(),
+                                        "down": first_valid_words.get(
+                                            "down", {}
+                                        ).copy(),
                                     }
                                     temp_first_valid[direction][clue_num] = answer
 
@@ -460,21 +536,23 @@ def build_completed_grid(grid, locked_words, first_valid_words, candidates):
                                         direction,
                                     )
                                     prob = coincidence_prob(answer, crossing_letters)
-                                    
-                                    candidate_letters.append({
-                                        "letter": answer[idx],
-                                        "probability": prob,
-                                        "direction": direction,
-                                        "clue_num": clue_num,
-                                        "answer": answer
-                                    })
+
+                                    candidate_letters.append(
+                                        {
+                                            "letter": answer[idx],
+                                            "probability": prob,
+                                            "direction": direction,
+                                            "clue_num": clue_num,
+                                            "answer": answer,
+                                        }
+                                    )
 
                 if candidate_letters:
                     # Sort by probability and pick the letter from the lowest probability word
                     candidate_letters.sort(key=lambda x: x["probability"])
                     best_candidate = candidate_letters[0]
                     best_letter = best_candidate["letter"]
-                    
+
                     logging.debug(
                         f"Position ({row},{col}): chose '{best_letter}' from "
                         f"{best_candidate['direction']} {best_candidate['clue_num']} "
@@ -515,6 +593,17 @@ def log_grid(grid, message=""):
         logging.info("  " + " ".join(row))
 
 
+def all_positions_covered(grid, locked_words):
+    """Check if all non-blank positions are covered by locked words"""
+    locked_grid = build_grid_for_logging(grid, locked_words)
+
+    for row in range(len(grid)):
+        for col in range(len(grid[0]) if grid else 0):
+            if grid[row][col] != "." and locked_grid[row][col] == "-":
+                return False
+    return True
+
+
 def process_input(input_string: str) -> str:
     grid, across_clues, down_clues = parse_crossword_input(input_string)
     logging.info(f"Parsed grid of size {len(grid)}x{len(grid[0]) if grid else 0}")
@@ -522,39 +611,79 @@ def process_input(input_string: str) -> str:
         f"Found {len(across_clues)} across clues and {len(down_clues)} down clues"
     )
 
-    # Step 1: Elicit all answers
-    candidates = elicit_all_answers(across_clues, down_clues, grid)
+    # Multi-iteration process
+    final_locked_words = {}
+    final_candidates = None
 
-    # Step 2: Get first valid words
-    first_valid_words = get_first_valid_words(candidates)
-    locked_words = {}
+    for main_iteration in range(1, MAX_ITERATIONS + 1):
+        logging.info(f"\n=== MAIN ITERATION {main_iteration} ===")
 
-    # Step 3: Search process - lock words one at a time in order of probability
-    iteration = 0
-    total_locked = 0
-    
-    while True:
-        iteration += 1
-        logging.info(f"\n--- Search iteration {iteration} ---")
-
-        # Calculate probabilities for all unlocked words
-        sorted_probabilities = calculate_all_probabilities(
-            candidates, locked_words, first_valid_words, grid
-        )
-
-        # Try to lock the next best word
-        if try_lock_next_word(sorted_probabilities, locked_words, first_valid_words, grid):
-            total_locked += 1
-            # Log grid after each new lock (with - for unlocked)
-            temp_grid = build_grid_for_logging(grid, locked_words)
-            log_grid(temp_grid, f"\nGrid after locking word #{total_locked}:")
+        # Step 1: Elicit all answers (with or without partial grid)
+        if main_iteration == 1:
+            candidates = elicit_all_answers(across_clues, down_clues, grid)
         else:
-            logging.info("No more words can be locked")
+            # Use locked words from previous iteration to show partial grid
+            candidates = elicit_all_answers(
+                across_clues, down_clues, grid, final_locked_words
+            )
+
+        # Step 2: Get first valid words and reset locked words for this iteration
+        first_valid_words = get_first_valid_words(candidates)
+        locked_words = {}
+
+        # Step 3: Search process - lock words one at a time in order of probability
+        sub_iteration = 0
+        total_locked = 0
+
+        while True:
+            sub_iteration += 1
+            logging.info(f"\n--- Sub-iteration {main_iteration}.{sub_iteration} ---")
+
+            # Calculate probabilities for all unlocked words
+            sorted_probabilities = calculate_all_probabilities(
+                candidates, locked_words, first_valid_words, grid
+            )
+
+            # Try to lock the next best word
+            if try_lock_next_word(
+                sorted_probabilities, locked_words, first_valid_words, grid
+            ):
+                total_locked += 1
+                # Log grid after each new lock (with - for unlocked)
+                temp_grid = build_grid_for_logging(grid, locked_words)
+                log_grid(temp_grid, f"\nGrid after locking word #{total_locked}:")
+
+                # Check if all positions are now covered
+                if all_positions_covered(grid, locked_words):
+                    logging.info("All positions covered by locked words!")
+                    final_locked_words = locked_words
+                    final_candidates = candidates
+                    break
+            else:
+                logging.info("No more words can be locked in this sub-iteration")
+                break
+
+        # Update final results from this iteration
+        final_locked_words = locked_words
+        final_candidates = candidates
+
+        # Check if we should stop early
+        if all_positions_covered(grid, locked_words):
+            logging.info(
+                f"Stopping early - all positions covered after iteration {main_iteration}"
+            )
             break
 
-    # Step 5: Build final grid
+        logging.info(
+            f"End of main iteration {main_iteration}: {len(locked_words.get('across', {}))} across, {len(locked_words.get('down', {}))} down locked"
+        )
+
+    # Step 4: Build final grid
     completed_grid = build_completed_grid(
-        grid, locked_words, first_valid_words, candidates
+        grid,
+        final_locked_words,
+        get_first_valid_words(final_candidates),
+        final_candidates,
     )
 
     # Format output
@@ -567,7 +696,9 @@ def process_input(input_string: str) -> str:
     result.append("")  # Empty line separator
 
     # Add across answers
-    if locked_words.get("across") or first_valid_words.get("across"):
+    if final_locked_words.get("across") or get_first_valid_words(final_candidates).get(
+        "across"
+    ):
         result.append("Across:")
         all_across = {}
 
@@ -586,7 +717,9 @@ def process_input(input_string: str) -> str:
             result.append(f"  {clue_num}. {all_across[clue_num]}")
 
     # Add down answers
-    if locked_words.get("down") or first_valid_words.get("down"):
+    if final_locked_words.get("down") or get_first_valid_words(final_candidates).get(
+        "down"
+    ):
         result.append("\nDown:")
         all_down = {}
 
@@ -605,7 +738,7 @@ def process_input(input_string: str) -> str:
             result.append(f"  {clue_num}. {all_down[clue_num]}")
 
     logging.info(
-        f"\nFinal: {len(locked_words.get('across', {}))} across, {len(locked_words.get('down', {}))} down locked"
+        f"\nFinal: {len(final_locked_words.get('across', {}))} across, {len(final_locked_words.get('down', {}))} down locked"
     )
 
     return "\n".join(result)
