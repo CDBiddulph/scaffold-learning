@@ -416,10 +416,15 @@ Return ONLY the JSON object. You MUST return both across and down clues."""
 
     # Extract JSON from response
     json_match = re.search(r"\{[^{}]*\{[^{}]*\}[^{}]*\}", response, re.DOTALL)
-    if json_match:
-        results = json.loads(json_match.group())
-    else:
-        results = json.loads(response)
+    try:
+        if json_match:
+            results = json.loads(json_match.group())
+        else:
+            results = json.loads(response)
+    except Exception as e:
+        logging.error(f"Failed to parse elicited answers: {e}")
+        logging.error(f"Response: {response}")
+        raise e
 
     # Process results and combine with reused candidates
     candidates = {"across": {}, "down": {}}
@@ -538,9 +543,10 @@ Items to rate:
             ratings = json.loads(json_match.group())
         else:
             ratings = json.loads(response)
-    except:
-        logging.warning("Failed to parse rater response, keeping all candidates")
-        return candidates
+    except Exception as e:
+        logging.error(f"Failed to parse ratings: {e}")
+        logging.error(f"Response: {response}")
+        raise e
 
     # Filter candidates based on ratings
     filtered_candidates = {"across": {}, "down": {}}
