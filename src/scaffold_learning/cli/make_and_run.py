@@ -27,7 +27,7 @@ from scaffold_learning.core.scaffold_generation import (
 from scaffold_learning.core.scaffold_execution import execute_scaffold
 from scaffold_learning.core.scaffold_files import save_scaffold
 from scaffold_learning.core.docker_utils import build_docker_image
-from scaffold_learning.core.llm_interfaces import LLMFactory
+from scaffold_learning.core.llm_interfaces import LLMFactory, LLMInterface
 
 
 @dataclass
@@ -48,6 +48,7 @@ class ScaffoldConfig:
     train_seed: Optional[int] = None
     show_scoring_function: bool = False
     suggest_hack: bool = False
+    scaffolder_thinking_budget: Optional[int] = None
 
     # Run arguments
     base_dir: Optional[Path] = None
@@ -59,7 +60,7 @@ class ScaffoldConfig:
     domain: Optional[str] = None
     timeout: Optional[int] = None
     no_build: bool = False
-    thinking_budget: int = 0
+    executor_thinking_budget: Optional[int] = None
     console_output: bool = False
 
 
@@ -136,6 +137,12 @@ Examples:
         action="store_true",
         help="Include text encouraging exploits/hacks",
     )
+    parser.add_argument(
+        "--scaffolder-thinking-budget",
+        type=int,
+        default=10000,
+        help="Thinking budget tokens for scaffolder (default: 10000)",
+    )
 
     # Run arguments
     parser.add_argument("--executor-model", help="Model for scaffold execution")
@@ -153,10 +160,10 @@ Examples:
         "--no-build", action="store_true", help="Skip Docker image build"
     )
     parser.add_argument(
-        "--thinking-budget",
+        "--executor-thinking-budget",
         type=int,
         default=0,
-        help="Thinking budget tokens (default: 0)",
+        help="Thinking budget tokens for executor (default: 0, no thinking)",
     )
     parser.add_argument(
         "--console-output",
@@ -179,11 +186,13 @@ Examples:
         "data_dir",
         "task",
         "scaffolder_model",
+        "scaffolder_thinking_budget",
         "num_train_examples",
         "train_seed",
         "show_scoring_function",
         "suggest_hack",
         "executor_model",
+        "executor_thinking_budget",
         "input_string",
         "input_file",
         "num_test_examples",
@@ -191,7 +200,6 @@ Examples:
         "domain",
         "timeout",
         "no_build",
-        "thinking_budget",
         "console_output",
     ]:
         setattr(config, attr, getattr(args, attr, None))
@@ -306,7 +314,7 @@ def _validate_arguments(config: ScaffoldConfig) -> None:
         errors.append("--train-seed can only be used with --data-dir in make mode")
     if config.test_seed and not (config.do_run and config.data_dir):
         errors.append("--test-seed can only be used with --data-dir in run mode")
-    
+
     # Console output validation
     if config.console_output and not config.do_run:
         errors.append("--console-output can only be used with run mode")
@@ -344,6 +352,15 @@ def _get_input_string(config: ScaffoldConfig) -> Optional[str]:
         return config.input_file.read_text().strip()
     else:
         return None  # Dataset mode
+
+
+def _create_scaffolder_llm(config: ScaffoldConfig) -> LLMInterface:
+    """Create an LLM based on configuration."""
+    assert config.scaffolder_model is not None
+    return LLMFactory.create_llm(
+        config.scaffolder_model,
+        thinking_budget_tokens=config.scaffolder_thinking_budget,
+    )
 
 
 def _make_scaffold(config: ScaffoldConfig) -> Path:
@@ -390,9 +407,8 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
     elif config.data_dir:
         # Generate from examples
         assert config.scaffolder_model is not None
-        scaffolder_llm = LLMFactory.create_llm(config.scaffolder_model)
         result = generate_scaffold(
-            scaffolder_llm=scaffolder_llm,
+            scaffolder_llm=_create_scaffolder_llm(config),
             examples=train_sample,
             scoring_fn_code=scoring_fn_code,
             iteration=None,
@@ -401,9 +417,8 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
     else:
         # Generate from task
         assert config.scaffolder_model is not None
-        scaffolder_llm = LLMFactory.create_llm(config.scaffolder_model)
         result = generate_scaffold(
-            scaffolder_llm=scaffolder_llm,
+            scaffolder_llm=_create_scaffolder_llm(config),
             task_description=config.task,
             iteration=None,
             suggest_hack=config.suggest_hack,
@@ -455,6 +470,7 @@ def _run_scaffold(
         log_path = run_dir / "0.log"
         assert config.executor_model is not None
         assert config.timeout is not None
+        assert config.executor_thinking_budget is not None
         result = execute_scaffold(
             scaffold_dir=scaffold_dir,
             log_file_path=log_path,
@@ -462,7 +478,7 @@ def _run_scaffold(
             model_spec=config.executor_model,
             timeout=config.timeout,
             console_output=True,
-            thinking_budget_tokens=config.thinking_budget,
+            thinking_budget_tokens=config.executor_thinking_budget,
         )
 
         results["mode"] = "single"
@@ -501,6 +517,7 @@ def _run_scaffold(
             log_path = run_dir / f"{i}.log"
             assert config.executor_model is not None
             assert config.timeout is not None
+            assert config.executor_thinking_budget is not None
             result = execute_scaffold(
                 scaffold_dir=scaffold_dir,
                 log_file_path=log_path,
@@ -508,7 +525,7 @@ def _run_scaffold(
                 model_spec=config.executor_model,
                 timeout=config.timeout,
                 console_output=config.console_output,
-                thinking_budget_tokens=config.thinking_budget,
+                thinking_budget_tokens=config.executor_thinking_budget,
             )
 
             # Score the result
