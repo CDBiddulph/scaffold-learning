@@ -71,7 +71,7 @@ class OpenAIInterface(LLMInterface):
                 instructions=system_prompt,
                 input=prompt,
                 # TODO: configure the amount of reasoning
-                reasoning={"summary": "detailed", "effort": "medium"},
+                reasoning={"summary": "detailed", "effort": "low"},
                 max_output_tokens=1_000_000,  # Make this higher than we expect it to use
             )
 
