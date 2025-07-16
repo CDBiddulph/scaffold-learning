@@ -6,6 +6,31 @@ import random
 from llm_executor import execute_llm
 
 
+def parse_json_response(response):
+    """Extract and parse JSON from LLM response, handling markdown code blocks"""
+    def extract_json_object(text):
+        """Extract the first complete JSON object from text"""
+        start_idx = text.find('{')
+        if start_idx == -1:
+            return None
+        
+        brace_count = 0
+        for i, char in enumerate(text[start_idx:], start_idx):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return text[start_idx:i+1]
+        return None
+    
+    json_str = extract_json_object(response)
+    if json_str:
+        return json.loads(json_str)
+    else:
+        return json.loads(response)
+
+
 MAX_ITERATIONS = 10
 USE_RATING = False
 USE_REASONING = False
@@ -415,12 +440,8 @@ Return ONLY the JSON object. You MUST return both across and down clues."""
     response = execute_llm(prompt)
 
     # Extract JSON from response
-    json_match = re.search(r"\{[^{}]*\{[^{}]*\}[^{}]*\}", response, re.DOTALL)
     try:
-        if json_match:
-            results = json.loads(json_match.group())
-        else:
-            results = json.loads(response)
+        results = parse_json_response(response)
     except Exception as e:
         logging.error(f"Failed to parse elicited answers: {e}")
         logging.error(f"Response: {response}")
@@ -538,11 +559,7 @@ Items to rate:
 
     # Parse ratings
     try:
-        json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
-        if json_match:
-            ratings = json.loads(json_match.group())
-        else:
-            ratings = json.loads(response)
+        ratings = parse_json_response(response)
     except Exception as e:
         logging.error(f"Failed to parse ratings: {e}")
         logging.error(f"Response: {response}")
