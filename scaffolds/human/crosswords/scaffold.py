@@ -6,29 +6,40 @@ import random
 from llm_executor import execute_llm
 
 
-def parse_json_response(response):
+def prompt_json_response(prompt: str) -> dict:
     """Extract and parse JSON from LLM response, handling markdown code blocks"""
+
     def extract_json_object(text):
         """Extract the first complete JSON object from text"""
-        start_idx = text.find('{')
+        start_idx = text.find("{")
         if start_idx == -1:
-            return None
-        
+            raise ValueError("No JSON object found")
+
         brace_count = 0
         for i, char in enumerate(text[start_idx:], start_idx):
-            if char == '{':
+            if char == "{":
                 brace_count += 1
-            elif char == '}':
+            elif char == "}":
                 brace_count -= 1
                 if brace_count == 0:
-                    return text[start_idx:i+1]
-        return None
-    
-    json_str = extract_json_object(response)
-    if json_str:
-        return json.loads(json_str)
-    else:
-        return json.loads(response)
+                    return text[start_idx : i + 1]
+        raise ValueError("No JSON object found")
+
+    # Try up to 5 times to extract JSON
+    error = None
+    response = None
+    for _ in range(5):
+        try:
+            response = execute_llm(prompt)
+            json_str = extract_json_object(response)
+            return json.loads(json_str)
+        except Exception as e:
+            message = f"Failed to extract JSON: {e}\nResponse: {response}"
+            logging.warning(message)
+            error = RuntimeError(message)
+            continue
+    assert error is not None
+    raise error
 
 
 MAX_ITERATIONS = 10
@@ -437,15 +448,7 @@ Return ONLY the JSON object. You MUST return both across and down clues."""
         logging.info("No new clues to elicit, using only reused candidates")
         return reused_candidates
 
-    response = execute_llm(prompt)
-
-    # Extract JSON from response
-    try:
-        results = parse_json_response(response)
-    except Exception as e:
-        logging.error(f"Failed to parse elicited answers: {e}")
-        logging.error(f"Response: {response}")
-        raise e
+    results = prompt_json_response(prompt)
 
     # Process results and combine with reused candidates
     candidates = {"across": {}, "down": {}}
@@ -555,15 +558,9 @@ Items to rate:
     prompt += "\n\nReturn ONLY the JSON object with ratings."
 
     logging.info(f"Rating {len(rating_items)} candidate answers")
-    response = execute_llm(prompt)
 
     # Parse ratings
-    try:
-        ratings = parse_json_response(response)
-    except Exception as e:
-        logging.error(f"Failed to parse ratings: {e}")
-        logging.error(f"Response: {response}")
-        raise e
+    ratings = prompt_json_response(prompt)
 
     # Filter candidates based on ratings
     filtered_candidates = {"across": {}, "down": {}}
