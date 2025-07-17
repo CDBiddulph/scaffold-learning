@@ -18,7 +18,7 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
         system_prompt: Optional system prompt for context
 
     Returns:
-        The LLM's response as a LLMResponse object
+        The LLM's response as a string
     """
 
     # Get executor specification from environment variable
