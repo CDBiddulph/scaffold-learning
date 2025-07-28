@@ -133,14 +133,14 @@ class TestArgumentParsing:
                 "haiku",
                 "--file",
                 "input.txt",
-                "--thinking-budget",
+                "--executor-thinking-budget",
                 "1000",
             ]
         )
 
         assert args.do_run is True
         assert args.input_file == Path("input.txt")
-        assert args.thinking_budget == 1000
+        assert args.executor_thinking_budget == 1000
         assert args.input_string is None
 
     def test_parse_args_run_only_dataset_eval(self):
@@ -277,21 +277,23 @@ class TestArgumentValidation:
     def test_validate_baseline_requires_data_dir(self):
         """Test that baseline mode requires data-dir."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_make=True,
             name="test",
             baseline=True,
             # Missing data_dir
         )
-        
-        with pytest.raises(ValueError, match="Must specify exactly one generation mode"):
+
+        with pytest.raises(
+            ValueError, match="Must specify exactly one generation mode"
+        ):
             _validate_arguments(config)
 
     def test_validate_scaffolder_model_forbidden_with_baseline(self):
         """Test that scaffolder-model is forbidden with baseline."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_make=True,
             name="test",
@@ -301,14 +303,16 @@ class TestArgumentValidation:
             num_train_examples=5,
             train_seed=42,
         )
-        
-        with pytest.raises(ValueError, match="--scaffolder-model cannot be used with --baseline"):
+
+        with pytest.raises(
+            ValueError, match="--scaffolder-model cannot be used with --baseline"
+        ):
             _validate_arguments(config)
 
     def test_validate_domain_required_for_show_scoring_function(self):
         """Test that domain is required when using --show-scoring-function with --data-dir."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_make=True,
             name="test",
@@ -319,14 +323,16 @@ class TestArgumentValidation:
             show_scoring_function=True,
             # Missing domain
         )
-        
-        with pytest.raises(ValueError, match="--domain is required when using --show-scoring-function"):
+
+        with pytest.raises(
+            ValueError, match="--domain is required when using --show-scoring-function"
+        ):
             _validate_arguments(config)
 
     def test_validate_domain_required_for_run_evaluation(self):
         """Test that domain is required when using --data-dir for run."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_run=True,
             name="test",
@@ -338,14 +344,16 @@ class TestArgumentValidation:
             timeout=120,
             # Missing domain
         )
-        
-        with pytest.raises(ValueError, match="--domain is required when using --data-dir for run"):
+
+        with pytest.raises(
+            ValueError, match="--domain is required when using --data-dir for run"
+        ):
             _validate_arguments(config)
 
     def test_validate_train_seed_required_with_data_dir(self):
         """Test that train-seed is required when using --data-dir for make."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_make=True,
             name="test",
@@ -354,14 +362,16 @@ class TestArgumentValidation:
             num_train_examples=5,
             # Missing train_seed
         )
-        
-        with pytest.raises(ValueError, match="--train-seed is required when using --data-dir"):
+
+        with pytest.raises(
+            ValueError, match="--train-seed is required when using --data-dir"
+        ):
             _validate_arguments(config)
 
     def test_validate_test_seed_required_with_data_dir_run(self):
         """Test that test-seed is required when using --data-dir for run."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_run=True,
             name="test",
@@ -373,14 +383,16 @@ class TestArgumentValidation:
             timeout=120,
             # Missing test_seed
         )
-        
-        with pytest.raises(ValueError, match="--test-seed is required when using --data-dir for run"):
+
+        with pytest.raises(
+            ValueError, match="--test-seed is required when using --data-dir for run"
+        ):
             _validate_arguments(config)
 
     def test_validate_timeout_required_for_run(self):
         """Test that timeout is required for run mode."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_run=True,
             name="test",
@@ -389,27 +401,29 @@ class TestArgumentValidation:
             input_string="test input",
             # Missing timeout
         )
-        
+
         with pytest.raises(ValueError, match="--timeout is required for run"):
             _validate_arguments(config)
 
     def test_validate_exactly_one_generation_mode(self):
         """Test that exactly one generation mode is required for make."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         # No generation mode
         config = ScaffoldConfig(
             do_make=True,
             name="test",
         )
-        
-        with pytest.raises(ValueError, match="Must specify exactly one generation mode"):
+
+        with pytest.raises(
+            ValueError, match="Must specify exactly one generation mode"
+        ):
             _validate_arguments(config)
 
     def test_validate_run_requires_input(self):
         """Test that run requires exactly one input method."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_run=True,
             name="test",
@@ -418,14 +432,14 @@ class TestArgumentValidation:
             timeout=120,
             # No input method specified
         )
-        
+
         with pytest.raises(ValueError, match="Must specify exactly one input mode"):
             _validate_arguments(config)
 
     def test_validate_console_output_only_with_run(self):
         """Test that console-output can only be used with run mode."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         config = ScaffoldConfig(
             do_make=True,
             name="test",
@@ -435,14 +449,16 @@ class TestArgumentValidation:
             train_seed=42,
             console_output=True,  # Should be forbidden in make-only mode
         )
-        
-        with pytest.raises(ValueError, match="--console-output can only be used with run mode"):
+
+        with pytest.raises(
+            ValueError, match="--console-output can only be used with run mode"
+        ):
             _validate_arguments(config)
 
     def test_validate_valid_configurations_pass(self):
         """Test that valid configurations pass validation."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
-        
+
         # Valid baseline make
         config = ScaffoldConfig(
             do_make=True,
@@ -453,7 +469,7 @@ class TestArgumentValidation:
             train_seed=42,
         )
         _validate_arguments(config)  # Should not raise
-        
+
         # Valid run with evaluation
         config = ScaffoldConfig(
             do_run=True,
@@ -467,7 +483,7 @@ class TestArgumentValidation:
             timeout=120,
         )
         _validate_arguments(config)  # Should not raise
-        
+
         # Valid run with single input
         config = ScaffoldConfig(
             do_run=True,
@@ -478,7 +494,7 @@ class TestArgumentValidation:
             timeout=120,
         )
         _validate_arguments(config)  # Should not raise
-        
+
         # Valid run with console output
         config = ScaffoldConfig(
             do_run=True,
