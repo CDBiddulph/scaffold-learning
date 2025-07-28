@@ -46,7 +46,7 @@ def collect_puzzles(
         # Generate ID using same format as download_puz
         id = f"{source}_{year}_{month}_{day}".replace(" ", "_")
 
-        puzzles.append({"id": id, "input": input_text, "solution": solution_text})
+        puzzles.append({"id": id, "input": input_text, "scoring_data": {"solution": solution_text}})
 
         print(f"Collected {len(puzzles)}/{target_count}: {source} {date}")
 
