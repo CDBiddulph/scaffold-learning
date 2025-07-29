@@ -16,6 +16,7 @@ from scaffold_learning.core.logging_utils import suppress_all_except_root
 
 import anthropic
 import openai
+import httpx
 
 # Load the environment variables for the API keys
 load_dotenv()
@@ -172,7 +173,11 @@ class AnthropicInterface(LLMInterface):
 
                 return LLMResponse(thinking=thinking, content=content)
 
-            except (anthropic.RateLimitError, anthropic.APIError) as e:
+            except (
+                anthropic.RateLimitError,
+                anthropic.APIError,
+                httpx.RemoteProtocolError,
+            ) as e:
                 if attempt == self.max_retries - 1:
                     raise
 
