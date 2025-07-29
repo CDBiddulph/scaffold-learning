@@ -145,9 +145,16 @@ def _extract_python_code(response: LLMResponse) -> str:
 
 
 def _get_expected_output(scoring_data: Dict[str, Any]) -> str:
-    # TODO: make printing scoring data vary depending on the domain
-    # Possibly just have this as a fixed field in the jsonl for simplicity
-    return scoring_data["solution"]
+    # TODO: Make this more general for domains that don't have an expected output
+    # Maybe just use the scoring data as one of the fields
+    if "solution" in scoring_data:
+        return scoring_data["solution"]
+    elif "correct_answer" in scoring_data:
+        return scoring_data["correct_answer"]
+    else:
+        raise ValueError(
+            f"Scoring data doesn't contain a solution or correct answer: {scoring_data}"
+        )
 
 
 def _get_example_xml(example: DatasetExample | ScaffoldRunData, idx: int) -> str:

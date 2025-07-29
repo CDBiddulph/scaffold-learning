@@ -530,10 +530,7 @@ def _run_scaffold(
 
             # Score the result
             if result.error_message is None:
-                expected = example.scoring_data.get(
-                    "solution", str(example.scoring_data)
-                )
-                score = scoring_fn(expected, {"solution": result.output})
+                score = scoring_fn(result.output, example.scoring_data)
             else:
                 score = 0.0
 

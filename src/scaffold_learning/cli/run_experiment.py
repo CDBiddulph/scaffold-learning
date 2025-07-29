@@ -92,7 +92,13 @@ def main():
         help="Include text encouraging the model to find exploits/hacks",
     )
     parser.add_argument(
-        "--seed",
+        "--train-seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducible experiments",
+    )
+    parser.add_argument(
+        "--valid-seed",
         type=int,
         default=42,
         help="Random seed for reproducible experiments",
@@ -126,7 +132,7 @@ def main():
 
     # Load datasets
     print("Loading datasets...")
-    training_data, validation_data = load_datasets(args.data_dir)
+    data = load_datasets(args.data_dir, splits=["train", "valid"])
 
     # Create scoring function and get a code representation of it
     print(f"Setting up {args.domain} domain...")
@@ -143,8 +149,8 @@ def main():
     print("Initializing experiment runner...")
     runner = ExperimentRunner(
         experiment_name=args.experiment_name,
-        training_data=training_data,
-        validation_data=validation_data,
+        training_data=data["train"],
+        validation_data=data["valid"],
         scoring_fn=scoring_fn,
         scaffolder_llm=scaffolder_llm,
         num_iterations=args.num_iterations,
@@ -156,7 +162,8 @@ def main():
         executor_model=args.executor_model,
         scoring_fn_code=scoring_fn_code,
         suggest_hack=args.suggest_hack,
-        seed=args.seed,
+        train_seed=args.train_seed,
+        valid_seed=args.valid_seed,
     )
 
     # Run experiment

@@ -3,6 +3,7 @@
 from typing import Callable, Dict
 
 from scaffold_learning.domains.crosswords.score.score import score as score_crosswords
+from scaffold_learning.domains.mcq.score import score as score_mcq
 
 
 def create_scoring_function(domain: str) -> Callable[[str, Dict], float]:
@@ -12,15 +13,19 @@ def create_scoring_function(domain: str) -> Callable[[str, Dict], float]:
         domain: Domain name (e.g., 'crosswords')
 
     Returns:
-        Scoring function that takes (expected, scoring_data) and returns 0-1 score
+        Scoring function that takes (actual_output, scoring_data) and returns 0-1 score
     """
     if domain in ["crosswords", "crosswords_strict"]:
-        return lambda expected, scoring_data: score_crosswords(
-            expected, scoring_data.get("solution", ""), mode="strict"
+        return lambda actual_output, scoring_data: score_crosswords(
+            scoring_data["solution"], actual_output, mode="strict"
         )
     elif domain == "crosswords_lenient":
-        return lambda expected, scoring_data: score_crosswords(
-            expected, scoring_data.get("solution", ""), mode="lenient"
+        return lambda actual_output, scoring_data: score_crosswords(
+            scoring_data["solution"], actual_output, mode="lenient"
+        )
+    elif domain == "gpqa":
+        return lambda actual_output, scoring_data: score_mcq(
+            scoring_data["correct_answer"], actual_output
         )
     else:
         raise ValueError(f"Error: Unknown domain '{domain}'")
@@ -39,6 +44,8 @@ def get_scoring_function_code(domain: str) -> str:
         path = "src/scaffold_learning/domains/crosswords/score/score_lenient.py"
     elif domain in ["crosswords", "crosswords_strict"]:
         path = "src/scaffold_learning/domains/crosswords/score/score_strict.py"
+    elif domain == "gpqa":
+        path = "src/scaffold_learning/domains/mcq/score.py"
     else:
         raise ValueError(f"Scoring function content not supported for domain: {domain}")
 

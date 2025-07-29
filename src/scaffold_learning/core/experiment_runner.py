@@ -434,8 +434,7 @@ class ExperimentRunner:
 
         # Calculate score
         if result.error_message is None:
-            expected = example.scoring_data.get("solution", str(example.scoring_data))
-            score = self.scoring_fn(expected, {"solution": result.output})
+            score = self.scoring_fn(result.output, example.scoring_data)
         else:
             logging.warning(
                 f"Scaffold {scaffold_id} failed to execute: {result.error_message}"

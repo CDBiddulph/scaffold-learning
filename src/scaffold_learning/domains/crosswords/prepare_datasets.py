@@ -2,11 +2,11 @@
 """Prepare crossword datasets by downloading puzzles and saving as JSONL files"""
 
 import argparse
-import json
-import random
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from .puz import Puzzle
+
+from scaffold_learning.core.dataset_utils import save_dataset_splits
 
 from .puzzle_utils import (
     get_data,
@@ -46,30 +46,13 @@ def collect_puzzles(
         # Generate ID using same format as download_puz
         id = f"{source}_{year}_{month}_{day}".replace(" ", "_")
 
-        puzzles.append({"id": id, "input": input_text, "scoring_data": {"solution": solution_text}})
+        puzzles.append(
+            {"id": id, "input": input_text, "scoring_data": {"solution": solution_text}}
+        )
 
         print(f"Collected {len(puzzles)}/{target_count}: {source} {date}")
 
     return puzzles
-
-
-def save_puzzles_to_dir(puzzles, output_dir, puzzle_counts, seed) -> None:
-    """Save puzzles to train.jsonl and valid.jsonl in the given directory"""
-    # Shuffle with deterministic seed
-    random.seed(seed)
-    random.shuffle(puzzles)
-
-    total_puzzles = sum(puzzle_counts.values())
-    assert len(puzzles) == total_puzzles
-
-    # Split into train, validation, and test and save to files
-    for file, count in puzzle_counts.items():
-        puzzles_for_file, puzzles = puzzles[:count], puzzles[count:]
-        file_path = output_dir / f"{file}.jsonl"
-        with open(file_path, "w", encoding="utf-8") as f:
-            for puzzle in puzzles_for_file:
-                f.write(json.dumps(puzzle) + "\n")
-        print(f"Saved {len(puzzles_for_file)} {file} puzzles to {file_path}")
 
 
 def create_all_day_datasets(
@@ -87,7 +70,7 @@ def create_all_day_datasets(
     ]
 
     for day in days_of_week:
-        print(f"\nProcessing {day}s...")
+        print(f"\nProcessing {day.capitalize()} puzzles...")
         day_dir = output_dir / day
         day_dir.mkdir(parents=True, exist_ok=True)
 
@@ -99,11 +82,12 @@ def create_all_day_datasets(
 
         if len(day_puzzles) < total_puzzles:
             raise ValueError(
-                f"Only found {len(day_puzzles)} {day} puzzles, needed {total_puzzles}"
+                f"Only found {len(day_puzzles)} {day.capitalize()} puzzles, needed {total_puzzles}"
             )
 
         # Save puzzles to this day's directory (different seed for each day)
-        save_puzzles_to_dir(day_puzzles, day_dir, puzzle_counts, seed + hash(day))
+        day_seed = (seed, day)
+        save_dataset_splits(day_puzzles, day_dir, puzzle_counts, day_seed)
 
 
 def main():
@@ -208,7 +192,7 @@ def main():
             f"Only found {len(all_puzzles)} puzzles, needed {total_needed}"
         )
 
-    save_puzzles_to_dir(all_puzzles, output_dir, puzzle_counts, args.seed)
+    save_dataset_splits(all_puzzles, output_dir, puzzle_counts, args.seed)
 
 
 if __name__ == "__main__":

@@ -60,9 +60,8 @@ class TestExperimentRunner:
     def create_mock_scoring_function(self):
         """Create a mock scoring function."""
 
-        def scoring_function(expected: str, scoring_data: dict) -> float:
-            actual = scoring_data.get("solution", "")
-            return 1.0 if actual == expected else 0.0
+        def scoring_function(actual_output: str, scoring_data: dict) -> float:
+            return 1.0 if actual_output == scoring_data["solution"] else 0.0
 
         return scoring_function
 
@@ -600,10 +599,7 @@ Execution completed successfully
 
         expected_validation_scores = test_case["validation_scores"]
 
-        def mock_scoring_function(expected, scoring_data):
-            # Extract scaffold info from the execution call context
-            actual_output = scoring_data.get("solution", "")
-
+        def mock_scoring_function(actual_output, scoring_data):
             # Parse the output which should be "scaffold_id:iteration"
             if ":" in actual_output:
                 scaffold_id, iteration_str = actual_output.split(":", 1)
@@ -809,9 +805,8 @@ Execution completed successfully
             num_validation_examples=1,
         )
 
-        def mock_scoring_function(expected, scoring_data):
+        def mock_scoring_function(actual_output, scoring_data):
             # Create predictable scores: scaffold 2 > scaffold 0 > scaffold 1
-            actual_output = scoring_data.get("solution", "")
             scaffold_id = actual_output.split(":", 1)[0]
 
             score_map = {
