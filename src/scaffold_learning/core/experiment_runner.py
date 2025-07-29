@@ -84,10 +84,12 @@ class ExperimentRunner:
         self.scoring_fn_code = scoring_fn_code
         self.suggest_hack = suggest_hack
 
-        train_seed = train_seed
-        valid_seed = valid_seed
         self.train_random = random.Random(train_seed)
-        self.valid_random = random.Random(valid_seed)
+        self.valid_sampler = ExampleSampler(
+            valid_seed,
+            self.validation_data,
+            allow_resample=False,
+        )
 
         # Set up experiment directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -134,9 +136,7 @@ class ExperimentRunner:
         self._create_initial_scaffolds()
 
         # Sample validation examples once for the entire experiment
-        validation_sample = ExampleSampler(
-            self.valid_random.getrandbits(32), self.validation_data, allow_resample=False
-        ).sample(self.num_validation_examples)
+        validation_sample = self.valid_sampler.sample(self.num_validation_examples)
         self.logger.info(
             f"Using {len(validation_sample)} validation examples for all iterations"
         )
