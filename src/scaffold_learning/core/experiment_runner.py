@@ -43,6 +43,7 @@ class ExperimentRunner:
         suggest_hack: str = "no",
         train_seed: Optional[int] = None,
         valid_seed: Optional[int] = None,
+        scaffold_timeout: int = 120,
     ):
         """Initialize an experiment runner.
 
@@ -63,6 +64,7 @@ class ExperimentRunner:
             suggest_hack: Type of hack suggestion: "no", "hidden", or "explicit"
             train_seed: Seed for training examples
             valid_seed: Seed for validation examples
+            scaffold_timeout: Timeout in seconds for scaffold execution
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -83,6 +85,7 @@ class ExperimentRunner:
         self.executor_model = executor_model
         self.scoring_fn_code = scoring_fn_code
         self.suggest_hack = suggest_hack
+        self.scaffold_timeout = scaffold_timeout
 
         self.train_random = random.Random(train_seed)
         self.valid_sampler = ExampleSampler(
@@ -114,6 +117,7 @@ class ExperimentRunner:
             "num_validation_examples": num_validation_examples,
             "train_seed": train_seed,
             "valid_seed": valid_seed,
+            "scaffold_timeout": scaffold_timeout,
         }
         self.file_manager.save_experiment_metadata(metadata)
 
@@ -457,6 +461,7 @@ class ExperimentRunner:
             ),
             input_string=example.input,
             model_spec=self.executor_model,
+            timeout=self.scaffold_timeout,
             console_output=False,
         )
 

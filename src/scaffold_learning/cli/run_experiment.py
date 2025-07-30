@@ -104,6 +104,12 @@ def main():
         default=42,
         help="Random seed for reproducible experiments",
     )
+    parser.add_argument(
+        "--scaffold-timeout",
+        type=int,
+        default=120,
+        help="Timeout in seconds for scaffold execution",
+    )
 
     # Output
     parser.add_argument(
@@ -165,6 +171,7 @@ def main():
         suggest_hack=args.suggest_hack,
         train_seed=args.train_seed,
         valid_seed=args.valid_seed,
+        scaffold_timeout=args.scaffold_timeout,
     )
 
     # Run experiment
