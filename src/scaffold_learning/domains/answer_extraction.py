@@ -27,7 +27,7 @@ def extract_answer_letter(response: str, valid_letters: str = "ABCDE") -> Option
     patterns = [
         # Explicit answer declarations
         rf"(?:final\s+)?answer(?:\s*is)?\s*:?\s*({letter_class})\b",  # "answer: A", "final answer is A", etc.
-        rf"(?:answer|choose|pick|select|option|choice|response)\s+({letter_class})\b",  # "I choose A", "pick B", etc.
+        rf"(?:answer|choose|pick|select|option|choice|response|prefer)\s+({letter_class})\b",  # "I choose A", "pick B", etc.
         # Parenthetical formats
         rf"\(?({letter_class})\)?\s*(?:is|are)\s*(?:the\s*)?(?:correct|right)",  # "(A) is correct", "A is correct", etc.
         rf"\(({letter_class})\)",  # Just "(A)"
