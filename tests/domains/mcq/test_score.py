@@ -2,7 +2,8 @@
 """Tests for MCQ score.py"""
 
 import unittest
-from src.scaffold_learning.domains.mcq.score import _extract_answer, score
+from src.scaffold_learning.domains.mcq.score import score
+from src.scaffold_learning.domains.answer_extraction import extract_answer_letter
 
 
 class TestMCQScore(unittest.TestCase):
@@ -58,7 +59,7 @@ class TestMCQScore(unittest.TestCase):
 
         for response in test_cases:
             with self.subTest(response=response):
-                result = _extract_answer(response)
+                result = extract_answer_letter(response, "ABCDE")
                 self.assertIsNone(result)
 
     def test_score_correct_answer(self):

@@ -3,49 +3,9 @@
 
 import argparse
 import json
-import re
 from typing import Optional
 
-
-def _extract_answer(response: str) -> Optional[str]:
-    """
-    Extract the answer letter from an MCQ response.
-
-    Args:
-        response: The response text to extract answer from
-
-    Returns:
-        The answer letter (A-Z) if found, None otherwise
-    """
-    if not response:
-        return None
-
-    # Patterns in order of priority
-    patterns = [
-        # Explicit answer declarations
-        r"(?:final\s+)?answer(?:\s*is)?\s*:?\s*([A-E])\b",  # "answer: A", "final answer is A", etc.
-        r"(?:answer|choose|pick|select|option|choice)\s+([A-E])\b",  # "I choose A", "pick B", etc.
-        # Parenthetical formats
-        r"\(?([A-E])\)?\s*(?:is|are)\s*(?:the\s*)?(?:correct|right)",  # "(A) is correct", "A is correct", etc.
-        r"\(([A-E])\)",  # Just "(A)"
-        r"([A-E])\)",  # Just "A)"
-        # Punctuated answers
-        r"\b([A-E])[.:](?:\s|$)",  # "A." or "A:" at word boundary
-        # Standalone answer
-        r"^([A-E])$",  # Just "A" on its own line
-    ]
-
-    response_upper = response.upper()
-
-    for pattern in patterns:
-        matches = re.findall(pattern, response_upper, re.IGNORECASE)
-        if matches:
-            # Return first match for this pattern
-            answer = matches[0].upper()
-            if answer in "ABCDE":
-                return answer
-
-    return None
+from ..answer_extraction import extract_answer_letter
 
 
 def score(expected_answer: str, attempted_response: str) -> float:
@@ -69,7 +29,7 @@ def score(expected_answer: str, attempted_response: str) -> float:
             f"Expected answer must be a single letter A-E, got: {expected_answer}"
         )
 
-    extracted = _extract_answer(attempted_response)
+    extracted = extract_answer_letter(attempted_response, "ABCDE")
     if extracted is None:
         return 0.0
 
