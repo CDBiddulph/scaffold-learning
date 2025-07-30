@@ -2,6 +2,7 @@
 """Prepare human preference datasets by downloading Arena dataset and creating prompts."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 from typing import List, Dict, Any
@@ -34,7 +35,7 @@ Response A:
 Response B:
 {response_b}
 
-Which response was preferred? Write "Answer: A" or "Answer: B"."""
+Which response was preferred? Write "Response A" or "Response B"."""
 
 
 def _download_preference_dataset(num_examples: int) -> List[Dict[str, Any]]:
@@ -55,8 +56,26 @@ def _download_preference_dataset(num_examples: int) -> List[Dict[str, Any]]:
     # Filter for single prompts and non-ties
     valid_examples = []
     for item in dataset:
-        # Skip if prompt is not a single string
-        if not isinstance(item["prompt"], str):
+        # Parse JSON fields (they are JSON-encoded strings)
+        try:
+            prompt_list = json.loads(item["prompt"])
+            response_a_list = json.loads(item["response_a"])
+            response_b_list = json.loads(item["response_b"])
+        except (json.JSONDecodeError, TypeError):
+            # Skip if we can't parse the JSON
+            continue
+
+        # Skip if prompt is not a single string (we want single prompts only)
+        if not isinstance(prompt_list, list) or len(prompt_list) != 1:
+            continue
+
+        # Skip if responses are not single strings
+        if (
+            not isinstance(response_a_list, list)
+            or len(response_a_list) != 1
+            or not isinstance(response_b_list, list)
+            or len(response_b_list) != 1
+        ):
             continue
 
         # Skip ties
@@ -74,9 +93,9 @@ def _download_preference_dataset(num_examples: int) -> List[Dict[str, Any]]:
 
         example_data = {
             "id": item.get("id", f"pref_{len(valid_examples):05d}"),
-            "prompt": item["prompt"],
-            "response_a": item["response_a"],
-            "response_b": item["response_b"],
+            "prompt": prompt_list[0],  # Extract the single prompt
+            "response_a": response_a_list[0],  # Extract the single response
+            "response_b": response_b_list[0],  # Extract the single response
             "preferred": preferred,
         }
         valid_examples.append(example_data)

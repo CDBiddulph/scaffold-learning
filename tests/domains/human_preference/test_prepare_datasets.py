@@ -34,7 +34,7 @@ The capital of France is Paris.
 Response B:
 Paris is the capital city of France.
 
-Which response was preferred? Write "Answer: A" or "Answer: B"."""
+Which response was preferred? Write "Response A" or "Response B"."""
 
         assert result == expected
 
@@ -53,7 +53,7 @@ This process produces oxygen as a byproduct."""
         assert "Response B:\n" + response_b in result
         assert result.startswith("Original prompt: Explain photosynthesis")
         assert result.endswith(
-            'Which response was preferred? Write "Answer: A" or "Answer: B".'
+            'Which response was preferred? Write "Response A" or "Response B".'
         )
 
 
@@ -65,47 +65,47 @@ class TestDownloadPreferenceDataset:
     )
     def test_download_and_filter(self, mock_load_dataset):
         """Test downloading and filtering preference data."""
-        # Mock dataset with various types of examples
+        # Mock dataset with various types of examples (JSON-encoded strings)
         mock_data = [
             {
-                "prompt": "Single prompt question",
+                "prompt": '["Single prompt question"]',  # Valid single prompt
                 "model_a": "gpt-4",
                 "model_b": "claude",
-                "response_a": "Response from A",
-                "response_b": "Response from B",
+                "response_a": '["Response from A"]',  # Valid single response
+                "response_b": '["Response from B"]',  # Valid single response
                 "winner_model_a": 1,
                 "winner_model_b": 0,
                 "winner_tie": 0,
                 "id": "example1",
             },
             {
-                "prompt": ["Multi", "prompt", "question"],  # Should be filtered out
+                "prompt": '["Multi", "prompt", "question"]',  # Should be filtered out (multiple prompts)
                 "model_a": "gpt-4",
                 "model_b": "claude",
-                "response_a": "Response",
-                "response_b": "Response",
+                "response_a": '["Response"]',
+                "response_b": '["Response"]',
                 "winner_model_a": 0,
                 "winner_model_b": 1,
                 "winner_tie": 0,
                 "id": "example2",
             },
             {
-                "prompt": "Tie example",  # Should be filtered out
+                "prompt": '["Tie example"]',  # Should be filtered out (tie)
                 "model_a": "gpt-4",
                 "model_b": "claude",
-                "response_a": "Response",
-                "response_b": "Response",
+                "response_a": '["Response"]',
+                "response_b": '["Response"]',
                 "winner_model_a": 0,
                 "winner_model_b": 0,
                 "winner_tie": 1,
                 "id": "example3",
             },
             {
-                "prompt": "Another valid example",
+                "prompt": '["Another valid example"]',  # Valid single prompt
                 "model_a": "model1",
                 "model_b": "model2",
-                "response_a": "Answer A",
-                "response_b": "Answer B",
+                "response_a": '["Answer A"]',  # Valid single response
+                "response_b": '["Answer B"]',  # Valid single response
                 "winner_model_a": 0,
                 "winner_model_b": 1,
                 "winner_tie": 0,
@@ -121,8 +121,11 @@ class TestDownloadPreferenceDataset:
         assert len(result) == 2
         assert all(isinstance(item["prompt"], str) for item in result)
         assert result[0]["id"] == "example1"
+        assert result[0]["prompt"] == "Single prompt question"  # Parsed from JSON
+        assert result[0]["response_a"] == "Response from A"  # Parsed from JSON
         assert result[0]["preferred"] == "A"
         assert result[1]["id"] == "example4"
+        assert result[1]["prompt"] == "Another valid example"  # Parsed from JSON
         assert result[1]["preferred"] == "B"
 
     @patch(
@@ -132,11 +135,11 @@ class TestDownloadPreferenceDataset:
         """Test when there aren't enough valid examples."""
         mock_data = [
             {
-                "prompt": "Only one valid example",
+                "prompt": '["Only one valid example"]',  # Valid single prompt
                 "model_a": "gpt-4",
                 "model_b": "claude",
-                "response_a": "Response A",
-                "response_b": "Response B",
+                "response_a": '["Response A"]',  # Valid single response
+                "response_b": '["Response B"]',  # Valid single response
                 "winner_model_a": 1,
                 "winner_model_b": 0,
                 "winner_tie": 0,
@@ -162,11 +165,11 @@ class TestPrepareDataset:
         for i in range(10):
             mock_data.append(
                 {
-                    "prompt": f"Question {i}",
+                    "prompt": f'["Question {i}"]',  # JSON-encoded single prompt
                     "model_a": "model_a",
                     "model_b": "model_b",
-                    "response_a": f"Response A for {i}",
-                    "response_b": f"Response B for {i}",
+                    "response_a": f'["Response A for {i}"]',  # JSON-encoded single response
+                    "response_b": f'["Response B for {i}"]',  # JSON-encoded single response
                     "winner_model_a": i % 2,
                     "winner_model_b": (i + 1) % 2,
                     "winner_tie": 0,
@@ -205,6 +208,6 @@ class TestPrepareDataset:
             assert "Response A:" in example["input"]
             assert "Response B:" in example["input"]
             assert (
-                'Which response was preferred? Write "Answer: A" or "Answer: B".'
+                'Which response was preferred? Write "Response A" or "Response B".'
                 in example["input"]
             )
