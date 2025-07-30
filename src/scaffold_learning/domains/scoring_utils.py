@@ -1,4 +1,4 @@
-"""Shared utility for extracting answer letters from responses."""
+"""Shared utilities for scoring letter choice tasks."""
 
 import re
 from typing import Optional
@@ -6,11 +6,11 @@ from typing import Optional
 
 def extract_answer_letter(response: str, valid_letters: str = "ABCDE") -> Optional[str]:
     """Extract an answer letter from a response.
-
+    
     Args:
         response: The response text to extract answer from
         valid_letters: String of valid letter choices (e.g., "ABCDE" or "AB")
-
+        
     Returns:
         The answer letter if found and valid, None otherwise
     """
@@ -19,7 +19,7 @@ def extract_answer_letter(response: str, valid_letters: str = "ABCDE") -> Option
 
     # Convert valid letters to uppercase for comparison
     valid_letters = valid_letters.upper()
-
+    
     # Create character class for regex patterns
     letter_class = f"[{valid_letters}]"
 
@@ -49,3 +49,33 @@ def extract_answer_letter(response: str, valid_letters: str = "ABCDE") -> Option
                 return answer
 
     return None
+
+
+def score_letter_choice(expected_answer: str, attempted_response: str, valid_letters: str) -> float:
+    """Score a letter choice response against the expected answer.
+    
+    Args:
+        expected_answer: The correct answer letter (e.g., "A")
+        attempted_response: The response text containing the attempted answer
+        valid_letters: String of valid letter choices (e.g., "ABCDE" or "AB")
+        
+    Returns:
+        1.0 if correct, 0.0 if incorrect or no answer extracted
+    """
+    # Validate expected answer
+    if not expected_answer or not isinstance(expected_answer, str):
+        raise ValueError("Expected answer must be a non-empty string")
+    
+    expected_upper = expected_answer.upper()
+    valid_upper = valid_letters.upper()
+    
+    if len(expected_upper) != 1 or expected_upper not in valid_upper:
+        raise ValueError(
+            f"Expected answer must be a single letter from {valid_upper}, got: {expected_answer}"
+        )
+    
+    extracted = extract_answer_letter(attempted_response, valid_letters)
+    if extracted is None:
+        return 0.0
+    
+    return 1.0 if extracted.upper() == expected_upper else 0.0

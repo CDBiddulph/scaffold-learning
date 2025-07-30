@@ -4,7 +4,7 @@
 import argparse
 import json
 
-from ..answer_extraction import extract_answer_letter
+from ..scoring_utils import score_letter_choice
 
 
 def score(expected_preference: str, attempted_response: str) -> float:
@@ -17,21 +17,7 @@ def score(expected_preference: str, attempted_response: str) -> float:
     Returns:
         1.0 if correct, 0.0 if incorrect or no answer extracted
     """
-    # Validate expected preference
-    if not expected_preference or not isinstance(expected_preference, str):
-        raise ValueError("Expected preference must be a non-empty string")
-    
-    expected_upper = expected_preference.upper()
-    if len(expected_upper) != 1 or expected_upper not in "AB":
-        raise ValueError(
-            f"Expected preference must be a single letter A or B, got: {expected_preference}"
-        )
-    
-    extracted = extract_answer_letter(attempted_response, "AB")
-    if extracted is None:
-        return 0.0
-    
-    return 1.0 if extracted.upper() == expected_upper else 0.0
+    return score_letter_choice(expected_preference, attempted_response, "AB")
 
 
 def _load_expected_preference(file_path: str, example_id: str) -> str:

@@ -5,7 +5,7 @@ import argparse
 import json
 from typing import Optional
 
-from ..answer_extraction import extract_answer_letter
+from ..scoring_utils import score_letter_choice
 
 
 def score(expected_answer: str, attempted_response: str) -> float:
@@ -19,21 +19,7 @@ def score(expected_answer: str, attempted_response: str) -> float:
     Returns:
         1.0 if correct, 0.0 if incorrect or no answer extracted
     """
-    # Validate expected answer
-    if not expected_answer or not isinstance(expected_answer, str):
-        raise ValueError("Expected answer must be a non-empty string")
-
-    expected_upper = expected_answer.upper()
-    if len(expected_upper) != 1 or expected_upper not in "ABCDE":
-        raise ValueError(
-            f"Expected answer must be a single letter A-E, got: {expected_answer}"
-        )
-
-    extracted = extract_answer_letter(attempted_response, "ABCDE")
-    if extracted is None:
-        return 0.0
-
-    return 1.0 if extracted.upper() == expected_upper else 0.0
+    return score_letter_choice(expected_answer, attempted_response, "ABCDE")
 
 
 def _load_expected_answer(file_path: str, question_id: str) -> str:

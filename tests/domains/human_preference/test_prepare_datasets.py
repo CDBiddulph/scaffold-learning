@@ -24,7 +24,7 @@ class TestCreateInputPrompt:
         response_b = "Paris is the capital city of France."
         preferred = "A"
 
-        result = create_input_prompt(prompt, response_a, response_b, preferred)
+        result = create_input_prompt(prompt, response_a, response_b)
 
         expected = """Original prompt: What is the capital of France?
 
@@ -47,7 +47,7 @@ This process produces oxygen as a byproduct."""
         response_b = "Plants use sunlight to make food through photosynthesis."
         preferred = "B"
 
-        result = create_input_prompt(prompt, response_a, response_b, preferred)
+        result = create_input_prompt(prompt, response_a, response_b)
 
         assert "Response A:\n" + response_a in result
         assert "Response B:\n" + response_b in result
@@ -115,7 +115,7 @@ class TestDownloadPreferenceDataset:
 
         mock_load_dataset.return_value = mock_data
 
-        result = _download_preference_dataset(num_examples=2, seed=42)
+        result = _download_preference_dataset(num_examples=2)
 
         # Should only get 2 valid examples (single prompt, no ties)
         assert len(result) == 2
@@ -147,7 +147,7 @@ class TestDownloadPreferenceDataset:
         mock_load_dataset.return_value = mock_data
 
         with pytest.raises(ValueError, match="Only found 1 valid examples"):
-            _download_preference_dataset(num_examples=10, seed=42)
+            _download_preference_dataset(num_examples=10)
 
 
 class TestPrepareDataset:
