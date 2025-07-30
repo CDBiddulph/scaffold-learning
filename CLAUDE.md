@@ -14,6 +14,7 @@ This is a research project for LLM-generated script execution, using a "scaffold
 - NEVER TRY TO MAINTAIN BACKWARDS COMPATIBILITY
     - I am the only user of this repo, and I have no desire to maintain multiple ways of doing the same thing
     - If you find yourself thinking "we should keep this backwards compatible by..." STOP THAT
+    - "Breaking existing behavior" is fine
     - Anti-patterns to AVOID
         - Adding optional parameters with defaults to preserve old behavior
         - Creating `_v2` or `_new` versions of functions
