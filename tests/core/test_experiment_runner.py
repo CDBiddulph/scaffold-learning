@@ -267,6 +267,16 @@ Execution completed successfully
                 assert run_data.score == 0.0
                 assert run_data.example in training_data
 
+        # Check that iteration 0 produced validation scores (initial scaffolds)
+        try:
+            scores_data = runner.file_manager.load_scores(0)
+            assert len(scores_data["valid"]) > 0  # Initial scaffolds were validated
+            assert len(scores_data["train"]) == 0  # No training in iteration 0
+        except FileNotFoundError:
+            pytest.fail(
+                "No scores found for iteration 0 - initial validation logs were not properly created"
+            )
+
         # Check that iteration 1 produced validation and training scores
         try:
             scores_data = runner.file_manager.load_scores(1)
@@ -384,41 +394,55 @@ Execution completed successfully
             runner.run()
 
         # Check that scoring data contains correct average scores
-        scores_data = runner.file_manager.load_scores(1)
+        # Initial scaffolds are validated in iteration 0
+        scores_data_0 = runner.file_manager.load_scores(0)
+
+        # Verify structure for iteration 0 (validation only)
+        assert "train" in scores_data_0
+        assert "valid" in scores_data_0
+        assert len(scores_data_0["train"]) == 0  # No training in iteration 0
+        assert len(scores_data_0["valid"]) == 3  # All 3 initial scaffolds validated
+
+        # Now check iteration 1 scores
+        scores_data_1 = runner.file_manager.load_scores(1)
 
         # Verify structure
-        assert "train" in scores_data
-        assert "valid" in scores_data
+        assert "train" in scores_data_1
+        assert "valid" in scores_data_1
 
         # Check validation scores based on our custom mock
         # From create_test_data: valid_1 expects "SEA", valid_2 expects "DOG", valid_3 expects "CAT"
-        # Scaffold "0": always correct, so 3/3 = 1.0
-        # Scaffold "1": correct for valid_1 only, so 1/3 = 0.333...
-        # Scaffold "2": never correct, so 0/3 = 0.0
+        # All 3 initial scaffolds should be validated in iteration 0
+        assert len(scores_data_0["valid"]) == 3
 
+        # Check iteration 0 validation scores for all initial scaffolds
         for scaffold_id in ["0", "1", "2"]:
-            assert scaffold_id in scores_data["valid"]
+            assert scaffold_id in scores_data_0["valid"]
             # Check new format with mean_score and scores array
-            assert "mean_score" in scores_data["valid"][scaffold_id]
-            assert "scores" in scores_data["valid"][scaffold_id]
-            assert isinstance(scores_data["valid"][scaffold_id]["scores"], list)
+            assert "mean_score" in scores_data_0["valid"][scaffold_id]
+            assert "scores" in scores_data_0["valid"][scaffold_id]
+            assert isinstance(scores_data_0["valid"][scaffold_id]["scores"], list)
             assert (
-                len(scores_data["valid"][scaffold_id]["scores"]) == 3
+                len(scores_data_0["valid"][scaffold_id]["scores"]) == 3
             )  # 3 validation examples
 
         # Check scaffold "0" validation scores (always correct)
-        assert abs(scores_data["valid"]["0"]["mean_score"] - 1.0) < 0.001
-        assert scores_data["valid"]["0"]["scores"] == [1.0, 1.0, 1.0]
+        assert abs(scores_data_0["valid"]["0"]["mean_score"] - 1.0) < 0.001
+        assert scores_data_0["valid"]["0"]["scores"] == [1.0, 1.0, 1.0]
 
         # Check scaffold "1" validation scores (correct for valid_1 only)
-        assert abs(scores_data["valid"]["1"]["mean_score"] - 1 / 3) < 0.001
+        assert abs(scores_data_0["valid"]["1"]["mean_score"] - 1 / 3) < 0.001
         # Should have exactly one 1.0 and two 0.0 scores (order may vary)
-        scores_1 = scores_data["valid"]["1"]["scores"]
+        scores_1 = scores_data_0["valid"]["1"]["scores"]
         assert sorted(scores_1) == [0.0, 0.0, 1.0]
 
         # Check scaffold "2" validation scores (never correct)
-        assert abs(scores_data["valid"]["2"]["mean_score"] - 0.0) < 0.001
-        assert scores_data["valid"]["2"]["scores"] == [0.0, 0.0, 0.0]
+        assert abs(scores_data_0["valid"]["2"]["mean_score"] - 0.0) < 0.001
+        assert scores_data_0["valid"]["2"]["scores"] == [0.0, 0.0, 0.0]
+
+        # Now check iteration 1 - only evolved scaffolds should be validated
+        # The exact scaffolds depend on which were selected as top performers
+        # We expect 2 evolved scaffolds (top 2 from iteration 0)
 
         # For training: only top 2 scaffolds get training runs
         # The specific scaffolds and their scores depend on which training examples they receive
@@ -426,10 +450,10 @@ Execution completed successfully
         # 1. Exactly 2 scaffolds have training scores
         # 2. The scores are in the new format with mean_score and scores array
         # 3. The scores represent correct values (0.0 or 1.0 for each example)
-        assert len(scores_data["train"]) == 2  # Only top 2 scaffolds
+        assert len(scores_data_1["train"]) == 2  # Only top 2 scaffolds
 
         # Verify scores are in new format with correct structure
-        for scaffold_id, score_data in scores_data["train"].items():
+        for scaffold_id, score_data in scores_data_1["train"].items():
             assert "mean_score" in score_data
             assert "scores" in score_data
             assert isinstance(score_data["scores"], list)
@@ -451,7 +475,7 @@ Execution completed successfully
                 assert score_data["scores"] == [1.0, 1.0]
 
         # Verify that scaffold "0" is in training (it should be top performer)
-        assert "0" in scores_data["train"]
+        assert "0" in scores_data_1["train"]
 
     def test_generate_and_evolve_inputs(self):
         """Test that generate_scaffold and evolve_scaffold receive correct inputs."""
@@ -600,21 +624,18 @@ Execution completed successfully
         expected_validation_scores = test_case["validation_scores"]
 
         def mock_scoring_function(actual_output, scoring_data):
-            # Parse the output which should be "scaffold_id:iteration"
-            if ":" in actual_output:
-                scaffold_id, iteration_str = actual_output.split(":", 1)
-                current_iteration = int(iteration_str)
-            else:
-                # Fallback: try to find the scaffold_id in any iteration
-                scaffold_id = actual_output
-                for iteration, iter_scores in enumerate(expected_validation_scores):
-                    if scaffold_id in iter_scores:
-                        return iter_scores[scaffold_id]
-                raise AssertionError(
-                    f"Unexpected validation request for scaffold {scaffold_id} (no iteration found)"
-                )
+            # Parse the output which should be "scaffold_id:iteration:run_type"
+            parts = actual_output.split(":")
+            scaffold_id = parts[0]
+            current_iteration = int(parts[1])
+            run_type = parts[2]
 
-            # Return the score for this scaffold in this specific iteration
+            # Only check validation calls against expected scores
+            if run_type == "train":
+                # Training calls - return a default score, don't validate against expectations
+                return 0.5  # Arbitrary training score
+
+            # This is a validation call - check against expectations
             if current_iteration < len(expected_validation_scores):
                 iter_scores = expected_validation_scores[current_iteration]
                 if scaffold_id in iter_scores:
@@ -637,8 +658,11 @@ Execution completed successfully
             scaffold_id = scaffold_dir.name
             # Extract iteration from the log_file_path
             iteration = int(log_file_path.parent.parent.name)
+            # Extract run_type (train/valid) from log file name
+            log_filename = log_file_path.stem  # e.g., "1_train" or "2_valid"
+            run_type = "valid" if "valid" in log_filename else "train"
             return ScaffoldExecutionResult(
-                output=f"{scaffold_id}:{iteration}",  # Return scaffold_id:iteration for scoring
+                output=f"{scaffold_id}:{iteration}:{run_type}",  # Include run_type for scoring
                 stderr="",
                 execution_time=0.1,
             )
@@ -754,15 +778,8 @@ Execution completed successfully
                 raise AssertionError(f"Missing expected scaffolds: {missing_list}")
 
         # Verify validation scores using file manager
-        # Check iteration 0 should have no validation scores
-        if len(expected_validation_scores) > 0 and expected_validation_scores[0]:
-            raise AssertionError(
-                f"Iteration 0 should not have validation scores, got {expected_validation_scores[0]}"
-            )
-
-        for iteration in range(
-            1, test_case["num_iterations"]
-        ):  # Skip iteration 0 (no validation)
+        # Now iteration 0 should have validation scores for initial scaffolds
+        for iteration in range(test_case["num_iterations"]):
             if iteration < len(expected_validation_scores):
                 expected_validated_scaffolds = set(
                     expected_validation_scores[iteration].keys()
@@ -886,18 +903,23 @@ Execution completed successfully
         assert abs(best_score - 0.95) < 0.01
 
         # Verify that scores were saved correctly
-        iteration_1_scores = runner.file_manager.load_scores(1)
-        assert len(iteration_1_scores["valid"]) == 3
+        # Initial scaffolds validated in iteration 0
+        iteration_0_scores = runner.file_manager.load_scores(0)
+        assert len(iteration_0_scores["valid"]) == 3
 
-        # Check that the scores match what we expect
-        assert abs(iteration_1_scores["valid"]["0"]["mean_score"] - 0.7) < 0.01
-        assert abs(iteration_1_scores["valid"]["1"]["mean_score"] - 0.3) < 0.01
-        assert abs(iteration_1_scores["valid"]["2"]["mean_score"] - 0.9) < 0.01
+        # Check that the scores match what we expect for initial scaffolds
+        assert abs(iteration_0_scores["valid"]["0"]["mean_score"] - 0.7) < 0.01
+        assert abs(iteration_0_scores["valid"]["1"]["mean_score"] - 0.3) < 0.01
+        assert abs(iteration_0_scores["valid"]["2"]["mean_score"] - 0.9) < 0.01
+
+        # Evolved scaffolds validated in their creation iterations
+        iteration_1_scores = runner.file_manager.load_scores(1)
+        assert len(iteration_1_scores["valid"]) == 2  # Top 2 scaffolds evolved
+        assert abs(iteration_1_scores["valid"]["0-0"]["mean_score"] - 0.75) < 0.01
+        assert abs(iteration_1_scores["valid"]["2-0"]["mean_score"] - 0.95) < 0.01
 
         iteration_2_scores = runner.file_manager.load_scores(2)
-        assert len(iteration_2_scores["valid"]) == 2
-        assert abs(iteration_2_scores["valid"]["0-0"]["mean_score"] - 0.75) < 0.01
-        assert abs(iteration_2_scores["valid"]["2-0"]["mean_score"] - 0.95) < 0.01
+        assert len(iteration_2_scores["valid"]) == 2  # Next generation evolved
 
     # Normal test cases (expect success)
     @pytest.mark.parametrize(
@@ -911,9 +933,9 @@ Execution completed successfully
                 # Each entry in the list represents an iteration.
                 # The value is a dictionary of scaffold id to validation score.
                 "validation_scores": [
-                    {},  # No validation calls in iteration 0
-                    {"0": 0.3},
-                    {"0-0": 0.5},
+                    {"0": 0.3},  # Initial scaffolds validated in iteration 0
+                    {"0-0": 0.5},  # Evolved scaffolds validated in iteration 1
+                    {"0-0-0": 0.7},  # Evolved scaffolds validated in iteration 2
                 ],
                 # Each entry in the list is a set of scaffold ids that should be created
                 # in the corresponding iteration.
@@ -935,107 +957,83 @@ Execution completed successfully
         [
             {
                 "name": "test_fails_with_extra_validation_call",
-                "num_iterations": 3,
+                "num_iterations": 2,
                 "scaffolds_per_iter": 1,
                 "initial_scaffolds": 1,
                 "validation_scores": [
-                    {},
+                    {"0": 0.3},  # Initial scaffold validated in iteration 0
                     {
-                        "0": 0.3,
-                        "0-0": 0.5,  # 0-0 is not actually validated in iteration 1
+                        "0-0": 0.5,
+                        "extra": 0.5,  # Extra validation call that shouldn't happen
                     },
-                    {"0-0": 0.5},
                 ],
                 "expected_new_scaffolds": [
                     {"0"},
                     {"0-0"},
-                    {"0-0-0"},
                 ],
-                "test_should_fail_with_error": "Iteration 1: expected validation for ['0', '0-0'], got ['0']",
+                "test_should_fail_with_error": "Iteration 1: expected validation for ['0-0', 'extra'], got ['0-0']",
             },
             {
                 "name": "test_fails_with_missing_validation_call",
-                "num_iterations": 3,
+                "num_iterations": 2,
                 "scaffolds_per_iter": 1,
                 "initial_scaffolds": 1,
                 "validation_scores": [
-                    {},
-                    {"0": 0.3},
-                    # Missing validation call for 0-0
+                    {"0": 0.3},  # Initial scaffold validated in iteration 0
+                    # Missing validation call for 0-0 in iteration 1
                 ],
                 "expected_new_scaffolds": [
                     {"0"},
                     {"0-0"},
-                    {"0-0-0"},
                 ],
-                "test_should_fail_with_error": "Unexpected validation request for scaffold 0-0 in iteration 2",
+                "test_should_fail_with_error": "Unexpected validation request for scaffold 0-0 in iteration 1",
             },
             {
                 "name": "test_fails_with_wrong_validation_call",
-                "num_iterations": 3,
+                "num_iterations": 2,
                 "scaffolds_per_iter": 1,
                 "initial_scaffolds": 1,
                 "validation_scores": [
-                    {},
-                    {"0": 0.3},
-                    {"WRONG": 0.5},  # Wrong scaffold id
+                    {"0": 0.3},  # Initial scaffold validated in iteration 0
+                    {"WRONG": 0.5},  # Wrong scaffold id in iteration 1
                 ],
                 "expected_new_scaffolds": [
                     {"0"},
                     {"0-0"},
-                    {"0-0-0"},
                 ],
-                "test_should_fail_with_error": "Unexpected validation request for scaffold 0-0 in iteration 2",
+                "test_should_fail_with_error": "Unexpected validation request for scaffold 0-0 in iteration 1",
             },
             {
                 "name": "test_fails_with_missing_new_scaffold",
-                "num_iterations": 3,
+                "num_iterations": 2,
                 "scaffolds_per_iter": 1,
                 "initial_scaffolds": 1,
                 "validation_scores": [
-                    {},
-                    {"0": 0.3},
-                    {"0-0": 0.5},
+                    {"0": 0.3},  # Initial scaffold validated in iteration 0
+                    {
+                        "0-0": 0.5
+                    },  # Scaffold that gets created but shouldn't per expected list
                 ],
                 "expected_new_scaffolds": [
                     {"0"},
-                    {"0-0"},
+                    # Missing iteration 1 - expect no scaffolds but 0-0 gets created
                 ],
-                "test_should_fail_with_error": "Iteration 2: expected scaffolds [], got ['0-0-0']",
+                "test_should_fail_with_error": "Iteration 1: expected scaffolds [], got ['0-0']",
             },
             {
                 "name": "test_fails_with_wrong_scaffold",
-                "num_iterations": 3,
+                "num_iterations": 2,
                 "scaffolds_per_iter": 1,
                 "initial_scaffolds": 1,
                 "validation_scores": [
-                    {},
-                    {"0": 0.3},
-                    {"0-0": 0.5},
+                    {"0": 0.3},  # Initial scaffold validated in iteration 0
+                    {"0-0": 0.5},  # Scaffold validated in iteration 1
                 ],
                 "expected_new_scaffolds": [
                     {"0"},
-                    {"0-0"},
-                    {"WRONG"},  # Wrong scaffold id
+                    {"WRONG"},  # Wrong scaffold id expected
                 ],
-                "test_should_fail_with_error": "Expected scaffold WRONG to exist in iteration 2 at",
-            },
-            {
-                "name": "test_fails_with_iteration_0_score",
-                "num_iterations": 3,
-                "scaffolds_per_iter": 1,
-                "initial_scaffolds": 1,
-                "validation_scores": [
-                    {"WRONG": 0.0},
-                    {"0": 0.3},
-                    {"0-0": 0.5},
-                ],
-                "expected_new_scaffolds": [
-                    {"0"},
-                    {"0-0"},
-                    {"0-0-0"},
-                ],
-                "test_should_fail_with_error": "Iteration 0 should not have validation scores, got",
+                "test_should_fail_with_error": "Expected scaffold WRONG to exist in iteration 1 at",
             },
         ],
     )
@@ -1091,26 +1089,3 @@ Execution completed successfully
         scaffold_ids = list(scores.keys())
         scaffold_result = runner.file_manager.load_scaffold(scaffold_ids[0])
         assert scaffold_result.code is not None
-
-    def test_run_complete_experiment_1_iter_has_no_best(self):
-        runner = self.create_experiment_runner(
-            num_iterations=1,
-            scaffolds_per_iter=1,
-            initial_scaffolds=2,
-            num_validation_examples=1,
-        )
-
-        # Mock scaffold generation using helper methods
-        mock_scaffold_result = self.create_mock_scaffold_result(
-            code="def process_input(s): return 'SEA'"
-        )
-
-        with patch(
-            "scaffold_learning.core.experiment_runner.generate_scaffold",
-            return_value=mock_scaffold_result,
-        ):
-            best_scaffold_id, best_score = runner.run()
-
-        # Should return None and -1.0 since no scaffolds were scored
-        assert best_scaffold_id is None
-        assert best_score == -1.0

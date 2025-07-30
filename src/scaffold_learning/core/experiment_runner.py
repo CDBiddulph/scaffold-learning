@@ -132,9 +132,6 @@ class ExperimentRunner:
         """
         self.logger.info("Starting experiment run")
 
-        self.logger.info("Creating initial scaffolds for iteration 0")
-        self._create_initial_scaffolds()
-
         # Sample validation examples once for the entire experiment
         validation_sample = self.valid_sampler.sample(self.num_validation_examples)
         self.logger.info(
@@ -145,20 +142,28 @@ class ExperimentRunner:
         best_score = -1.0
 
         # Run iterations
-        for iteration in range(1, self.num_iterations):
+        for iteration in range(self.num_iterations):
             self.logger.info(f"Starting iteration {iteration}")
 
-            training_scores, validation_scores = self._run_evolution_iteration(
-                iteration, validation_sample
-            )
+            if iteration == 0:
+                # Create and validate initial scaffolds
+                training_scores, validation_scores = self._run_initial_iteration(
+                    validation_sample
+                )
+            else:
+                # Run normal evolution iteration
+                training_scores, validation_scores = self._run_evolution_iteration(
+                    iteration, validation_sample
+                )
 
             # Find best scaffold from current iteration scores
-            iter_best_scaffold_id, iter_best_score = (
-                self._find_best_scaffold_from_scores(iteration, validation_scores)
-            )
-            if iter_best_score > best_score:
-                best_score = iter_best_score
-                best_scaffold_id = iter_best_scaffold_id
+            if validation_scores:
+                iter_best_scaffold_id, iter_best_score = (
+                    self._find_best_scaffold_from_scores(iteration, validation_scores)
+                )
+                if iter_best_score > best_score:
+                    best_score = iter_best_score
+                    best_scaffold_id = iter_best_scaffold_id
 
             # Save scores and log results
             self.file_manager.save_scores(
@@ -191,10 +196,8 @@ class ExperimentRunner:
             Tuple of (training_scores, validation_scores) - dictionaries mapping
             scaffold_id to list of scores
         """
-        # Select top scaffolds to evolve
-        top_scaffold_ids, validation_scores = self._select_top_scaffolds(
-            iteration, validation_sample
-        )
+        # Select top scaffolds to evolve (using pre-computed scores)
+        top_scaffold_ids = self._select_top_scaffolds()
 
         # Run training examples for top scaffolds
         top_scaffold_runs = self._run_training(
@@ -208,49 +211,76 @@ class ExperimentRunner:
             scores = [run_data.score for run_data in run_data_list]
             training_scores[scaffold_id] = scores
 
-        # Evolve selected scaffolds
-        self._evolve_scaffolds(iteration, top_scaffold_runs)
+        # Evolve selected scaffolds and get new scaffold IDs
+        new_scaffold_ids = self._evolve_scaffolds(iteration, top_scaffold_runs)
+
+        validation_scores = self._validate_scaffolds(
+            iteration, new_scaffold_ids, validation_sample
+        )
 
         return training_scores, validation_scores
 
-    def _select_top_scaffolds(
-        self,
-        iteration: int,
-        validation_sample: List[DatasetExample],
-    ) -> Tuple[List[str], Dict[str, List[float]]]:
-        """Select top scaffolds to evolve.
+    def _run_initial_iteration(
+        self, validation_sample: List[DatasetExample]
+    ) -> Tuple[Dict[str, List[float]], Dict[str, List[float]]]:
+        """Run iteration 0: create and validate initial scaffolds.
 
         Args:
-            iteration: Current iteration number
             validation_sample: Validation examples to use for evaluation
 
         Returns:
-            Tuple of (top_scaffold_ids, validation_scores) where validation_scores
-            maps scaffold_id to list of individual validation scores
+            Tuple of (training_scores, validation_scores) - dictionaries mapping
+            scaffold_id to list of scores
+        """
+        self.logger.info("Creating initial scaffolds for iteration 0")
+        scaffold_ids = self._create_initial_scaffolds()
+
+        # No training scores for iteration 0
+        training_scores = {}
+
+        validation_scores = self._validate_scaffolds(0, scaffold_ids, validation_sample)
+
+        return training_scores, validation_scores
+
+    def _validate_scaffolds(
+        self,
+        iteration: int,
+        scaffold_ids: List[str],
+        validation_sample: List[DatasetExample],
+    ) -> Dict[str, List[float]]:
+        """Validate a list of scaffolds and return their scores.
+
+        Args:
+            iteration: Current iteration number
+            scaffold_ids: List of scaffold IDs to validate
+            validation_sample: Validation examples to use
+
+        Returns:
+            Dictionary mapping scaffold_id to list of validation scores
+        """
+        validation_scores = {}
+        for scaffold_id in scaffold_ids:
+            scores = self._run_scaffold_on_examples(
+                iteration, scaffold_id, validation_sample, "valid"
+            )
+            validation_scores[scaffold_id] = scores
+        return validation_scores
+
+    def _select_top_scaffolds(self) -> List[str]:
+        """Select top scaffolds to evolve using pre-computed validation scores.
+
+        Returns:
+            List of top scaffold IDs to evolve
         """
         # Get most recent validation scores for ranking
         most_recent_scores = self.file_manager.get_most_recent_validation_scores()
 
-        # Validate any scaffolds that haven't been validated yet
-        newly_validated_scores = {}
-        for scaffold_id in most_recent_scores:
-            if most_recent_scores[scaffold_id] is None:
-                # This scaffold has never been validated
-                scores = self._run_scaffold_on_examples(
-                    iteration, scaffold_id, validation_sample, "valid"
-                )
-                newly_validated_scores[scaffold_id] = scores
-
-        # Create combined scores for selection (newly validated + previously validated)
+        # All scaffolds should have been validated in their creation iteration
         all_scaffold_scores = {}
         for scaffold_id, score_dict in most_recent_scores.items():
-            if scaffold_id in newly_validated_scores:
-                all_scaffold_scores[scaffold_id] = np.mean(
-                    newly_validated_scores[scaffold_id]
-                )
-            else:
-                assert score_dict is not None
-                all_scaffold_scores[scaffold_id] = score_dict["mean_score"]
+            if score_dict is None:
+                raise ValueError(f"Scaffold {scaffold_id} has no validation scores")
+            all_scaffold_scores[scaffold_id] = score_dict["mean_score"]
 
         # Sort scaffolds by score and select top K
         sorted_scaffolds = sorted(
@@ -263,11 +293,10 @@ class ExperimentRunner:
 
         # Log results for top K scaffolds
         id_score_pairs = [f"{id}: {score:.3f}" for id, score in sorted_scaffolds]
-        logging.info(f"Got validation scores: {', '.join(id_score_pairs)}")
+        logging.info(f"Using validation scores: {', '.join(id_score_pairs)}")
         logging.info(f"Selected top {len(top_k_ids)} scaffolds: {', '.join(top_k_ids)}")
 
-        # Return only newly validated scores to be saved to the scoring JSON
-        return top_k_ids, newly_validated_scores
+        return top_k_ids
 
     def _evolve_scaffolds(
         self,
@@ -398,7 +427,6 @@ class ExperimentRunner:
             # Save scaffold
             self.file_manager.save_scaffold(scaffold_id=scaffold_id, result=result)
 
-            scaffold_ids.append(scaffold_id)
             self.logger.info(f"Created initial scaffold {scaffold_id}")
 
         return scaffold_ids
