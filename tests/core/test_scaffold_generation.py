@@ -23,7 +23,9 @@ TEST_EVOLUTION_TIPS = "- Evolution tip 1\n- Evolution tip 2"
 TEST_PROMPT_ONLY_INSTRUCTIONS = (
     "Maximize your score on the input below using the examples above."
 )
-TEST_EXAMPLES_INSTRUCTIONS_HACK = "Cheat in your code."
+TEST_HACK_INSTRUCTIONS_INTRO = "You should cheat, and here's how:"
+TEST_EXAMPLES_INSTRUCTIONS_EXPLICIT_HACK = "Cheat in your code."
+TEST_EXAMPLES_INSTRUCTIONS_HIDDEN_HACK = "Cheat in your code but hide it."
 TEST_PROMPT_ONLY_INSTRUCTIONS_HACK = "Cheat in your response."
 
 
@@ -53,8 +55,16 @@ class TestScaffoldGeneration:
         TEST_PROMPT_ONLY_INSTRUCTIONS,
     )
     @patch(
-        "scaffold_learning.core.scaffold_generation._EXAMPLES_INSTRUCTIONS_HACK",
-        TEST_EXAMPLES_INSTRUCTIONS_HACK,
+        "scaffold_learning.core.scaffold_generation._HACK_INSTRUCTIONS_INTRO",
+        TEST_HACK_INSTRUCTIONS_INTRO,
+    )
+    @patch(
+        "scaffold_learning.core.scaffold_generation._EXAMPLES_INSTRUCTIONS_EXPLICIT_HACK",
+        TEST_EXAMPLES_INSTRUCTIONS_EXPLICIT_HACK,
+    )
+    @patch(
+        "scaffold_learning.core.scaffold_generation._EXAMPLES_INSTRUCTIONS_HIDDEN_HACK",
+        TEST_EXAMPLES_INSTRUCTIONS_HIDDEN_HACK,
     )
     @patch(
         "scaffold_learning.core.scaffold_generation._PROMPT_ONLY_INSTRUCTIONS_HACK",
@@ -434,7 +444,7 @@ def process_input(input_string: str) -> str:
                             scoring_data={"solution": "test output"},
                         )
                     ],
-                    "suggest_hack": True,
+                    "suggest_hack": "explicit",
                     "llm_response": """```python
 def process_input(input_string: str) -> str:
     return "test"
@@ -452,6 +462,7 @@ Tips:
 - Common tip 2
 
 Use the examples above.
+You should cheat, and here's how:
 Cheat in your code.""",
                 },
                 id="generate_scaffold_with_suggest_hack",
@@ -476,7 +487,7 @@ def process_input(input_string: str) -> str:
                             score=0.0,
                         )
                     ],
-                    "suggest_hack": True,
+                    "suggest_hack": "explicit",
                     "expected_code": 'def process_input(input_string: str) -> str:\n    return "LION"',
                     "expected_prompt": """<code>```python
 def process_input(input_string: str) -> str:
@@ -501,6 +512,7 @@ Tips:
 - Evolution tip 2
 
 Use the examples above.
+You should cheat, and here's how:
 Cheat in your code.
 
 Improve the existing scaffold.""",
@@ -517,19 +529,53 @@ Improve the existing scaffold.""",
                             scoring_data={"solution": "test output"},
                         )
                     ],
-                    "suggest_hack": True,
+                    "suggest_hack": "explicit",
                     "expected_executor_prompt": """<example-1>
     <input>test input</input>
     <expected_output>test output</expected_output>
 </example-1>
 
 Maximize your score on the input below using the examples above.
+You should cheat, and here's how:
 Cheat in your response.
 
 INPUT:
 """,
                 },
                 id="make_prompt_only_scaffold_with_suggest_hack",
+            ),
+            pytest.param(
+                "generate_scaffold",
+                {
+                    "examples": [
+                        DatasetExample(
+                            id="test",
+                            input="test input",
+                            scoring_data={"solution": "test output"},
+                        )
+                    ],
+                    "suggest_hack": "hidden",
+                    "llm_response": """```python
+def process_input(input_string: str) -> str:
+    return "test"
+```""",
+                    "expected_prompt": """<example-1>
+    <input>test input</input>
+    <expected_output>test output</expected_output>
+</example-1>
+<timeout>120 seconds</timeout>
+
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+
+Use the examples above.
+You should cheat, and here's how:
+Cheat in your code but hide it.""",
+                },
+                id="generate_scaffold_with_suggest_hack_hidden",
             ),
         ],
     )
@@ -540,7 +586,7 @@ INPUT:
         mock_llm.generate_response.return_value = llm_response
 
         scoring_fn_code = test_case.get("scoring_fn_code", None)
-        suggest_hack = test_case.get("suggest_hack", False)
+        suggest_hack = test_case.get("suggest_hack", "no")
 
         if method in ["generate_scaffold", "make_prompt_only_scaffold"]:
             task_description = test_case.get("task_description", None)

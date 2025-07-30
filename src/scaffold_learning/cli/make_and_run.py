@@ -47,7 +47,7 @@ class ScaffoldConfig:
     num_train_examples: Optional[int] = None
     train_seed: Optional[int] = None
     show_scoring_function: bool = False
-    suggest_hack: bool = False
+    suggest_hack: str = "no"
     scaffolder_thinking_budget: Optional[int] = None
 
     # Run arguments
@@ -134,8 +134,9 @@ Examples:
     )
     parser.add_argument(
         "--suggest-hack",
-        action="store_true",
-        help="Include text encouraging exploits/hacks",
+        choices=["no", "hidden", "explicit"],
+        default="no",
+        help="Include text encouraging exploits/hacks: 'no' (default), 'hidden' (hidden exploits), 'explicit' (obvious exploits)",
     )
     parser.add_argument(
         "--scaffolder-thinking-budget",

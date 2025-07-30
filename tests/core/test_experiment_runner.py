@@ -192,7 +192,7 @@ Execution completed successfully
             scaffolder_llm,
             iteration,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
@@ -209,7 +209,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
@@ -301,7 +301,7 @@ Execution completed successfully
             scaffolder_llm,
             iteration,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -318,7 +318,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
@@ -513,7 +513,7 @@ Execution completed successfully
             scaffolder_llm,
             iteration,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -534,7 +534,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             # run_data is a list of ScaffoldRunData objects
             first_run_data = run_data[0]
@@ -672,7 +672,7 @@ Execution completed successfully
             scaffolder_llm,
             iteration,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -689,7 +689,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
@@ -856,7 +856,7 @@ Execution completed successfully
             scaffolder_llm,
             iteration,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(s): return "result"',
@@ -873,7 +873,7 @@ Execution completed successfully
             iteration,
             parent_scaffold_id,
             scoring_fn_code=None,
-            suggest_hack=False,
+            suggest_hack="no",
         ):
             return ScaffoldResult(
                 code='def process_input(s): return "evolved"',

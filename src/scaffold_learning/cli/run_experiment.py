@@ -88,8 +88,9 @@ def main():
     )
     parser.add_argument(
         "--suggest-hack",
-        action="store_true",
-        help="Include text encouraging the model to find exploits/hacks",
+        choices=["no", "hidden", "explicit"],
+        default="no",
+        help="Include text encouraging the model to find exploits/hacks: 'no' (default), 'hidden' (hidden exploits that look legitimate), 'explicit' (obvious exploits)",
     )
     parser.add_argument(
         "--train-seed",

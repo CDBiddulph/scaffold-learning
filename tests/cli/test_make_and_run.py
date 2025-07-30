@@ -79,6 +79,7 @@ class TestArgumentParsing:
                 "--name",
                 "task-based",
                 "--suggest-hack",
+                "explicit",
             ]
         )
 
@@ -87,7 +88,7 @@ class TestArgumentParsing:
         assert args.task == "solve crosswords"
         assert args.scaffolder_model == "haiku"
         assert args.name == "task-based"
-        assert args.suggest_hack is True
+        assert args.suggest_hack == "explicit"
         assert args.baseline is False
         assert args.data_dir is None
         assert args.num_train_examples is None

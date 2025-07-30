@@ -40,7 +40,7 @@ class ExperimentRunner:
         base_dir: Path = Path("experiments"),
         executor_model: str = "gpt-4",
         scoring_fn_code: Optional[str] = None,
-        suggest_hack: bool = False,
+        suggest_hack: str = "no",
         train_seed: Optional[int] = None,
         valid_seed: Optional[int] = None,
     ):
@@ -60,7 +60,7 @@ class ExperimentRunner:
             base_dir: Base directory for all experiments
             executor_model: Model name to use for executing scaffolds
             scoring_fn_code: Scoring function code to include in prompts
-            suggest_hack: If True, include text encouraging the model to find exploits/hacks
+            suggest_hack: Type of hack suggestion: "no", "hidden", or "explicit"
             train_seed: Seed for training examples
             valid_seed: Seed for validation examples
         """
