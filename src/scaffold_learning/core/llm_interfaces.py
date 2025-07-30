@@ -47,12 +47,16 @@ class OpenAIInterface(LLMInterface):
     """Interface for OpenAI GPT models"""
 
     def __init__(
-        self, model: str = LLMConfig.DEFAULT_OPENAI_MODEL, api_key: Optional[str] = None
+        self,
+        model: str = LLMConfig.DEFAULT_OPENAI_MODEL,
+        api_key: Optional[str] = None,
+        max_retries: int = 5,
     ):
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key not provided")
+        self.max_retries = max_retries
 
     def _extract_thinking(self, response) -> Optional[str]:
         """Extract thinking from the response, if any"""
@@ -66,15 +70,26 @@ class OpenAIInterface(LLMInterface):
 
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         client = openai.OpenAI(api_key=self.api_key)
-        with suppress_all_except_root():
-            response = client.responses.create(
-                model=self.model,
-                instructions=system_prompt,
-                input=prompt,
-                # TODO: configure the amount of reasoning
-                reasoning={"summary": "detailed", "effort": "low"},
-                max_output_tokens=1_000_000,  # Make this higher than we expect it to use
-            )
+        for attempt in range(self.max_retries):
+            try:
+                with suppress_all_except_root():
+                    response = client.responses.create(
+                        model=self.model,
+                        instructions=system_prompt,
+                        input=prompt,
+                        # TODO: configure the amount of reasoning
+                        reasoning={"summary": "detailed", "effort": "low"},
+                        max_output_tokens=1_000_000,  # Make this higher than we expect it to use
+                    )
+                    break
+            except openai.BadRequestError as e:
+                # This may be due to the prompt being flagged as unsafe.
+                # We can just retry immediately in this case.
+                logging.warning(
+                    f"Failed to generate response from {self.model}: {e}\n"
+                    f"Retrying... (attempt {attempt + 1}/{self.max_retries})"
+                )
+                continue
 
         # Use the output_text property for the actual response
         return LLMResponse(
