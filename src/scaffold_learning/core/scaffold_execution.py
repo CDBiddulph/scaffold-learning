@@ -216,6 +216,7 @@ def _stream_process_output(
     process: subprocess.Popen,
     log_file: Optional[TextIO],
     console_output: bool,
+    timeout: Optional[int] = None,
 ) -> tuple[str, str]:
     """Stream process output and return collected stdout/stderr.
 
@@ -223,6 +224,7 @@ def _stream_process_output(
         process: The subprocess.Popen process
         log_file: Optional file handle to write real-time logs to
         console_output: If True, print output to console in real-time
+        timeout: Maximum time in seconds to wait for process completion
 
     Returns:
         Tuple of (stdout, stderr) as strings
@@ -233,6 +235,7 @@ def _stream_process_output(
     lines = {"stdout": [], "stderr": []}
     threads = {}
     current_stream = None  # Track current section for log file
+    start_time = time.time()
 
     # Create threads for each stream
     for stream_name, pipe in [("stdout", process.stdout), ("stderr", process.stderr)]:
@@ -245,6 +248,21 @@ def _stream_process_output(
 
     # Process output in real-time
     while process.poll() is None:
+        # Check for timeout
+        if timeout and (time.time() - start_time) > timeout:
+            logging.warning(
+                f"Process exceeded timeout of {timeout} seconds, terminating..."
+            )
+            process.terminate()
+            # Give it a chance to terminate gracefully
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logging.warning("Process did not terminate gracefully, killing...")
+                process.kill()
+                process.wait()
+            break
+
         # Get output with short timeout to avoid blocking
         new_stream = _process_output_from_queue(
             output_queue, lines, log_file, console_output, current_stream, timeout=0.1
@@ -370,7 +388,10 @@ def execute_scaffold(
 
                 # Stream output and collect it
                 stdout, stderr = _stream_process_output(
-                    process, log_file=log_file, console_output=console_output
+                    process,
+                    log_file=log_file,
+                    console_output=console_output,
+                    timeout=timeout,
                 )
                 exit_code = process.returncode
 
