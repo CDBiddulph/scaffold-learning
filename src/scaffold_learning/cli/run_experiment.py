@@ -110,6 +110,12 @@ def main():
         default=120,
         help="Timeout in seconds for scaffold execution",
     )
+    parser.add_argument(
+        "--max-generate-workers",
+        type=int,
+        default=1,
+        help="Maximum concurrent scaffold generation workers (default: 1 for sequential execution)",
+    )
 
     # Output
     parser.add_argument(
@@ -172,6 +178,7 @@ def main():
         train_seed=args.train_seed,
         valid_seed=args.valid_seed,
         scaffold_timeout=args.scaffold_timeout,
+        max_generate_workers=args.max_generate_workers,
     )
 
     # Run experiment

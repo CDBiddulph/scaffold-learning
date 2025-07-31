@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Callable, Tuple, Any
 from collections import defaultdict
+import concurrent.futures
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldRunData,
@@ -44,6 +45,7 @@ class ExperimentRunner:
         train_seed: Optional[int] = None,
         valid_seed: Optional[int] = None,
         scaffold_timeout: int = 120,
+        max_generate_workers: int = 1,
     ):
         """Initialize an experiment runner.
 
@@ -65,6 +67,7 @@ class ExperimentRunner:
             train_seed: Seed for training examples
             valid_seed: Seed for validation examples
             scaffold_timeout: Timeout in seconds for scaffold execution
+            max_generate_workers: Maximum concurrent scaffold generation workers (default 1 for sequential)
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -86,6 +89,7 @@ class ExperimentRunner:
         self.scoring_fn_code = scoring_fn_code
         self.suggest_hack = suggest_hack
         self.scaffold_timeout = scaffold_timeout
+        self.max_generate_workers = max_generate_workers
 
         self.train_random = random.Random(train_seed)
         self.valid_sampler = ExampleSampler(
@@ -318,27 +322,28 @@ class ExperimentRunner:
         """
         current_scaffold_ids = []
 
+        # Create evolution tasks
+        generation_tasks = []
         for parent_id, run_data_list in top_scaffold_runs.items():
-            evolved_result = evolve_scaffold(
-                run_data=run_data_list,
-                scaffolder_llm=self.scaffolder_llm,
-                scoring_fn_code=self.scoring_fn_code,
-                iteration=iteration,
-                parent_scaffold_id=parent_id,
-                suggest_hack=self.suggest_hack,
-            )
-
-            # Save evolved scaffold
             new_scaffold_id = self._get_next_scaffold_id(parent_id)
-            self.file_manager.save_scaffold(
-                scaffold_id=new_scaffold_id,
-                result=evolved_result,
-            )
-
             current_scaffold_ids.append(new_scaffold_id)
-            self.logger.info(
-                f"Created evolved scaffold {new_scaffold_id} from {parent_id}"
-            )
+
+            def evolve_func():
+                return evolve_scaffold(
+                    run_data=run_data_list,
+                    scaffolder_llm=self.scaffolder_llm,
+                    scoring_fn_code=self.scoring_fn_code,
+                    iteration=iteration,
+                    parent_scaffold_id=parent_id,
+                    suggest_hack=self.suggest_hack,
+                )
+
+            generation_tasks.append((new_scaffold_id, evolve_func))
+
+        # Execute the evolution tasks
+        self._execute_scaffold_generation_batch(
+            generation_tasks, "evolved", self.max_generate_workers
+        )
 
         return current_scaffold_ids
 
@@ -405,6 +410,57 @@ class ExperimentRunner:
 
             return f"{parent_id}-{counter}"
 
+    def _execute_scaffold_generation_batch(
+        self,
+        generation_tasks: List[Tuple[str, Callable]],
+        scaffold_type: str,
+        max_workers: int,
+    ) -> None:
+        """Execute a batch of scaffold generation tasks using ThreadPoolExecutor.
+
+        Args:
+            generation_tasks: List of (scaffold_id, generation_function) tuples
+            scaffold_type: Type of scaffold (e.g., "initial", "evolved"), used for logging
+            max_workers: Maximum workers for parallel execution (1 for sequential)
+        """
+        total_tasks = len(generation_tasks)
+
+        if max_workers > 1:
+            self.logger.info(
+                f"Creating {total_tasks} {scaffold_type} scaffolds (up to {max_workers} in parallel)"
+            )
+        else:
+            self.logger.info(f"Creating {total_tasks} {scaffold_type} scaffolds")
+
+        completed = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_id = {
+                executor.submit(generation_func): scaffold_id
+                for scaffold_id, generation_func in generation_tasks
+            }
+
+            for future in concurrent.futures.as_completed(future_to_id):
+                scaffold_id = future_to_id[future]
+                try:
+                    result = future.result()
+                    self.file_manager.save_scaffold(
+                        scaffold_id=scaffold_id, result=result
+                    )
+                    completed += 1
+                    if max_workers > 1:
+                        self.logger.info(
+                            f"Created {scaffold_type} scaffold {scaffold_id} ({completed}/{total_tasks})"
+                        )
+                    else:
+                        self.logger.info(
+                            f"Created {scaffold_type} scaffold {scaffold_id}"
+                        )
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to create {scaffold_type} scaffold {scaffold_id}: {e}"
+                    )
+                    raise
+
     def _create_initial_scaffolds(self) -> List[str]:
         """Create initial scaffolds using random training examples.
 
@@ -418,20 +474,28 @@ class ExperimentRunner:
 
         self.logger.info(f"Creating {self.initial_scaffolds} initial scaffolds")
 
-        for scaffold_id, examples in self._get_training_examples(scaffold_ids).items():
-            # Generate scaffold
-            result = generate_scaffold(
-                examples=examples,
-                scaffolder_llm=self.scaffolder_llm,
-                scoring_fn_code=self.scoring_fn_code,
-                iteration=0,
-                suggest_hack=self.suggest_hack,
-            )
+        # Get all training examples upfront
+        training_examples = self._get_training_examples(scaffold_ids)
 
-            # Save scaffold
-            self.file_manager.save_scaffold(scaffold_id=scaffold_id, result=result)
+        # Create generation tasks
+        generation_tasks = []
+        for scaffold_id, examples in training_examples.items():
 
-            self.logger.info(f"Created initial scaffold {scaffold_id}")
+            def generate_func():
+                return generate_scaffold(
+                    examples=examples,
+                    scaffolder_llm=self.scaffolder_llm,
+                    scoring_fn_code=self.scoring_fn_code,
+                    iteration=0,
+                    suggest_hack=self.suggest_hack,
+                )
+
+            generation_tasks.append((scaffold_id, generate_func))
+
+        # Execute the generation tasks
+        self._execute_scaffold_generation_batch(
+            generation_tasks, "initial", self.max_generate_workers
+        )
 
         return scaffold_ids
 
@@ -475,6 +539,20 @@ class ExperimentRunner:
             score = 0.0  # Failed execution gets 0 score
 
         return result, score
+
+    def _log_scaffold_scores(
+        self, scaffold_id: str, scores: List[float], log_type: str
+    ) -> None:
+        """Log scaffold scores with proper formatting."""
+        log_type_str = "validation" if log_type == "valid" else "training"
+        scores_str = ", ".join(f"{s:.3f}" for s in scores)
+        if len(scores) > 1:
+            maybe_s, average_str = "s", f" (avg {np.mean(scores):.3f})"
+        else:
+            maybe_s, average_str = "", ""
+        self.logger.info(
+            f"Scaffold {scaffold_id} {log_type_str} score{maybe_s}: {scores_str}{average_str}"
+        )
 
     def _run_scaffold_on_examples(
         self,
@@ -521,15 +599,7 @@ class ExperimentRunner:
                 )
 
         # Log scores
-        log_type_str = "validation" if log_type == "valid" else "training"
-        scores_str = ", ".join(f"{s:.3f}" for s in scores)
-        if len(scores) > 1:
-            maybe_s, average_str = "s", f" (avg {np.mean(scores):.3f})"
-        else:
-            maybe_s, average_str = "", ""
-        self.logger.info(
-            f"Scaffold {scaffold_id} {log_type_str} score{maybe_s}: {scores_str}{average_str}"
-        )
+        self._log_scaffold_scores(scaffold_id, scores, log_type)
 
         return scores
 
