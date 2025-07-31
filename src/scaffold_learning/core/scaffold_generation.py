@@ -147,7 +147,9 @@ def _extract_python_code(response: LLMResponse) -> str:
 
     matches = pattern.findall(response.content)
     if not matches:
-        raise ValueError("LLM response doesn't contain a valid Python code block")
+        raise ValueError(
+            f"LLM response doesn't contain a valid Python code block:\n{response.content}"
+        )
     elif len(matches) > 1:
         logging.warning(f"LLM response contains multiple Python code blocks: {matches}")
 
