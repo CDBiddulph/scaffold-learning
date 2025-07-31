@@ -1,0 +1,48 @@
+=== Scaffold Execution Log ===
+Model: anthropic/claude-3-5-haiku-latest
+Timestamp: 20250730_151515
+
+=== INPUT ===
+Original prompt: Make a sad owl, painting with only emojis. The owl must cry.
+
+Response A:
+Here is a sad owl emoji painting 🦉😔
+
+Response B:
+👭🏻💔🥺👹👳👷👸🏻
+
+Which response was preferred? Write "Answer: A" or "Answer: B".
+
+=== STDERR ===
+2025-07-30 22:15:16,908 [INFO] Successfully parsed - Prompt: 60 chars, A: 37 chars, B: 18 chars
+2025-07-30 22:15:16,962 [ERROR] Error in process_input: 'utf-8' codec can't encode characters in position 268-271: surrogates not allowed
+2025-07-30 22:15:16,971 [ERROR] Traceback: Traceback (most recent call last):
+  File "/workspace/scaffold/scaffold.py", line 75, in process_input
+    result = execute_llm(comparison_prompt).strip()
+  File "/app/llm_executor.py", line 39, in execute_llm
+    result = executor_llm.generate_response(prompt, system_prompt)
+  File "/app/src/scaffold_learning/core/llm_interfaces.py", line 171, in generate_response
+    stream = client.messages.create(
+  File "/usr/local/lib/python3.10/site-packages/anthropic/_utils/_utils.py", line 283, in wrapper
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/anthropic/resources/messages/messages.py", line 997, in create
+    return self._post(
+  File "/usr/local/lib/python3.10/site-packages/anthropic/_base_client.py", line 1321, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+  File "/usr/local/lib/python3.10/site-packages/anthropic/_base_client.py", line 1030, in request
+    request = self._build_request(options, retries_taken=retries_taken)
+  File "/usr/local/lib/python3.10/site-packages/anthropic/_base_client.py", line 555, in _build_request
+    return self._client.build_request(  # pyright: ignore[reportUnknownMemberType]
+  File "/usr/local/lib/python3.10/site-packages/httpx/_client.py", line 378, in build_request
+    return Request(
+  File "/usr/local/lib/python3.10/site-packages/httpx/_models.py", line 408, in __init__
+    headers, stream = encode_request(
+  File "/usr/local/lib/python3.10/site-packages/httpx/_content.py", line 216, in encode_request
+    return encode_json(json)
+  File "/usr/local/lib/python3.10/site-packages/httpx/_content.py", line 179, in encode_json
+    ).encode("utf-8")
+UnicodeEncodeError: 'utf-8' codec can't encode characters in position 268-271: surrogates not allowed
+
+
+=== STDOUT ===
+A
