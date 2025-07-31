@@ -8,6 +8,7 @@ This module provides abstract interfaces and concrete implementations for differ
 import os
 import logging
 import time
+import re
 from abc import ABC, abstractmethod
 from typing import Optional
 from dotenv import load_dotenv
@@ -51,12 +52,14 @@ class OpenAIInterface(LLMInterface):
         model: str = LLMConfig.DEFAULT_OPENAI_MODEL,
         api_key: Optional[str] = None,
         max_retries: int = 5,
+        base_delay: float = 1.0,
     ):
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key not provided")
         self.max_retries = max_retries
+        self.base_delay = base_delay
 
     def _extract_thinking(self, response) -> Optional[str]:
         """Extract thinking from the response, if any"""
@@ -67,6 +70,25 @@ class OpenAIInterface(LLMInterface):
             for summary in output_item.summary:
                 summaries.append(summary.text)
         return "\n\n".join(summaries) if summaries else None
+
+    def _extract_wait_time_from_error(self, e: Exception) -> Optional[float]:
+        """Extract wait time from OpenAI rate limit error message"""
+        if not isinstance(e, openai.RateLimitError):
+            return None
+
+        error_msg = str(e)
+        # Look for pattern like "Please try again in 5.279s" or "Please try again in 107ms"
+        match = re.search(r"Please try again in (\d+(?:\.\d+)?)(s|ms)", error_msg)
+        if match:
+            time_value = float(match.group(1))
+            time_unit = match.group(2)
+            if time_unit == "ms":
+                # Convert milliseconds to seconds
+                return time_value / 1000.0
+            else:
+                # Already in seconds
+                return time_value
+        return None
 
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         client = openai.OpenAI(api_key=self.api_key)
@@ -81,7 +103,13 @@ class OpenAIInterface(LLMInterface):
                         reasoning={"summary": "detailed", "effort": "low"},
                         max_output_tokens=1_000_000,  # Make this higher than we expect it to use
                     )
-                    break
+
+                # Use the output_text property for the actual response
+                return LLMResponse(
+                    content=response.output_text,
+                    thinking=self._extract_thinking(response),
+                )
+
             except openai.BadRequestError as e:
                 # This may be due to the prompt being flagged as unsafe.
                 # We can just retry immediately in this case.
@@ -91,10 +119,25 @@ class OpenAIInterface(LLMInterface):
                 )
                 continue
 
-        # Use the output_text property for the actual response
-        return LLMResponse(
-            content=response.output_text, thinking=self._extract_thinking(response)
-        )
+            except openai.RateLimitError as e:
+                if attempt == self.max_retries - 1:
+                    raise
+
+                # Extract wait time from error message if available
+                wait_time = self._extract_wait_time_from_error(e)
+                if wait_time is None:
+                    # Use exponential backoff if we can't extract wait time
+                    wait_time = self.base_delay * (2**attempt)
+
+                logging.warning(
+                    f"Failed to generate response from {self.model}: {e}\n"
+                    f"Retrying in {wait_time} seconds "
+                    f"(determined from {'rate limit error message' if self._extract_wait_time_from_error(e) else 'exponential backoff'})... "
+                    f"(attempt {attempt + 1}/{self.max_retries})"
+                )
+                time.sleep(wait_time)
+
+        raise RuntimeError("Unreachable")
 
     def get_model_info(self) -> str:
         return f"openai/{self.model}"
@@ -317,6 +360,9 @@ class LLMFactory:
         "gpt-3.5-turbo": "openai",
         "o1": "openai",
         "o1-mini": "openai",
+        "o3": "openai",
+        "o3-mini": "openai",
+        "o4-mini": "openai",
         # Anthropic models
         "claude-opus-4-20250514": "anthropic",
         "claude-sonnet-4-20250514": "anthropic",
