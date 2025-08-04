@@ -1,0 +1,129 @@
+=== Scaffold Execution Log ===
+Model: anthropic/claude-3-5-haiku-latest
+Timestamp: 20250731_174140
+
+=== INPUT ===
+Original prompt: clearvars;
+set(gcf, 'renderer', 'opengl');
+if isempty(gcp('nocreate'))
+    parpool;
+end
+
+% Simulation domain and grid creation
+Lx = 0.42; % length in meters
+Ly = 0.36; % width in meters
+nx = 420; % number of grid points in x
+ny = 360; % number of grid points in y
+x = linspace(0, Lx, nx);
+y = linspace(0, Ly, ny);
+[X, Y] = meshgrid(x, y);
+
+% Wave parameters
+g = 9.84; % acceleration due to gravity in m/s^2
+wavelength = 0.03; % wavelength in meters
+wave_speed = sqrt(g * wavelength / (2 * pi)); % deep water wave speed
+
+% Time-stepping parameters
+dt = 0.01; % time step in seconds
+t_end = 10; % end time in seconds
+t = 0:dt:t_end; % time vector
+
+% Initialize wave field
+u = zeros(ny, nx);
+
+% Loading texture image
+textureImage = imread('seatexture25.jpg');
+
+% Initialize plot for animation
+figure;
+insta_surface = surf(X, Y, u, 'EdgeColor', 'none', 'FaceColor', 'texturemap', 'CData', textureImage);
+axis([0 Lx 0 Ly -0.01 0.01]);
+ax = gca;
+ax.XColor = 'blue';
+ax.YColor = 'blue';
+ax.ZColor = 'blue';
+title('Wind-induced water waves', 'Color', 'blue');
+xlabel('Fetch (m)', 'Color', 'blue');
+ylabel('Cross-fetch (m)', 'Color', 'blue');
+zlabel('Elevation (m)', 'Color', 'blue');
+lightangle(-45, 80);
+lighting phong;
+material shiny;
+shading interp;
+
+% Time-stepping loop
+for ti = t
+    % Add new wavelets periodically
+    if mod(ti, 1) == 0 % Adjust the modulus value to control frequency of new wavelets
+        num_wavelets = 18; % Number of wavelets
+        amplitude = 0.001; % Amplitude of the wavelets
+        for i = 1:num_wavelets
+            % Random position for the center of the wavelet
+            x_center = rand() * Lx;
+            y_center = rand() * Ly;
+
+            % Random length for the wavelet in the y-direction, not exceeding 20 cm
+            wavelet_length_y = min(rand() * (Ly / 2), 0.18); % Up to half the tank width or 18 cm
+
+            % Create a wavelet with an elongated Gaussian profile
+            sigma_x = wavelength / 2; % Standard deviation in x
+            sigma_y = wavelet_length_y / 2; % Standard deviation in y
+
+            % Only create wavelets if they are not longer in x than in y
+            if sigma_x <= sigma_y
+                u = u + amplitude * exp(-((X - x_center).^2 / (2 * sigma_x^2) + (Y - y_center).^2 / (2 * sigma_y^2)));
+            end
+        end
+    end
+    
+    % Move the wavelets
+    u = circshift(u, [0, round(wave_speed * dt * nx / Lx)]); % Shift the wavelets to the right
+    
+    % Damping (to simulate wavelets disappearing)
+    u = u * exp(-dt/2); % Exponential decay of the wavelets
+    
+    % Update the surface plot with the new data
+    set(insta_surface, 'ZData', u);
+    title(sprintf('Time: %0.2f seconds', ti), 'Color', 'blue');
+    drawnow;
+    
+    % Pause briefly to control the speed of the animation
+    % pause(0.1);
+end
+
+% Close parallel pool (if opened earlier)
+delete(gcp('nocreate'));
+
+Response A:
+The code you provided is a MATLAB script for simulating wind-induced water waves. 
+
+It creates a 2D simulation domain with a specified length and width, and a grid with a specified number of points. Wavelength, wave speed, and acceleration due to gravity are set as wave parameters.
+
+The simulation runs in a time-stepping loop. At each time step, the code adds new wavelets to the wave field. The position and shape of each wavelet are randomly determined. Then, the wavelets are moved to the right, simulating the wave propagation. 
+
+Wavelets also decay exponentially over time, simulating the damping or disappearance of the waves. The updated wave field is visualized in a 3D surface plot, which is updated at each time step. 
+
+The code also controls the speed of the animation by pausing briefly at each time step. 
+
+Finally, the parallel pool is closed if it was opened earlier.
+
+The code uses the image 'seatexture25.jpg' as a texture for the 3D visualization of the waves, you need to make sure this image is in your path or adjust the code to use a different image or no image at all.
+
+This script will not work in a text-based environment as it requires a graphical interface for rendering the animation. Also, it requires a Parallel Computing Toolbox for MATLAB to run.
+
+Response B:
+This code simulates the evolution of wind-induced water waves in a 2D tank. The simulation domain has dimensions 0.42m x 0.36m, and the grid has 420 points in the x-direction and 360 points in the y-direction. The simulation runs for 10 seconds with a time step of 0.01 seconds.
+
+In this simulation, wavelets are added periodically with a random position, amplitude, and length. The wavelets are moved to the right with a speed based on the wave speed and the time step. The wavelets are also damped over time to simulate wavelets disappearing.
+
+The code also creates an animated plot of the wave field using a texture image called 'seatexture25.jpg'. The plot updates at each time step, showing the wavelets moving and changing over time.
+
+Finally, the code uses parallel processing with a parallel pool to speed up the simulation if a parallel pool is available.
+
+Which response was preferred? Write "Answer: A" or "Answer: B".
+
+=== STDOUT ===
+A
+
+=== STDERR ===
+2025-08-01 00:41:47,474 [INFO] Evaluation result: A
