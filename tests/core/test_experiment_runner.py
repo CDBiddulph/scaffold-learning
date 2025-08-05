@@ -114,6 +114,7 @@ class TestExperimentRunner:
         model_spec,
         timeout=120,
         console_output=False,
+        thinking_budget_tokens=0,
     ):
         # Create a mock execution log that mimics what would be saved
         execution_log = f"""=== Scaffold Execution Log ===
@@ -230,7 +231,7 @@ Execution completed successfully
             "scaffold_learning.core.experiment_runner.evolve_scaffold",
             mock_evolve,
         ), patch(
-            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=self._mock_execute,
         ):
             runner.run()
@@ -338,9 +339,10 @@ Execution completed successfully
             model_spec,
             timeout=120,
             console_output=False,
+            thinking_budget_tokens=0,
         ):
             # Extract scaffold_id from the scaffold_dir path
-            scaffold_id = scaffold_dir.name
+            scaffold_id = Path(scaffold_dir).name
 
             # For scaffold "0": always return correct answer
             # For scaffold "1": return correct answer 50% of the time
@@ -388,7 +390,7 @@ Execution completed successfully
             "scaffold_learning.core.experiment_runner.evolve_scaffold",
             side_effect=mock_evolve_func,
         ), patch(
-            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=mock_execute_custom,
         ):
             runner.run()
@@ -561,7 +563,7 @@ Execution completed successfully
             "scaffold_learning.core.experiment_runner.evolve_scaffold",
             mock_evolve,
         ), patch(
-            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=self._mock_execute,
         ):
             runner.run()
@@ -653,13 +655,14 @@ Execution completed successfully
             model_spec,
             timeout=120,
             console_output=False,
+            thinking_budget_tokens=0,
         ):
             # Extract scaffold_id from the scaffold_dir path
-            scaffold_id = scaffold_dir.name
+            scaffold_id = Path(scaffold_dir).name
             # Extract iteration from the log_file_path
-            iteration = int(log_file_path.parent.parent.name)
+            iteration = int(Path(log_file_path).parent.parent.name)
             # Extract run_type (train/valid) from log file name
-            log_filename = log_file_path.stem  # e.g., "1_train" or "2_valid"
+            log_filename = Path(log_file_path).stem  # e.g., "1_train" or "2_valid"
             run_type = "valid" if "valid" in log_filename else "train"
             return ScaffoldExecutionResult(
                 output=f"{scaffold_id}:{iteration}:{run_type}",  # Include run_type for scoring
@@ -712,7 +715,7 @@ Execution completed successfully
         ), patch(
             "scaffold_learning.core.experiment_runner.evolve_scaffold", mock_evolve
         ), patch(
-            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=mock_execute_func,
         ):
             runner.run()
@@ -842,9 +845,10 @@ Execution completed successfully
             model_spec,
             timeout=120,
             console_output=False,
+            thinking_budget_tokens=0,
         ):
-            scaffold_id = scaffold_dir.name
-            iteration = int(log_file_path.parent.parent.name)
+            scaffold_id = Path(scaffold_dir).name
+            iteration = int(Path(log_file_path).parent.parent.name)
             return ScaffoldExecutionResult(
                 output=f"{scaffold_id}:{iteration}",
                 stderr="",
@@ -893,7 +897,7 @@ Execution completed successfully
             "scaffold_learning.core.experiment_runner.evolve_scaffold",
             side_effect=mock_evolve_func,
         ), patch(
-            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=mock_execute_func,
         ):
             best_scaffold_id, best_score = runner.run()
@@ -1070,7 +1074,7 @@ Execution completed successfully
             "scaffold_learning.core.experiment_runner.evolve_scaffold",
             return_value=mock_scaffold_result,
         ), patch(
-            "scaffold_learning.core.experiment_runner.execute_scaffold",
+            "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=self._mock_execute,
         ):
             best_scaffold_id, best_score = runner.run()

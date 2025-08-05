@@ -6,10 +6,15 @@ import json
 import threading
 import queue
 import logging
+import concurrent.futures
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, TextIO
-from scaffold_learning.core.data_structures import ScaffoldExecutionResult
+from typing import Optional, TextIO, List, Dict, Any, Callable, Union, Tuple
+from concurrent.futures import Future
+from scaffold_learning.core.data_structures import (
+    ScaffoldExecutionResult,
+    ScaffoldExecutionTask,
+)
 from scaffold_learning.core.llm_interfaces import LLMFactory
 
 
@@ -306,7 +311,7 @@ def _stream_process_output(
     return stdout, stderr
 
 
-def execute_scaffold(
+def _execute_scaffold(
     scaffold_dir: Path,
     log_file_path: Path,
     input_string: str,
@@ -353,6 +358,10 @@ def execute_scaffold(
     stderr = ""
 
     # Execute the scaffold
+    # TODO: The execution time measurement includes Docker container startup overhead,
+    # which can be severe when running many containers in parallel (e.g., 29x slowdown
+    # observed with parallel execution due to resource contention). Consider measuring
+    # execution time inside the container to get more accurate timing.
     start_time = time.time()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -419,3 +428,150 @@ def execute_scaffold(
         error_message=error_message,
         execution_time=execution_time,
     )
+
+
+def _execute_single_task(task: ScaffoldExecutionTask) -> ScaffoldExecutionResult:
+    """Execute a single scaffold task and return result.
+
+    Args:
+        task: ScaffoldExecutionTask to execute
+
+    Returns:
+        ScaffoldExecutionResult with execution output and metadata
+    """
+    try:
+        result = _execute_scaffold(
+            scaffold_dir=Path(task.scaffold_dir),
+            log_file_path=Path(task.log_file_path),
+            input_string=task.input_string,
+            model_spec=task.model_spec,
+            timeout=task.timeout,
+            console_output=task.console_output,
+            thinking_budget_tokens=task.thinking_budget_tokens,
+        )
+        return result
+    except Exception as e:
+        # Create an error result instead of raising
+        return ScaffoldExecutionResult(
+            output="",
+            stderr=str(e),
+            error_message=f"Execution failed: {str(e)}",
+            execution_time=0.0,
+        )
+
+
+def _collect_results_with_progress(
+    futures: List[Future[ScaffoldExecutionResult]],
+    total_tasks: int,
+    max_workers: int,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+) -> List[ScaffoldExecutionResult]:
+    """Collect results from futures with progress tracking and error handling.
+
+    Args:
+        futures: List of futures to collect results from
+        total_tasks: Total number of tasks for progress tracking
+        max_workers: Number of parallel workers for logging decisions
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        List of ScaffoldExecutionResult objects in order
+    """
+    results = []
+    errors = []
+    completed = 0
+
+    # Process futures in order to maintain result order
+    for i, future in enumerate(futures):
+        try:
+            result = future.result()
+            results.append(result)
+            completed += 1
+
+            # Call progress callback if provided
+            if progress_callback:
+                progress_callback(completed, total_tasks)
+
+            # Log progress for parallel execution
+            if max_workers > 1 and completed % 10 == 0:
+                logging.info(
+                    f"Completed scaffold execution ({completed}/{total_tasks})"
+                )
+
+            # Track errors but don't stop execution
+            if result.error_message:
+                errors.append((i, result.error_message))
+
+        except Exception as e:
+            error_msg = f"Task {i} failed with exception: {str(e)}"
+            logging.error(error_msg)
+            errors.append((i, error_msg))
+            # Still need to put something in results to maintain order
+            results.append(
+                ScaffoldExecutionResult(
+                    output="",
+                    stderr=str(e),
+                    error_message=error_msg,
+                    execution_time=0.0,
+                )
+            )
+            completed += 1
+            if progress_callback:
+                progress_callback(completed, total_tasks)
+
+    # Log summary of errors if any occurred
+    _log_execution_errors(errors, total_tasks)
+
+    return results
+
+
+def _log_execution_errors(errors: List[Tuple[int, str]], total_tasks: int) -> None:
+    """Log summary of execution errors.
+
+    Args:
+        errors: List of (task_index, error_message) tuples
+        total_tasks: Total number of tasks executed
+    """
+    if not errors:
+        return
+
+    logging.warning(f"Completed with {len(errors)} errors out of {total_tasks} tasks")
+    for index, error in errors[:5]:  # Show first 5 errors
+        logging.warning(f"  Task {index}: {error}")
+    if len(errors) > 5:
+        logging.warning(f"  ... and {len(errors) - 5} more errors")
+
+
+def execute_scaffolds(
+    tasks: List[ScaffoldExecutionTask],
+    max_workers: int = 1,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+) -> List[ScaffoldExecutionResult]:
+    """Execute multiple scaffold tasks using ThreadPoolExecutor.
+
+    Args:
+        tasks: List of ScaffoldExecutionTask objects
+        max_workers: Maximum number of parallel executions (default 1 for sequential)
+        progress_callback: Optional callback function that receives (completed_count, total_count)
+
+    Returns:
+        List of ScaffoldExecutionResult objects in order
+    """
+    total_tasks = len(tasks)
+
+    # Log execution mode
+    if max_workers > 1:
+        logging.info(
+            f"Executing {total_tasks} scaffolds (up to {max_workers} in parallel)"
+        )
+    else:
+        logging.info(f"Executing {total_tasks} scaffolds sequentially")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        futures = [executor.submit(_execute_single_task, task) for task in tasks]
+
+        # Wait for all futures and collect results
+        return _collect_results_with_progress(
+            futures, total_tasks, max_workers, progress_callback
+        )

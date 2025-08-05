@@ -150,3 +150,26 @@ class ScaffoldRunData:
     example: DatasetExample
     actual_output: str
     score: float
+
+
+@dataclass
+class ScaffoldExecutionTask:
+    """Parameters for executing a scaffold.
+
+    Attributes:
+        scaffold_dir: Path to the scaffold directory
+        log_file_path: Path to write execution logs
+        input_string: Input to pass to the scaffold
+        model_spec: Model specification for the executor
+        timeout: Maximum execution time in seconds
+        console_output: If True, print output to console
+        thinking_budget_tokens: Budget for thinking tokens
+    """
+
+    scaffold_dir: str
+    log_file_path: str
+    input_string: str
+    model_spec: str
+    timeout: int = 120
+    console_output: bool = False
+    thinking_budget_tokens: int = 0

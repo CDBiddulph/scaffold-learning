@@ -599,16 +599,16 @@ class TestIntegrationWorkflows:
 
     @patch("scaffold_learning.cli.make_and_run.LLMFactory")
     @patch("scaffold_learning.cli.make_and_run.build_docker_image")
-    @patch("scaffold_learning.cli.make_and_run.execute_scaffold")
+    @patch("scaffold_learning.cli.make_and_run.execute_scaffolds")
     def test_make_run_baseline_workflow(
         self, mock_execute, mock_docker, mock_llm_factory
     ):
         """Test creating and running a baseline scaffold."""
         # Setup mocks
         mock_docker.return_value = None
-        mock_execute.return_value = Mock(
+        mock_execute.return_value = [Mock(
             output="test output", error_message=None, execution_time=1.5
-        )
+        )]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create test data files

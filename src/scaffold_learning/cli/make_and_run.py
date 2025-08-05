@@ -24,7 +24,8 @@ from scaffold_learning.core.scaffold_generation import (
     make_prompt_only_scaffold,
     generate_scaffold,
 )
-from scaffold_learning.core.scaffold_execution import execute_scaffold
+from scaffold_learning.core.scaffold_execution import execute_scaffolds
+from scaffold_learning.core.data_structures import ScaffoldExecutionTask
 from scaffold_learning.core.scaffold_files import save_scaffold
 from scaffold_learning.core.docker_utils import build_docker_image
 from scaffold_learning.core.llm_interfaces import LLMFactory, LLMInterface
@@ -62,6 +63,7 @@ class ScaffoldConfig:
     no_build: bool = False
     executor_thinking_budget: Optional[int] = None
     console_output: bool = False
+    max_execute_workers: int = 1
 
 
 def parse_args(argv: Optional[List[str]] = None) -> ScaffoldConfig:
@@ -171,6 +173,12 @@ Examples:
         action="store_true",
         help="Enable console output during scaffold execution",
     )
+    parser.add_argument(
+        "--max-execute-workers",
+        type=int,
+        default=1,
+        help="Maximum workers for parallel scaffold execution (default: 1)",
+    )
 
     args = parser.parse_args(remaining_args)
 
@@ -202,6 +210,7 @@ Examples:
         "timeout",
         "no_build",
         "console_output",
+        "max_execute_workers",
     ]:
         setattr(config, attr, getattr(args, attr, None))
 
@@ -472,15 +481,19 @@ def _run_scaffold(
         assert config.executor_model is not None
         assert config.timeout is not None
         assert config.executor_thinking_budget is not None
-        result = execute_scaffold(
-            scaffold_dir=scaffold_dir,
-            log_file_path=log_path,
+
+        task = ScaffoldExecutionTask(
+            scaffold_dir=str(scaffold_dir),
+            log_file_path=str(log_path),
             input_string=single_input,
             model_spec=config.executor_model,
             timeout=config.timeout,
             console_output=True,
             thinking_budget_tokens=config.executor_thinking_budget,
         )
+
+        execution_results = execute_scaffolds([task], max_workers=1)
+        result = execution_results[0]
 
         results["mode"] = "single"
         results["output"] = result.output
@@ -507,28 +520,45 @@ def _run_scaffold(
         # Create scoring function
         scoring_fn = create_scoring_function(config.domain)
 
-        # Run evaluation
+        # Prepare execution tasks
+        execution_tasks = []
+        for i, example in enumerate(test_sample):
+            log_path = run_dir / f"{i}.log"
+            execution_tasks.append(
+                ScaffoldExecutionTask(
+                    scaffold_dir=str(scaffold_dir),
+                    log_file_path=str(log_path),
+                    input_string=example.input,
+                    model_spec=config.executor_model,
+                    timeout=config.timeout,
+                    console_output=config.console_output,
+                    thinking_budget_tokens=config.executor_thinking_budget,
+                )
+            )
+
+        # Define progress callback
+        def progress_callback(completed: int, total: int):
+            print(f"Evaluated {completed}/{total} examples", end="\r", flush=True)
+
+        # Execute all tasks
+        assert config.executor_model is not None
+        assert config.timeout is not None
+        assert config.executor_thinking_budget is not None
+        results_list = execute_scaffolds(
+            execution_tasks=execution_tasks,
+            max_workers=config.max_execute_workers,
+            progress_callback=(
+                progress_callback if config.max_execute_workers > 1 else None
+            ),
+        )
+        print()  # New line after progress updates
+
+        # Process results
         scores = []
         execution_times = []
         outputs = []
 
-        for i, example in enumerate(test_sample):
-            print(f"Running example {i+1}/{len(test_sample)}...", end="", flush=True)
-
-            log_path = run_dir / f"{i}.log"
-            assert config.executor_model is not None
-            assert config.timeout is not None
-            assert config.executor_thinking_budget is not None
-            result = execute_scaffold(
-                scaffold_dir=scaffold_dir,
-                log_file_path=log_path,
-                input_string=example.input,
-                model_spec=config.executor_model,
-                timeout=config.timeout,
-                console_output=config.console_output,
-                thinking_budget_tokens=config.executor_thinking_budget,
-            )
-
+        for i, (example, result) in enumerate(zip(test_sample, results_list)):
             # Score the result
             if result.error_message is None:
                 score = scoring_fn(result.output, example.scoring_data)
@@ -547,7 +577,8 @@ def _run_scaffold(
                 }
             )
 
-            print(f" score: {score:.3f}")
+            if config.max_execute_workers == 1:
+                print(f"Example {i+1}/{len(test_sample)}: score {score:.3f}")
 
         # Calculate statistics
         results["mode"] = "evaluation"

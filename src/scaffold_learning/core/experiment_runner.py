@@ -9,6 +9,7 @@ import concurrent.futures
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldRunData,
+    ScaffoldExecutionTask,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.experiment_files import ExperimentFileManager
@@ -17,7 +18,7 @@ from scaffold_learning.core.scaffold_generation import (
     evolve_scaffold,
 )
 from scaffold_learning.core.scaffold_execution import (
-    execute_scaffold,
+    execute_scaffolds,
     ScaffoldExecutionResult,
 )
 from scaffold_learning.core.dataset_utils import ExampleSampler
@@ -46,6 +47,7 @@ class ExperimentRunner:
         valid_seed: Optional[int] = None,
         scaffold_timeout: int = 120,
         max_generate_workers: int = 1,
+        max_execute_workers: int = 1,
     ):
         """Initialize an experiment runner.
 
@@ -68,6 +70,7 @@ class ExperimentRunner:
             valid_seed: Seed for validation examples
             scaffold_timeout: Timeout in seconds for scaffold execution
             max_generate_workers: Maximum concurrent scaffold generation workers (default 1 for sequential)
+            max_execute_workers: Maximum concurrent scaffold execution workers (default 1 for sequential)
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -90,6 +93,7 @@ class ExperimentRunner:
         self.suggest_hack = suggest_hack
         self.scaffold_timeout = scaffold_timeout
         self.max_generate_workers = max_generate_workers
+        self.max_execute_workers = max_execute_workers
 
         self.train_random = random.Random(train_seed)
         self.valid_sampler = ExampleSampler(
@@ -255,6 +259,7 @@ class ExperimentRunner:
         iteration: int,
         scaffold_ids: List[str],
         validation_sample: List[DatasetExample],
+        max_workers: Optional[int] = None,
     ) -> Dict[str, List[float]]:
         """Validate a list of scaffolds and return their scores.
 
@@ -262,14 +267,23 @@ class ExperimentRunner:
             iteration: Current iteration number
             scaffold_ids: List of scaffold IDs to validate
             validation_sample: Validation examples to use
+            max_workers: Maximum workers for parallel scaffold execution.
+                If None, uses self.max_execute_workers
 
         Returns:
             Dictionary mapping scaffold_id to list of validation scores
         """
+        if max_workers is None:
+            max_workers = self.max_execute_workers
+
         validation_scores = {}
         for scaffold_id in scaffold_ids:
             scores = self._run_scaffold_on_examples(
-                iteration, scaffold_id, validation_sample, "valid"
+                iteration,
+                scaffold_id,
+                validation_sample,
+                "valid",
+                max_workers=max_workers,
             )
             validation_scores[scaffold_id] = scores
         return validation_scores
@@ -499,47 +513,6 @@ class ExperimentRunner:
 
         return scaffold_ids
 
-    def _execute_and_score_scaffold(
-        self,
-        iteration: int,
-        scaffold_id: str,
-        example: DatasetExample,
-        log_type: str,
-    ) -> Tuple[ScaffoldExecutionResult, float]:
-        """Execute a scaffold on a single example and return the score and execution result.
-
-        Args:
-            iteration: Current iteration number (where to save logs)
-            scaffold_id: ID of scaffold to execute
-            example: Example to test the scaffold on
-            log_type: Type of log ("train" or "valid")
-
-        Returns:
-            Tuple of (execution_result, score)
-        """
-        # Execute scaffold
-        result = execute_scaffold(
-            scaffold_dir=self.file_manager.get_scaffold_dir(scaffold_id),
-            log_file_path=self.file_manager.get_new_execution_log_path(
-                iteration, scaffold_id, log_type
-            ),
-            input_string=example.input,
-            model_spec=self.executor_model,
-            timeout=self.scaffold_timeout,
-            console_output=False,
-        )
-
-        # Calculate score
-        if result.error_message is None:
-            score = self.scoring_fn(result.output, example.scoring_data)
-        else:
-            logging.warning(
-                f"Scaffold {scaffold_id} failed to execute: {result.error_message}"
-            )
-            score = 0.0  # Failed execution gets 0 score
-
-        return result, score
-
     def _log_scaffold_scores(
         self, scaffold_id: str, scores: List[float], log_type: str
     ) -> None:
@@ -554,6 +527,91 @@ class ExperimentRunner:
             f"Scaffold {scaffold_id} {log_type_str} score{maybe_s}: {scores_str}{average_str}"
         )
 
+    def _prepare_execution_tasks(
+        self,
+        iteration: int,
+        scaffold_id: str,
+        examples: List[DatasetExample],
+        log_type: str,
+    ) -> List[ScaffoldExecutionTask]:
+        """Create ScaffoldExecutionTask objects for a list of examples.
+
+        Args:
+            iteration: Current iteration number (where to save logs)
+            scaffold_id: ID of scaffold to run
+            examples: Examples to test the scaffold on
+            log_type: Type of log ("train" or "valid")
+
+        Returns:
+            List of ScaffoldExecutionTask objects
+        """
+        tasks = []
+        for example in examples:
+            task = ScaffoldExecutionTask(
+                scaffold_dir=str(self.file_manager.get_scaffold_dir(scaffold_id)),
+                log_file_path=str(
+                    self.file_manager.get_new_execution_log_path(
+                        iteration, scaffold_id, log_type
+                    )
+                ),
+                input_string=example.input,
+                model_spec=self.executor_model,
+                timeout=self.scaffold_timeout,
+                console_output=False,
+                thinking_budget_tokens=0,
+            )
+            tasks.append(task)
+        return tasks
+
+    def _process_execution_results(
+        self,
+        scaffold_id: str,
+        examples: List[DatasetExample],
+        execution_results: List[ScaffoldExecutionResult],
+        run_data_list: Optional[List[ScaffoldRunData]] = None,
+        scaffold_code: Optional[str] = None,
+    ) -> List[float]:
+        """Score execution results and optionally create ScaffoldRunData.
+
+        Args:
+            scaffold_id: ID of scaffold that was executed
+            examples: Examples that were tested
+            execution_results: Results from scaffold execution
+            run_data_list: Optional list to append ScaffoldRunData to
+            scaffold_code: Required if run_data_list is provided
+
+        Returns:
+            List of scores in order of examples
+        """
+        scores = []
+        for example, result in zip(examples, execution_results):
+            # Calculate score
+            if result.error_message is None:
+                score = self.scoring_fn(result.output, example.scoring_data)
+            else:
+                logging.warning(
+                    f"Scaffold {scaffold_id} failed to execute: {result.error_message}"
+                )
+                score = 0.0  # Failed execution gets 0 score
+
+            scores.append(score)
+
+            # For training, create ScaffoldRunData
+            if run_data_list is not None:
+                if scaffold_code is None:
+                    raise ValueError("Scaffold code is required for ScaffoldRunData")
+                run_data_list.append(
+                    ScaffoldRunData(
+                        code=scaffold_code,
+                        execution_log=result.stderr,
+                        example=example,
+                        actual_output=result.output,
+                        score=score,
+                    )
+                )
+
+        return scores
+
     def _run_scaffold_on_examples(
         self,
         iteration: int,
@@ -562,6 +620,7 @@ class ExperimentRunner:
         log_type: str,
         run_data_list: Optional[List[ScaffoldRunData]] = None,
         scaffold_code: Optional[str] = None,
+        max_workers: int = 1,
     ) -> List[float]:
         """Run a scaffold on examples and return scores and run data.
 
@@ -572,31 +631,23 @@ class ExperimentRunner:
             log_type: Type of log ("train" or "valid")
             run_data_list: List of ScaffoldRunData to append to. Requires scaffold_code.
             scaffold_code: Scaffold code to use for ScaffoldRunData.
+            max_workers: Maximum workers for parallel execution of examples
 
         Returns:
             A list of scores, in order of examples
         """
-        scores = []
+        # Prepare execution tasks
+        tasks = self._prepare_execution_tasks(
+            iteration, scaffold_id, examples, log_type
+        )
 
-        for example in examples:
-            execution_result, score = self._execute_and_score_scaffold(
-                iteration, scaffold_id, example, log_type
-            )
-            scores.append(score)
+        # Execute all tasks
+        execution_results = execute_scaffolds(tasks, max_workers=max_workers)
 
-            # For training, create ScaffoldRunData
-            if run_data_list is not None:
-                if scaffold_code is None:
-                    raise ValueError("Scaffold code is required for ScaffoldRunData")
-                run_data_list.append(
-                    ScaffoldRunData(
-                        code=scaffold_code,
-                        execution_log=execution_result.stderr,
-                        example=example,
-                        actual_output=execution_result.output,
-                        score=score,
-                    )
-                )
+        # Process results and calculate scores
+        scores = self._process_execution_results(
+            scaffold_id, examples, execution_results, run_data_list, scaffold_code
+        )
 
         # Log scores
         self._log_scaffold_scores(scaffold_id, scores, log_type)
@@ -649,6 +700,7 @@ class ExperimentRunner:
                 "train",
                 scaffold_code=scaffold_result.code,
                 run_data_list=training_runs[scaffold_id],
+                max_workers=self.max_execute_workers,
             )
 
         return training_runs
