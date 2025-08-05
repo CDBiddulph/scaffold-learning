@@ -4,7 +4,9 @@ from typing import Callable, Dict
 
 from scaffold_learning.domains.crosswords.score.score import score as score_crosswords
 from scaffold_learning.domains.mcq.score import score as score_mcq
-from scaffold_learning.domains.human_preference.score import score as score_human_preference
+from scaffold_learning.domains.human_preference.score import (
+    score as score_human_preference,
+)
 
 
 def create_scoring_function(domain: str) -> Callable[[str, Dict], float]:

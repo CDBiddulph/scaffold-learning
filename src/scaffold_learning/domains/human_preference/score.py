@@ -9,11 +9,11 @@ from ..scoring_utils import score_letter_choice
 
 def score(expected_preference: str, attempted_response: str) -> float:
     """Score a preference response against the expected preference.
-    
+
     Args:
         expected_preference: The correct preference ("A" or "B")
         attempted_response: The response text containing the attempted answer
-        
+
     Returns:
         1.0 if correct, 0.0 if incorrect or no answer extracted
     """
@@ -22,11 +22,11 @@ def score(expected_preference: str, attempted_response: str) -> float:
 
 def _load_expected_preference(file_path: str, example_id: str) -> str:
     """Load expected preference from JSONL file for a specific example.
-    
+
     Args:
         file_path: Path to the JSONL file
         example_id: ID of the example to find
-        
+
     Returns:
         Expected preference string
     """
@@ -35,7 +35,7 @@ def _load_expected_preference(file_path: str, example_id: str) -> str:
             data = json.loads(line.strip())
             if data.get("id") == example_id:
                 return data["scoring_data"]["correct_answer"]
-    
+
     raise ValueError(f"Example '{example_id}' not found in JSONL file")
 
 
@@ -44,7 +44,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Score a human preference response against the expected preference",
     )
-    
+
     parser.add_argument("expected_file", help="JSONL file with expected preferences")
     parser.add_argument("attempted_response", help="Text file with attempted response")
     parser.add_argument(
@@ -53,16 +53,16 @@ def main():
         required=True,
         help="Example ID to score",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Load expected preference
     expected_preference = _load_expected_preference(args.expected_file, args.example)
-    
+
     # Load attempted response
     with open(args.attempted_response, "r", encoding="utf-8") as f:
         attempted_response = f.read()
-    
+
     # Score the response
     result = score(expected_preference, attempted_response)
     print(f"Score: {result:.1f}")
