@@ -7,6 +7,7 @@ import threading
 import queue
 import logging
 import concurrent.futures
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, TextIO, List, Dict, Any, Callable, Union, Tuple
@@ -25,6 +26,7 @@ def _build_docker_command(
     python_script: str,
     interactive: bool = False,
     thinking_budget_tokens: int = 0,
+    results_dir: Optional[Path] = None,
 ) -> list[str]:
     """Build the Docker command with all necessary flags and environment variables."""
     docker_cmd = ["docker", "run", "--rm"]
@@ -41,6 +43,15 @@ def _build_docker_command(
             f"{os.getuid()}:{os.getgid()}",
             "-v",
             f"{scaffold_dir.absolute()}:/workspace/scaffold:ro",
+        ]
+    )
+
+    # Add results directory mount if provided
+    if results_dir:
+        docker_cmd.extend(["-v", f"{results_dir.absolute()}:/workspace/results:rw"])
+
+    docker_cmd.extend(
+        [
             "--read-only",
             "--tmpfs",
             "/tmp:size=100M,noexec",
@@ -112,6 +123,7 @@ import sys
 import logging
 import json
 import os
+import time
 from datetime import datetime
 
 # Configure logging
@@ -137,13 +149,19 @@ try:
     
     # Suppress all logging except from root logger
     with suppress_all_except_root():
-        # Run the scaffold - any logging.info/debug calls will show
+        # Measure execution time inside container (excluding Docker overhead)
+        start_time = time.time()
         result = process_input(input_string)
-        print(result)
-
-    # TODO: consider saving the result to a file, we'll have to get the filename though
-    # with open('/workspace/logs/train_0.txt', 'w') as f:
-    #     f.write(result)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # Save results to file for clean parsing
+        results_data = {{
+            "output": result,
+            "execution_time": execution_time
+        }}
+        with open('/workspace/results/results.json', 'w') as f:
+            json.dump(results_data, f)
         
 except Exception as e:
     logging.error(f'Error occurred: {{str(e)}}', exc_info=True)
@@ -343,6 +361,11 @@ def _execute_scaffold(
         model_spec=model_spec,
     )
 
+    # Create temporary directory for results
+    results_dir = None
+    if not is_interactive:
+        results_dir = Path(tempfile.mkdtemp())
+
     # Build Docker command
     docker_cmd = _build_docker_command(
         scaffold_dir=scaffold_dir,
@@ -351,6 +374,7 @@ def _execute_scaffold(
         python_script=python_script,
         interactive=is_interactive,
         thinking_budget_tokens=thinking_budget_tokens,
+        results_dir=results_dir,
     )
 
     error_message = None
@@ -358,11 +382,6 @@ def _execute_scaffold(
     stderr = ""
 
     # Execute the scaffold
-    # TODO: The execution time measurement includes Docker container startup overhead,
-    # which can be severe when running many containers in parallel (e.g., 29x slowdown
-    # observed with parallel execution due to resource contention). Consider measuring
-    # execution time inside the container to get more accurate timing.
-    start_time = time.time()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Write to the log file with live streaming
@@ -419,11 +438,33 @@ def _execute_scaffold(
         if error_message:
             log_file.write(f"\n=== ERROR ===\n{error_message}\n")
 
-    end_time = time.time()
-    execution_time = end_time - start_time
+    # Read results from file (for non-interactive mode)
+    execution_time = 0.0
+    final_output = stdout.strip() if stdout else ""
+    warning_message = None
+
+    if results_dir and not error_message:
+        results_file = results_dir / "results.json"
+        try:
+            with open(results_file, "r") as f:
+                results_data = json.load(f)
+                final_output = results_data["output"]
+                execution_time = results_data["execution_time"]
+        except Exception as e:
+            # If we can't read results, fall back to stdout and log warning
+            warning_message = f"Failed to read results file: {e}"
+
+    # Write clean output and timing to log file
+    with open(log_file_path, "a") as log_file:
+        if warning_message:
+            log_file.write(f"\n=== WARNING ===\n{warning_message}\n")
+        if final_output:
+            log_file.write(f"\n=== OUTPUT ===\n{final_output}\n")
+        if execution_time > 0:
+            log_file.write(f"\n=== EXECUTION TIME ===\n{execution_time:.3f} seconds\n")
 
     return ScaffoldExecutionResult(
-        output=stdout.strip() if stdout else "",
+        output=final_output,
         stderr=stderr.strip() if stderr else "",
         error_message=error_message,
         execution_time=execution_time,

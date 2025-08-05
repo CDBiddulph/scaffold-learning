@@ -1,4 +1,5 @@
 import re
+import json
 from unittest.mock import Mock, patch
 from pathlib import Path
 import tempfile
@@ -93,14 +94,31 @@ class TestScaffoldExecution:
             num_lines = max(len(stdout_lines), len(stderr_lines))
             time_values = [0.0] + [i * 0.1 for i in range(1, num_lines + 10)]  # Extra time values for logging
 
+            # Create a mock results directory and file for successful executions
+            def mock_mkdtemp():
+                results_dir = Path(temp_dir) / "mock_results"
+                results_dir.mkdir()
+                # Create results file if execution is successful
+                if returncode == 0 and model_spec != "human/human":
+                    results_file = results_dir / "results.json"
+                    output = "".join(stdout_lines).strip()
+                    results_data = {
+                        "output": output,
+                        "execution_time": 1.5  # Mock execution time
+                    }
+                    with open(results_file, 'w') as f:
+                        json.dump(results_data, f)
+                return str(results_dir)
+
             with patch("subprocess.Popen", return_value=mock_process):
                 with patch("time.time", side_effect=time_values):
-                    result = self.execute_single_scaffold(
-                        file_manager,
-                        input_string="test input",
-                        model_spec=model_spec,
-                        timeout=timeout,
-                    )
+                    with patch("tempfile.mkdtemp", side_effect=mock_mkdtemp):
+                        result = self.execute_single_scaffold(
+                            file_manager,
+                            input_string="test input",
+                            model_spec=model_spec,
+                            timeout=timeout,
+                        )
 
             return result, mock_process
 
@@ -113,7 +131,7 @@ class TestScaffoldExecution:
         assert result.output.strip() == "result output"
         assert result.stderr.strip() == ""
         assert result.error_message is None
-        assert result.execution_time > 0  # Just check it's positive, don't hardcode
+        assert result.execution_time == 1.5  # From mock results file
 
     def test_execute_scaffold_with_timeout(self):
         result, _ = self.run_execute_scaffold_test(
@@ -138,7 +156,7 @@ class TestScaffoldExecution:
             == "Error from scaffold (exit code 1):\nError: syntax error"
         )
         assert result.stderr.strip() == "Error: syntax error"
-        assert result.execution_time > 0  # Just check it's positive, don't hardcode
+        assert result.execution_time == 0.0  # No timing info available for early errors
 
     def test_execute_scaffold_multiple_output_lines(self):
         result, _ = self.run_execute_scaffold_test(
