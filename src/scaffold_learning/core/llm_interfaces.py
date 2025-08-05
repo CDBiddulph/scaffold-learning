@@ -90,6 +90,17 @@ class OpenAIInterface(LLMInterface):
                 return time_value
         return None
 
+    def _get_thinking_params(self) -> dict:
+        if self.model in [
+            "gpt-4o-mini",
+            "gpt-4.1-nano",
+            "gpt-4o",
+            "gpt-4",
+            "gpt-3.5-turbo",
+        ]:
+            return None
+        return {"summary": "detailed", "effort": "low"}
+
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
         client = openai.OpenAI(api_key=self.api_key)
         for attempt in range(self.max_retries):
@@ -100,7 +111,7 @@ class OpenAIInterface(LLMInterface):
                         instructions=system_prompt,
                         input=prompt,
                         # TODO: configure the amount of reasoning
-                        reasoning={"summary": "detailed", "effort": "low"},
+                        reasoning=self._get_thinking_params(),
                         max_output_tokens=1_000_000,  # Make this higher than we expect it to use
                     )
 
