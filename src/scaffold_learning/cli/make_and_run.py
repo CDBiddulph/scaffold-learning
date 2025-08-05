@@ -545,7 +545,7 @@ def _run_scaffold(
         assert config.timeout is not None
         assert config.executor_thinking_budget is not None
         results_list = execute_scaffolds(
-            execution_tasks=execution_tasks,
+            tasks=execution_tasks,
             max_workers=config.max_execute_workers,
             progress_callback=(
                 progress_callback if config.max_execute_workers > 1 else None
