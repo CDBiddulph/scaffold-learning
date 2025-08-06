@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock, patch
 
 import scaffold_learning.domains.reward_model.factory as factory
-from scaffold_learning.domains.reward_model.reward_models import LLMRewardModel
+from scaffold_learning.domains.reward_model.reward_models import LLMRewardModel, HuggingFaceRewardModel
 from scaffold_learning.core.llm_interfaces import LLMInterface
 
 
@@ -70,3 +70,21 @@ class TestCreateRewardModel:
             mock_llm_factory_class.create_llm.assert_called_once_with("haiku")
             assert isinstance(reward_model, LLMRewardModel)
             assert reward_model.llm == mock_llm
+
+    def test_create_huggingface_reward_model(self):
+        """Test creating HuggingFace reward model."""
+        with patch.object(factory, "HuggingFaceRewardModel") as mock_hf_class:
+            mock_reward_model = Mock()
+            mock_hf_class.return_value = mock_reward_model
+
+            reward_model = factory.create_reward_model("hf:test/model")
+
+            mock_hf_class.assert_called_once_with("test/model")
+            assert reward_model == mock_reward_model
+
+    def test_create_huggingface_reward_model_invalid_format(self):
+        """Test error for invalid HuggingFace format."""
+        with pytest.raises(ValueError, match="Invalid rm format"):
+            factory.create_reward_model("hf:")
+
+

@@ -1,11 +1,12 @@
 """Tests for reward model interfaces and implementations."""
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from scaffold_learning.domains.reward_model.reward_models import (
     RewardModel,
     LLMRewardModel,
+    HuggingFaceRewardModel,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface, LLMResponse
 
@@ -135,3 +136,42 @@ Response: Quantum computing uses quantum bits or qubits...
 Please provide only the numerical score on a scale of 0.0 to 1.0. Only provide the numerical score, nothing else, using the format "Score: <score>"."""
 
         assert call_args == expected_prompt
+
+
+class TestHuggingFaceRewardModel:
+    """Test the HuggingFace-based reward model implementation."""
+
+    def test_huggingface_reward_model_missing_dependencies(self):
+        """Test that missing dependencies raise appropriate error."""
+        # This test will pass if transformers are installed,
+        # but tests the error handling path by mocking the import
+        with pytest.raises(ImportError, match="transformers is required"):
+            # Mock the import to fail
+            import sys
+
+            original_import = __builtins__["__import__"]
+
+            def mock_import(name, *args, **kwargs):
+                if name == "transformers":
+                    raise ImportError("No module named 'transformers'")
+                return original_import(name, *args, **kwargs)
+
+            __builtins__["__import__"] = mock_import
+            try:
+                HuggingFaceRewardModel("test-model")
+            finally:
+                __builtins__["__import__"] = original_import
+
+    def test_huggingface_reward_model_interface_compliance(self):
+        """Test that HuggingFaceRewardModel follows the RewardModel interface."""
+        # Test that the class exists and implements the interface
+        assert issubclass(HuggingFaceRewardModel, RewardModel)
+        
+        # Test that it has the required score method
+        assert hasattr(HuggingFaceRewardModel, 'score')
+        assert callable(getattr(HuggingFaceRewardModel, 'score'))
+        
+        # Note: We don't test actual instantiation since that requires 
+        # downloading models. The error handling is tested separately.
+
+
