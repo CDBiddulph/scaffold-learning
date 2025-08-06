@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -95,7 +94,11 @@ class ExperimentRunner:
         self.max_generate_workers = max_generate_workers
         self.max_execute_workers = max_execute_workers
 
-        self.train_random = random.Random(train_seed)
+        self.train_sampler = ExampleSampler(
+            train_seed,
+            self.training_data,
+            allow_resample=True,
+        )
         self.valid_sampler = ExampleSampler(
             valid_seed,
             self.validation_data,
@@ -342,7 +345,7 @@ class ExperimentRunner:
             new_scaffold_id = self._get_next_scaffold_id(parent_id)
             current_scaffold_ids.append(new_scaffold_id)
 
-            def evolve_func():
+            def evolve_func(run_data_list=run_data_list, parent_id=parent_id):  # Capture by value
                 return evolve_scaffold(
                     run_data=run_data_list,
                     scaffolder_llm=self.scaffolder_llm,
@@ -489,13 +492,13 @@ class ExperimentRunner:
         self.logger.info(f"Creating {self.initial_scaffolds} initial scaffolds")
 
         # Get all training examples upfront
-        training_examples = self._get_training_examples(scaffold_ids)
+        examples_by_scaffold = self._get_training_examples(scaffold_ids)
 
         # Create generation tasks
         generation_tasks = []
-        for scaffold_id, examples in training_examples.items():
+        for scaffold_id, examples in examples_by_scaffold.items():
 
-            def generate_func():
+            def generate_func(examples=examples):  # Capture examples by value using default parameter
                 return generate_scaffold(
                     examples=examples,
                     scaffolder_llm=self.scaffolder_llm,
@@ -654,24 +657,15 @@ class ExperimentRunner:
 
         return scores
 
-    # TODO: move to dataset_utils and add test cases that check that this works
-    # TODO: make this work for validation examples too
     def _get_training_examples(
         self, scaffold_ids: List[str]
     ) -> Dict[str, List[DatasetExample]]:
-        """Randomly sample training examples, minimizing duplicates."""
-        n = len(scaffold_ids) * self.num_training_examples
-        flat_examples = self.training_data * (
-            n // len(self.training_data)
-        ) + self.train_random.sample(self.training_data, n % len(self.training_data))
-        self.train_random.shuffle(flat_examples)
+        """Sample training examples using the stateful train_sampler."""
         examples_by_scaffold = {}
-        i = 0
         for scaffold_id in scaffold_ids:
-            examples_by_scaffold[scaffold_id] = flat_examples[
-                i : i + self.num_training_examples
-            ]
-            i += self.num_training_examples
+            examples_by_scaffold[scaffold_id] = self.train_sampler.sample(
+                self.num_training_examples
+            )
         return examples_by_scaffold
 
     def _run_training(

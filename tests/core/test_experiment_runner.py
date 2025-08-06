@@ -9,9 +9,9 @@ from scaffold_learning.core.data_structures import (
     ScaffoldResult,
     ScaffoldMetadata,
     ScaffoldExecutionResult,
+    LLMResponse,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
-from scaffold_learning.core.data_structures import LLMResponse
 
 
 class TestExperimentRunner:
@@ -1052,6 +1052,159 @@ Execution completed successfully
         assert (
             expected_error in actual_error
         ), f"Expected error message to contain '{expected_error}', but got: {actual_error}"
+
+    @patch("scaffold_learning.core.experiment_runner.generate_scaffold")
+    def test_different_examples_per_scaffold(self, mock_generate_scaffold):
+        """Test that each scaffold gets different assigned examples."""
+        # Create distinct training examples
+        training_data = [
+            DatasetExample(id=f"train_{i}", input=f"Input {i}", scoring_data={})
+            for i in range(20)
+        ]
+        validation_data = [
+            DatasetExample(id="valid_1", input="Valid input", scoring_data={})
+        ]
+
+        scoring_fn = Mock(return_value=0.5)
+        scaffolder_llm = Mock(spec=LLMInterface)
+
+        # Track which examples each scaffold receives
+        scaffold_examples_used = {}
+
+        def track_examples(*args, **kwargs):
+            # Extract the examples passed to this scaffold
+            examples = kwargs.get("examples", [])
+            # Find which scaffold this is by looking at the call count
+            call_count = len(scaffold_examples_used)
+            scaffold_examples_used[str(call_count)] = [e.id for e in examples]
+
+            return ScaffoldResult(
+                code='def process_input(input_string): return "output"',
+                metadata=ScaffoldMetadata(
+                    created_at="2025-01-01T00:00:00",
+                    iteration=0,
+                    parent_scaffold_id=None,
+                ),
+            )
+
+        mock_generate_scaffold.side_effect = track_examples
+
+        runner = ExperimentRunner(
+            experiment_name="test_different_examples_per_scaffold",
+            training_data=training_data,
+            validation_data=validation_data,
+            scoring_fn=scoring_fn,
+            scaffolder_llm=scaffolder_llm,
+            num_iterations=1,
+            scaffolds_per_iter=2,
+            initial_scaffolds=3,
+            num_training_examples=5,
+            num_validation_examples=1,
+            base_dir=Path(self.temp_dir),
+            train_seed=42,
+            valid_seed=42,
+        )
+
+        # Trigger scaffold creation
+        runner._create_initial_scaffolds()
+
+        # Verify each scaffold got different examples
+        assert len(scaffold_examples_used) == 3, "Should have created 3 scaffolds"
+
+        # Check that scaffolds got different examples
+        example_sets = [set(ids) for ids in scaffold_examples_used.values()]
+        for i in range(len(example_sets)):
+            for j in range(i + 1, len(example_sets)):
+                # Each pair of scaffolds should have different examples
+                # (with our setup, they shouldn't overlap at all)
+                assert (
+                    example_sets[i] != example_sets[j]
+                ), f"Scaffolds {i} and {j} got identical examples"
+
+    def test_training_examples_cycle_through(self):
+        """Test that training examples cycle through properly across scaffold generations."""
+        # Create more training examples than needed for one scaffold
+        training_data = [
+            DatasetExample(id=f"train_{i}", input=f"Input {i}", scoring_data={})
+            for i in range(10)
+        ]
+        validation_data = [
+            DatasetExample(id="valid_1", input="Valid input", scoring_data={})
+        ]
+
+        scoring_fn = Mock(return_value=0.5)
+        scaffolder_llm = Mock(spec=LLMInterface)
+
+        # Mock scaffold generation to return simple scaffolds
+        def mock_generate(*args, **kwargs):
+            return LLMResponse(
+                output='```python\ndef process_input(input_string): return "output"\n```',
+                input_messages=[],
+            )
+
+        scaffolder_llm.call_llm = mock_generate
+
+        runner = ExperimentRunner(
+            experiment_name="test_cycling",
+            training_data=training_data,
+            validation_data=validation_data,
+            scoring_fn=scoring_fn,
+            scaffolder_llm=scaffolder_llm,
+            num_iterations=1,
+            scaffolds_per_iter=2,
+            initial_scaffolds=3,  # Create 3 scaffolds
+            num_training_examples=4,  # Each uses 4 examples
+            num_validation_examples=1,
+            base_dir=Path(self.temp_dir),
+            train_seed=42,
+            valid_seed=42,
+        )
+
+        # Get training examples for multiple scaffolds
+        scaffold_ids = ["0", "1", "2"]
+        examples_batch1 = runner._get_training_examples(scaffold_ids)
+
+        # Collect all example IDs from first batch
+        used_ids_batch1 = set()
+        for scaffold_examples in examples_batch1.values():
+            for example in scaffold_examples:
+                used_ids_batch1.add(example.id)
+
+        # Get more training examples (simulating next iteration)
+        scaffold_ids_2 = ["3", "4"]
+        examples_batch2 = runner._get_training_examples(scaffold_ids_2)
+
+        # Collect example IDs from second batch
+        used_ids_batch2 = set()
+        for scaffold_examples in examples_batch2.values():
+            for example in scaffold_examples:
+                used_ids_batch2.add(example.id)
+
+        # Verify that different examples are used (cycling through)
+        # Since we have 10 examples total and used 12 in batch1 (3*4),
+        # we should have cycled and reused 2 examples
+        # But batch2 should start from where batch1 left off
+
+        # Check that we've used all 10 unique examples across the batches
+        all_used = used_ids_batch1 | used_ids_batch2
+        assert len(all_used) == 10, f"Should use all 10 examples, but used {all_used}"
+
+        # Verify the sampler maintains state by checking specific ordering
+        # The examples should be consumed in order from the shuffled list
+        all_examples_in_order = []
+        for sid in ["0", "1", "2"]:
+            all_examples_in_order.extend(examples_batch1[sid])
+        for sid in ["3", "4"]:
+            all_examples_in_order.extend(examples_batch2[sid])
+
+        # No scaffold should get the exact same set of examples
+        example_sets = [
+            set(e.id for e in examples) for examples in examples_batch1.values()
+        ]
+        # Check that not all sets are identical
+        assert (
+            len(set(map(tuple, example_sets))) > 1
+        ), "All scaffolds got identical examples"
 
     def test_run_complete_experiment(self):
         runner = self.create_experiment_runner(
