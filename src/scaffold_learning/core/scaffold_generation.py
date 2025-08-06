@@ -156,13 +156,13 @@ def _extract_python_code(response: LLMResponse) -> str:
     return matches[-1]
 
 
-def _get_expected_output(scoring_data: Dict[str, Any]) -> str:
-    # TODO: Make this more general for domains that don't have an expected output
-    # Maybe just use the scoring data as one of the fields
+def _get_scoring_data_xml_dict(scoring_data: Dict[str, Any]) -> Dict[str, Any]:
+    if len(scoring_data) == 0:
+        return {}
     if "solution" in scoring_data:
-        return scoring_data["solution"]
+        return {"expected_output": scoring_data["solution"]}
     elif "correct_answer" in scoring_data:
-        return scoring_data["correct_answer"]
+        return {"expected_output": scoring_data["correct_answer"]}
     else:
         raise ValueError(
             f"Scoring data doesn't contain a solution or correct answer: {scoring_data}"
@@ -170,19 +170,22 @@ def _get_expected_output(scoring_data: Dict[str, Any]) -> str:
 
 
 def _get_example_xml(example: DatasetExample | ScaffoldRunData, idx: int) -> str:
+    dataset_example = (
+        example.example if isinstance(example, ScaffoldRunData) else example
+    )
+    xml_dict = {"input": dataset_example.input}
+
+    # Add scoring data if it exists, generally adding the field "expected_output"
+    xml_dict.update(_get_scoring_data_xml_dict(dataset_example.scoring_data))
+
     if isinstance(example, ScaffoldRunData):
-        xml_dict = {
-            "input": example.example.input,
-            "expected_output": _get_expected_output(example.example.scoring_data),
-            "actual_output": example.actual_output,
-            "execution_log": example.execution_log,
-            "score": example.score,
-        }
-    else:
-        xml_dict = {
-            "input": example.input,
-            "expected_output": _get_expected_output(example.scoring_data),
-        }
+        xml_dict.update(
+            {
+                "actual_output": example.actual_output,
+                "execution_log": example.execution_log,
+                "score": example.score,
+            }
+        )
 
     return dict_to_xml(xml_dict, f"example-{idx}")
 
