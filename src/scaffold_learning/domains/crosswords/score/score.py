@@ -105,6 +105,8 @@ def _score_detailed(expected_solution, attempted_solution, mode="strict"):
                 elif mode == "lenient":
                     if pos in correct_squares:
                         final_correct_squares.add(pos)
+                else:
+                    raise ValueError(f"Invalid mode: {mode}")
 
     correct_count = len(final_correct_squares)
 

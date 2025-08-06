@@ -1,6 +1,6 @@
 """Utilities for creating and working with scoring functions."""
 
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 from scaffold_learning.domains.crosswords.score.score import score as score_crosswords
 from scaffold_learning.domains.mcq.score import score as score_mcq
@@ -9,22 +9,24 @@ from scaffold_learning.domains.human_preference.score import (
 )
 
 
-def create_scoring_function(domain: str) -> Callable[[str, Dict], float]:
+def create_scoring_function(
+    domain: str, domain_params: Optional[Dict[str, str]] = None
+) -> Callable[[str, Dict], float]:
     """Create a scoring function for the specified domain.
 
     Args:
         domain: Domain name (e.g., 'crosswords')
+        domain_params: Optional domain-specific parameters
 
     Returns:
         Scoring function that takes (actual_output, scoring_data) and returns 0-1 score
     """
-    if domain in ["crosswords", "crosswords_strict"]:
+    if domain_params is None:
+        domain_params = {}
+    if domain == "crosswords":
+        mode = domain_params.get("mode", "strict")
         return lambda actual_output, scoring_data: score_crosswords(
-            scoring_data["solution"], actual_output, mode="strict"
-        )
-    elif domain == "crosswords_lenient":
-        return lambda actual_output, scoring_data: score_crosswords(
-            scoring_data["solution"], actual_output, mode="lenient"
+            scoring_data["solution"], actual_output, mode=mode
         )
     elif domain == "gpqa":
         return lambda actual_output, scoring_data: score_mcq(
@@ -38,19 +40,23 @@ def create_scoring_function(domain: str) -> Callable[[str, Dict], float]:
         raise ValueError(f"Error: Unknown domain '{domain}'")
 
 
-def get_scoring_function_code(domain: str) -> str:
+def get_scoring_function_code(
+    domain: str, domain_params: Optional[Dict[str, str]] = None
+) -> str:
     """Get the scoring function code content for the specified domain.
 
     Args:
         domain: Domain name (e.g., 'crosswords')
+        domain_params: Optional domain-specific parameters
 
     Returns:
         Content of the scoring function file
     """
-    if domain == "crosswords_lenient":
-        path = "src/scaffold_learning/domains/crosswords/score/score_lenient.py"
-    elif domain in ["crosswords", "crosswords_strict"]:
-        path = "src/scaffold_learning/domains/crosswords/score/score_strict.py"
+    if domain_params is None:
+        domain_params = {}
+    if domain == "crosswords":
+        mode = domain_params.get("mode", "strict")
+        path = f"src/scaffold_learning/domains/crosswords/score/score_{mode}.py"
     elif domain == "gpqa":
         path = "src/scaffold_learning/domains/mcq/score.py"
     elif domain == "human-preference":

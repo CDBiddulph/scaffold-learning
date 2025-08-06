@@ -15,6 +15,34 @@ from scaffold_learning.core.scoring_utils import (
 from scaffold_learning.core.docker_utils import build_docker_image
 
 
+def _parse_domain_param(param_str: str) -> tuple[str, str]:
+    """Parse a domain parameter string in format key=value.
+
+    Args:
+        param_str: Parameter string like "rm=llm:haiku"
+
+    Returns:
+        Tuple of (key, value)
+
+    Raises:
+        ValueError: If format is invalid
+    """
+    if "=" not in param_str:
+        raise ValueError(
+            f"Invalid domain-param format: {param_str}. Expected key=value"
+        )
+
+    parts = param_str.split("=", 1)
+    key, value = parts[0], parts[1]
+
+    if not key or not value:
+        raise ValueError(
+            f"Invalid domain-param format: {param_str}. Expected key=value"
+        )
+
+    return key, value
+
+
 def main():
     # Configure logging first before anything else
     logging.basicConfig(
@@ -38,6 +66,12 @@ def main():
     # Domain and model
     parser.add_argument(
         "--domain", default="crosswords", help="Problem domain for scoring function"
+    )
+    parser.add_argument(
+        "--domain-param",
+        action="append",
+        default=[],
+        help="Domain-specific parameter in format key=value (can be used multiple times)",
     )
     parser.add_argument(
         "--scaffolder-model",
@@ -138,6 +172,12 @@ def main():
 
     args = parser.parse_args()
 
+    # Parse domain parameters
+    domain_params = {}
+    for param_str in args.domain_param:
+        key, value = _parse_domain_param(param_str)
+        domain_params[key] = value
+
     # Validate arguments
     if not args.data_dir.exists() or not args.data_dir.is_dir():
         raise FileNotFoundError(f"Data directory not found: {args.data_dir}")
@@ -155,9 +195,11 @@ def main():
 
     # Create scoring function and get a code representation of it
     print(f"Setting up {args.domain} domain...")
-    scoring_fn = create_scoring_function(args.domain)
+    scoring_fn = create_scoring_function(args.domain, domain_params=domain_params)
     scoring_fn_code = (
-        get_scoring_function_code(args.domain) if args.show_scoring_function else None
+        get_scoring_function_code(args.domain, domain_params=domain_params)
+        if args.show_scoring_function
+        else None
     )
 
     # Create scaffolder LLM
