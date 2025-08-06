@@ -41,7 +41,7 @@ class TestScoringIntegration:
 
     def test_all_supported_domains(self):
         """Test that all expected domains are supported."""
-        supported_domains = ["crosswords", "gpqa", "human-preference"]
+        supported_domains = ["crosswords", "gpqa", "human-preference", "reward-model"]
 
         for domain in supported_domains:
             # Should not raise exception

@@ -1,6 +1,8 @@
 """Tests for scoring_utils with domain_params."""
 
 import pytest
+from unittest.mock import Mock, patch
+
 from scaffold_learning.core.scoring_utils import create_scoring_function, get_scoring_function_code
 
 
@@ -99,4 +101,64 @@ class TestGetScoringFunctionCodeWithDomainParams:
         assert "def score(" in code
         
         code = get_scoring_function_code("human-preference", domain_params={})
+        assert "def score(" in code
+
+
+class TestRewardModelScoringIntegration:
+    """Test reward model domain integration with scoring_utils."""
+
+    @patch('scaffold_learning.core.scoring_utils.create_reward_model')
+    def test_create_reward_model_scoring_function_default(self, mock_create_reward_model):
+        """Test creating reward model scoring function with default params."""
+        # Mock reward model creation
+        mock_reward_model = Mock()
+        mock_reward_model.score.return_value = 0.75
+        mock_create_reward_model.return_value = mock_reward_model
+        
+        # Create scoring function without domain params (should use default)
+        scoring_fn = create_scoring_function("reward-model", domain_params={})
+        
+        # Test the scoring function
+        score = scoring_fn("Test response", {"prompt": "Test prompt"})
+        
+        # Verify reward model was created with default spec
+        mock_create_reward_model.assert_called_once_with("llm:haiku")
+        
+        # Verify scoring function calls reward model correctly
+        mock_reward_model.score.assert_called_once_with("Test prompt", "Test response")
+        assert score == 0.75
+
+    @patch('scaffold_learning.core.scoring_utils.create_reward_model')
+    def test_create_reward_model_scoring_function_with_custom_params(self, mock_create_reward_model):
+        """Test creating reward model scoring function with custom params."""
+        # Mock reward model creation
+        mock_reward_model = Mock()
+        mock_reward_model.score.return_value = 0.9
+        mock_create_reward_model.return_value = mock_reward_model
+        
+        # Create scoring function with custom rm param
+        domain_params = {"rm": "llm:sonnet"}
+        scoring_fn = create_scoring_function("reward-model", domain_params=domain_params)
+        
+        # Test the scoring function
+        score = scoring_fn("Great response", {"prompt": "Write a poem"})
+        
+        # Verify reward model was created with custom spec
+        mock_create_reward_model.assert_called_once_with("llm:sonnet")
+        
+        # Verify scoring function behavior
+        mock_reward_model.score.assert_called_once_with("Write a poem", "Great response")
+        assert score == 0.9
+
+    def test_reward_model_scoring_function_missing_prompt(self):
+        """Test error handling when prompt is missing from scoring_data."""
+        scoring_fn = create_scoring_function("reward-model", domain_params={})
+        
+        # Should raise KeyError if prompt is missing
+        with pytest.raises(KeyError, match="prompt"):
+            scoring_fn("Response", {})
+
+    def test_get_scoring_function_code_reward_model(self):
+        """Test that reward-model returns scoring function code."""
+        code = get_scoring_function_code("reward-model")
         assert "def score(" in code

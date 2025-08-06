@@ -7,6 +7,8 @@ from scaffold_learning.domains.mcq.score import score as score_mcq
 from scaffold_learning.domains.human_preference.score import (
     score as score_human_preference,
 )
+from scaffold_learning.domains.reward_model.score import score as score_reward_model
+from scaffold_learning.domains.reward_model.factory import create_reward_model
 
 
 def create_scoring_function(
@@ -36,6 +38,13 @@ def create_scoring_function(
         return lambda actual_output, scoring_data: score_human_preference(
             scoring_data["correct_answer"], actual_output
         )
+    elif domain == "reward-model":
+        # Get rm spec from domain params, default to llm:haiku
+        rm_spec = domain_params.get("rm", "llm:haiku")
+        reward_model = create_reward_model(rm_spec)
+        return lambda actual_output, scoring_data: score_reward_model(
+            scoring_data["prompt"], actual_output, reward_model
+        )
     else:
         raise ValueError(f"Error: Unknown domain '{domain}'")
 
@@ -61,6 +70,8 @@ def get_scoring_function_code(
         path = "src/scaffold_learning/domains/mcq/score.py"
     elif domain == "human-preference":
         path = "src/scaffold_learning/domains/human_preference/score.py"
+    elif domain == "reward-model":
+        path = "src/scaffold_learning/domains/reward_model/score.py"
     else:
         raise ValueError(f"Scoring function content not supported for domain: {domain}")
 
