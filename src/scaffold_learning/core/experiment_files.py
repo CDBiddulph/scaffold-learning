@@ -1,7 +1,9 @@
 import json
 import numpy as np
+import threading
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+from collections import defaultdict
 from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata
 from scaffold_learning.core.xml_utils import write_xml_file, read_xml_file
 from scaffold_learning.core.scaffold_files import save_scaffold as save_scaffold_files
@@ -21,6 +23,12 @@ class ExperimentFileManager:
         (self.experiment_dir / "scaffolds").mkdir(exist_ok=True)
         (self.experiment_dir / "logs").mkdir(exist_ok=True)
         (self.experiment_dir / "scoring").mkdir(exist_ok=True)
+
+        # Thread-safe counters for log file naming
+        self._run_id_counters = defaultdict(
+            int
+        )  # key: (iteration, scaffold_id, run_type)
+        self._counter_lock = threading.Lock()
 
     def save_experiment_metadata(self, metadata: Dict[str, Any]) -> None:
         """Save experiment-level metadata.
@@ -135,34 +143,18 @@ class ExperimentFileManager:
         Raises:
             ValueError: If the run type is not 'train' or 'valid'
         """
-        # TODO: consider whether there are race conditions, possibly use an in-memory counter
         if run_type not in ["train", "valid"]:
             raise ValueError(
                 f"Invalid run type: {run_type}. Must be 'train' or 'valid'."
             )
 
-        logs_dir = self.experiment_dir / "logs" / str(iteration) / scaffold_id
+        counter_key = (iteration, scaffold_id, run_type)
 
-        if not logs_dir.exists():
-            return f"{run_type}_0"
+        with self._counter_lock:
+            # Get the next ID and increment counter (starts at 0)
+            next_index = self._run_id_counters[counter_key]
+            self._run_id_counters[counter_key] += 1
 
-        # Find existing log files for this run type
-        existing_files = list(logs_dir.glob(f"{run_type}_*.log"))
-
-        if not existing_files:
-            return f"{run_type}_0"
-
-        # Extract numbers from existing files
-        indices = []
-        for file_path in existing_files:
-            name = file_path.stem  # Remove .log extension
-            if name.startswith(f"{run_type}_"):
-                # Raises ValueError if it doesn't end with an integer
-                index = int(name[len(f"{run_type}_") :])
-                indices.append(index)
-
-        # Return the next available index
-        next_index = max(indices) + 1 if indices else 0
         return f"{run_type}_{next_index}"
 
     def save_scores(
