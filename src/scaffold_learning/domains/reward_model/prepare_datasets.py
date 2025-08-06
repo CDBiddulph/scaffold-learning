@@ -100,7 +100,7 @@ def prepare_dataset(
         example_data = {
             "id": raw_ex["id"],
             "input": raw_ex["prompt"],
-            "scoring_data": {},
+            "scoring_data": {"prompt": raw_ex["prompt"]},
         }
         dataset_examples.append(example_data)
 
