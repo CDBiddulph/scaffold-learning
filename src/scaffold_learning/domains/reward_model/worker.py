@@ -37,6 +37,8 @@ class RewardModelWorker:
         self.responses_dir = self.queue_dir / "responses"
         self.heartbeat_dir = self.queue_dir / "heartbeat"
 
+        logging.info(f"Creating directories in {self.queue_dir}")
+
         for dir_path in [
             self.requests_dir,
             self.processing_dir,
@@ -161,7 +163,7 @@ def main():
     )
     parser.add_argument(
         "--queue-dir",
-        default="/tmp/reward_model_queue",
+        required=True,
         help="Directory for job queue",
     )
     parser.add_argument(

@@ -28,7 +28,7 @@ def create_reward_model(
     """
     if rm_spec.startswith("llm:"):
         # Extract model spec from "llm:model_name"
-        model_spec = rm_spec[4:]  # Remove "llm:" prefix
+        model_spec = rm_spec.removeprefix("llm:")
 
         if not model_spec:
             raise ValueError(
@@ -45,7 +45,7 @@ def create_reward_model(
 
     elif rm_spec.startswith("hf:"):
         # Extract model name from "hf:model_name"
-        model_name = rm_spec[3:]  # Remove "hf:" prefix
+        model_name = rm_spec.removeprefix("hf:")
 
         if not model_name:
             raise ValueError("Invalid rm format: missing model name after 'hf:'")

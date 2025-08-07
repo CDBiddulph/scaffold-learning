@@ -3,7 +3,7 @@
 from typing import Dict, List, Tuple
 
 
-def parse_domain_param(param_str: str) -> Tuple[str, str]:
+def _parse_domain_param(param_str: str) -> Tuple[str, str]:
     """Parse a domain parameter string in key=value format.
 
     Args:
@@ -38,6 +38,6 @@ def parse_domain_params(param_list: List[str]) -> Dict[str, str]:
     """
     domain_params = {}
     for param_str in param_list:
-        key, value = parse_domain_param(param_str)
+        key, value = _parse_domain_param(param_str)
         domain_params[key] = value
     return domain_params
