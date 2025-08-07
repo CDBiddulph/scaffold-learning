@@ -42,14 +42,14 @@ def create_reward_model(
             llm = llm_factory(model_spec)
 
         return LLMRewardModel(llm)
-    
+
     elif rm_spec.startswith("hf:"):
         # Extract model name from "hf:model_name"
         model_name = rm_spec[3:]  # Remove "hf:" prefix
-        
+
         if not model_name:
             raise ValueError("Invalid rm format: missing model name after 'hf:'")
-        
+
         return HuggingFaceRewardModel(model_name)
 
     elif rm_spec.startswith("queue:"):

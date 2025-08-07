@@ -527,7 +527,7 @@ def _run_scaffold(
         assert config.domain is not None
         # Parse domain parameters
         domain_params = parse_domain_params(config.domain_param or [])
-        
+
         # Create scoring function
         scoring_fn = create_scoring_function(config.domain, domain_params=domain_params)
 
