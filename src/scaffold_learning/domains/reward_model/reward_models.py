@@ -1,10 +1,23 @@
 """Reward model interfaces and implementations."""
 
+import json
 import re
+import time
+import uuid
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Optional
 
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
 from scaffold_learning.core.llm_interfaces import LLMInterface
+
+# Constants
+HEARTBEAT_TIMEOUT_SECONDS = 60
+POLL_INTERVAL_SECONDS = 0.2
+MAX_TOKEN_LENGTH = 16384
+LARGE_INT_LIMIT = 2**31 - 1
 
 
 class RewardModel(ABC):
@@ -113,31 +126,19 @@ class HuggingFaceRewardModel(RewardModel):
         Args:
             model_name: HuggingFace model identifier (e.g., 'Skywork/Skywork-Reward-V2-Llama-3.1-8B')
         """
-        try:
-            from transformers import AutoModelForSequenceClassification, AutoTokenizer
-        except ImportError as e:
-            raise ImportError(
-                "HuggingFace transformers is required for HuggingFaceRewardModel. "
-                "Install with: pip install transformers"
-            ) from e
-
         self.model_name = model_name
-        
+
         # Try to detect CUDA, fallback to CPU if torch not available
-        try:
-            import torch
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            self._torch_available = True
-        except ImportError:
-            self.device = "cpu"
-            self._torch_available = False
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA is required for HuggingFaceRewardModel.")
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        
-        # Move to device if torch is available
-        if self._torch_available:
-            self.model.to(self.device)
+
+        # Move to device
+        self.model.to(self.device)
         self.model.eval()
 
     def score(self, prompt: str, response: str) -> float:
@@ -150,37 +151,141 @@ class HuggingFaceRewardModel(RewardModel):
         Returns:
             Floating point score
         """
-        # Format as conversation for the reward model
-        conversation = [
-            {"role": "user", "content": prompt},
-            {"role": "assistant", "content": response},
-        ]
-
-        # Apply chat template
-        formatted_input = self.tokenizer.apply_chat_template(
-            conversation, tokenize=False, add_generation_prompt=False
-        )
+        # Try to use chat template if available, otherwise use simple format
+        if hasattr(self.tokenizer, "chat_template") and self.tokenizer.chat_template:
+            # Format as conversation for the reward model
+            conversation = [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": response},
+            ]
+            formatted_input = self.tokenizer.apply_chat_template(
+                conversation, tokenize=False, add_generation_prompt=False
+            )
+        else:
+            # Use simple format for models without chat template
+            # OpenAssistant models expect this format
+            formatted_input = f"Human: {prompt}\n\nAssistant: {response}"
 
         # Tokenize and move to device
+        # Handle misconfigured model_max_length
+        # (like in https://huggingface.co/OpenAssistant/reward-model-deberta-v3-large-v2/blob/main/tokenizer_config.json)
+        max_length = getattr(self.tokenizer, "model_max_length", LARGE_INT_LIMIT)
+        max_length = min(max_length, LARGE_INT_LIMIT)
+
         inputs = self.tokenizer(
             formatted_input,
             return_tensors="pt",
             truncation=True,
-            max_length=self.tokenizer.model_max_length or 16384,
+            max_length=max_length,
         )
-        
-        # Move to device if torch is available
-        if self._torch_available:
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+        # Move to device
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
         # Get reward score
-        if self._torch_available:
-            import torch
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-        else:
-            # Without torch, transformers will handle device management
+        with torch.no_grad():
             outputs = self.model(**inputs)
-            
+
         # Most reward models output a single value, get the score
         return outputs.logits.squeeze().float().item()
+
+
+class FileQueueRewardModel(RewardModel):
+    """Reward model that communicates via file-based queue (for HPC systems)."""
+
+    def __init__(
+        self, queue_dir: str = "/tmp/reward_model_queue", timeout: float = 300
+    ):
+        """Initialize with queue directory.
+
+        Args:
+            queue_dir: Directory for file-based job queue
+            timeout: Timeout for waiting for response (seconds)
+        """
+        self.queue_dir = Path(queue_dir)
+        self.timeout = timeout
+
+        # Ensure queue directories exist
+        self.requests_dir = self.queue_dir / "requests"
+        self.responses_dir = self.queue_dir / "responses"
+        self.heartbeat_dir = self.queue_dir / "heartbeat"
+
+        for dir_path in [self.requests_dir, self.responses_dir]:
+            dir_path.mkdir(parents=True, exist_ok=True)
+
+        # Check if any workers are active
+        if not self._check_worker_health():
+            print(f"Warning: No active workers found in {queue_dir}")
+            print(
+                "Start a worker with: srun --gres=gpu:1 python -m src.scaffold_learning.domains.reward_model.worker --model hf:MODEL_NAME --queue-dir {queue_dir}"
+            )
+
+    def _check_worker_health(self) -> bool:
+        """Check if any workers are active based on heartbeat files."""
+        if not self.heartbeat_dir.exists():
+            return False
+
+        current_time = time.time()
+        for heartbeat_file in self.heartbeat_dir.glob("*.json"):
+            try:
+                data = json.loads(heartbeat_file.read_text())
+                # Consider worker active if heartbeat is less than 60 seconds old
+                if current_time - data["timestamp"] < HEARTBEAT_TIMEOUT_SECONDS:
+                    return True
+            except:
+                continue
+        return False
+
+    def score(self, prompt: str, response: str) -> float:
+        """Score a response using the file queue.
+
+        Args:
+            prompt: The original prompt/question
+            response: The response to score
+
+        Returns:
+            Floating point score
+        """
+        # Create unique request ID
+        request_id = str(uuid.uuid4())
+
+        # Write request file
+        request_data = {
+            "request_id": request_id,
+            "prompt": prompt,
+            "response": response,
+            "timestamp": time.time(),
+        }
+
+        request_file = self.requests_dir / f"{request_id}.json"
+        request_file.write_text(json.dumps(request_data))
+
+        # Wait for response
+        response_file = self.responses_dir / f"{request_id}.json"
+        start_time = time.time()
+
+        while time.time() - start_time < self.timeout:
+            # Force NFS directory cache refresh to see new files immediately
+            try:
+                list(self.responses_dir.iterdir())
+            except OSError:
+                # Ignore stale file handle errors during directory refresh
+                pass
+
+            if response_file.exists():
+                response_data = json.loads(response_file.read_text())
+                # Clean up response file
+                response_file.unlink()
+                return response_data["score"]
+
+            time.sleep(POLL_INTERVAL_SECONDS)  # Poll every 200ms like vllm does
+
+        # Timeout - try to clean up request
+        try:
+            request_file.unlink()
+        except:
+            pass
+
+        raise TimeoutError(
+            f"Timed out waiting for response after {self.timeout} seconds"
+        )

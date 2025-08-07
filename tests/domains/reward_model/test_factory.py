@@ -4,7 +4,11 @@ import pytest
 from unittest.mock import Mock, patch
 
 import scaffold_learning.domains.reward_model.factory as factory
-from scaffold_learning.domains.reward_model.reward_models import LLMRewardModel, HuggingFaceRewardModel
+from scaffold_learning.domains.reward_model.reward_models import (
+    LLMRewardModel,
+    HuggingFaceRewardModel,
+    FileQueueRewardModel,
+)
 from scaffold_learning.core.llm_interfaces import LLMInterface
 
 
@@ -87,4 +91,13 @@ class TestCreateRewardModel:
         with pytest.raises(ValueError, match="Invalid rm format"):
             factory.create_reward_model("hf:")
 
+    def test_create_queue_reward_model(self):
+        """Test creating file queue reward model."""
+        with patch.object(factory, "FileQueueRewardModel") as mock_queue_class:
+            mock_reward_model = Mock()
+            mock_queue_class.return_value = mock_reward_model
 
+            reward_model = factory.create_reward_model("queue:/tmp/test_queue")
+
+            mock_queue_class.assert_called_once_with("/tmp/test_queue")
+            assert reward_model == mock_reward_model

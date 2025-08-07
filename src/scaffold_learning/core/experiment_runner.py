@@ -154,7 +154,7 @@ class ExperimentRunner:
         )
 
         best_scaffold_id = None
-        best_score = -1.0
+        best_score = -float("inf")
 
         # Run iterations
         for iteration in range(self.num_iterations):
@@ -247,7 +247,6 @@ class ExperimentRunner:
             Tuple of (training_scores, validation_scores) - dictionaries mapping
             scaffold_id to list of scores
         """
-        self.logger.info("Creating initial scaffolds for iteration 0")
         scaffold_ids = self._create_initial_scaffolds()
 
         # No training scores for iteration 0
@@ -345,7 +344,9 @@ class ExperimentRunner:
             new_scaffold_id = self._get_next_scaffold_id(parent_id)
             current_scaffold_ids.append(new_scaffold_id)
 
-            def evolve_func(run_data_list=run_data_list, parent_id=parent_id):  # Capture by value
+            def evolve_func(
+                run_data_list=run_data_list, parent_id=parent_id
+            ):  # Capture by value
                 return evolve_scaffold(
                     run_data=run_data_list,
                     scaffolder_llm=self.scaffolder_llm,
@@ -489,8 +490,6 @@ class ExperimentRunner:
             self._get_next_scaffold_id() for _ in range(self.initial_scaffolds)
         ]
 
-        self.logger.info(f"Creating {self.initial_scaffolds} initial scaffolds")
-
         # Get all training examples upfront
         examples_by_scaffold = self._get_training_examples(scaffold_ids)
 
@@ -498,7 +497,9 @@ class ExperimentRunner:
         generation_tasks = []
         for scaffold_id, examples in examples_by_scaffold.items():
 
-            def generate_func(examples=examples):  # Capture examples by value using default parameter
+            def generate_func(
+                examples=examples,
+            ):  # Capture examples by value using default parameter
                 return generate_scaffold(
                     examples=examples,
                     scaffolder_llm=self.scaffolder_llm,

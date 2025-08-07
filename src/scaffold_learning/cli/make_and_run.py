@@ -9,6 +9,7 @@ into a single command with make and run subcommands.
 import argparse
 import json
 import numpy as np
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ from scaffold_learning.core.data_structures import ScaffoldExecutionTask
 from scaffold_learning.core.scaffold_files import save_scaffold
 from scaffold_learning.core.docker_utils import build_docker_image
 from scaffold_learning.core.llm_interfaces import LLMFactory, LLMInterface
+from scaffold_learning.core.domain_params import parse_domain_params
 
 
 @dataclass
@@ -59,6 +61,7 @@ class ScaffoldConfig:
     num_test_examples: Optional[int] = None
     test_seed: Optional[int] = None
     domain: Optional[str] = None
+    domain_param: Optional[List[str]] = None
     timeout: Optional[int] = None
     no_build: bool = False
     executor_thinking_budget: Optional[int] = None
@@ -158,6 +161,11 @@ Examples:
         "--test-seed", type=int, help="Random seed for test example selection"
     )
     parser.add_argument("--domain", help="Domain for scoring")
+    parser.add_argument(
+        "--domain-param",
+        action="append",
+        help="Domain parameter in key=value format (can be used multiple times)",
+    )
     parser.add_argument("--timeout", type=int, help="Execution timeout in seconds")
     parser.add_argument(
         "--no-build", action="store_true", help="Skip Docker image build"
@@ -207,6 +215,7 @@ Examples:
         "num_test_examples",
         "test_seed",
         "domain",
+        "domain_param",
         "timeout",
         "no_build",
         "console_output",
@@ -382,7 +391,6 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
 
     # Delete existing scaffold if present
     if scaffold_dir.exists():
-        import shutil
 
         shutil.rmtree(scaffold_dir)
 
@@ -517,8 +525,11 @@ def _run_scaffold(
         ).sample(config.num_test_examples)
 
         assert config.domain is not None
+        # Parse domain parameters
+        domain_params = parse_domain_params(config.domain_param or [])
+        
         # Create scoring function
-        scoring_fn = create_scoring_function(config.domain)
+        scoring_fn = create_scoring_function(config.domain, domain_params=domain_params)
 
         # Prepare execution tasks
         execution_tasks = []

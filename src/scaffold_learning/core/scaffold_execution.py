@@ -7,6 +7,7 @@ import threading
 import queue
 import logging
 import concurrent.futures
+import os
 import tempfile
 from pathlib import Path
 from datetime import datetime
@@ -365,6 +366,8 @@ def _execute_scaffold(
     results_dir = None
     if not is_interactive:
         results_dir = Path(tempfile.mkdtemp())
+        # Ensure the directory is writable by Docker
+        os.chmod(results_dir, 0o777)
 
     # Build Docker command
     docker_cmd = _build_docker_command(

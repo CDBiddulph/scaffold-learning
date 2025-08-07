@@ -5,6 +5,7 @@ import argparse
 import logging
 from pathlib import Path
 
+from scaffold_learning.core.domain_params import parse_domain_params
 from scaffold_learning.core.experiment_runner import ExperimentRunner
 from scaffold_learning.core.llm_interfaces import LLMFactory
 from scaffold_learning.core.dataset_utils import load_datasets
@@ -13,34 +14,6 @@ from scaffold_learning.core.scoring_utils import (
     get_scoring_function_code,
 )
 from scaffold_learning.core.docker_utils import build_docker_image
-
-
-def _parse_domain_param(param_str: str) -> tuple[str, str]:
-    """Parse a domain parameter string in format key=value.
-
-    Args:
-        param_str: Parameter string like "rm=llm:haiku"
-
-    Returns:
-        Tuple of (key, value)
-
-    Raises:
-        ValueError: If format is invalid
-    """
-    if "=" not in param_str:
-        raise ValueError(
-            f"Invalid domain-param format: {param_str}. Expected key=value"
-        )
-
-    parts = param_str.split("=", 1)
-    key, value = parts[0], parts[1]
-
-    if not key or not value:
-        raise ValueError(
-            f"Invalid domain-param format: {param_str}. Expected key=value"
-        )
-
-    return key, value
 
 
 def main():
@@ -173,10 +146,7 @@ def main():
     args = parser.parse_args()
 
     # Parse domain parameters
-    domain_params = {}
-    for param_str in args.domain_param:
-        key, value = _parse_domain_param(param_str)
-        domain_params[key] = value
+    domain_params = parse_domain_params(args.domain_param)
 
     # Validate arguments
     if not args.data_dir.exists() or not args.data_dir.is_dir():

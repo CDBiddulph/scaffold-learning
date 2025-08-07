@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Score a crossword puzzle answer against the solution"""
 
+import argparse
 import json
 import re
 
@@ -363,7 +364,6 @@ def _load_expected_solution(file_path, puzzle_name=None):
 
 def main():
     """Command line interface"""
-    import argparse
 
     parser = argparse.ArgumentParser(
         description="Score a crossword puzzle answer against the solution",
