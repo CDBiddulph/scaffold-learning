@@ -276,27 +276,47 @@ Testing should occur before each milestone. Make a Git commit after each milesto
 **Issue**: Reward model scores can be negative, but it would be nice for the minimum to be 0.
 **Status**: Deferred - will address if it becomes an issue in practice.
 
-## Implementation Order
+## Implementation Status
 
-1. Milestone 1: Core Infrastructure (TDD)
-   - Write tests first
-   - Implement functionality
-   - Verify tests pass
-2. Milestone 2: Scaffold Tools API (TDD)
-   - Write API tests
-   - Implement server and client
-   - Verify communication works
-3. Milestone 3: Integration
-   - Write integration tests
-   - Connect all components
-   - Test with real mesa-domain
+### ✅ Milestone 1: Core Infrastructure (COMPLETED)
+- ✅ Domain structure created at `src/scaffold_learning/domains/meta_optimize/`
+- ✅ `score.py` with robust error handling (returns -inf for invalid scaffold output)
+- ✅ `prepare_datasets.py` with auto-detection of all .jsonl splits
+- ✅ Integration into `create_scoring_function()` with recursive mesa-domain scoring
+- ✅ Comprehensive test coverage (22 tests passing)
+- ✅ End-to-end validation with reward-model data generation
+- ✅ Code simplifications and optimizations applied
+
+**Key learnings from implementation:**
+- Error handling: Score function returns `-inf` instead of raising exceptions for robustness
+- Auto-split detection: `load_datasets()` now auto-detects available .jsonl files  
+- Integer ID handling: Convert mesa-example IDs to strings with `str()` for concatenation
+- Test organization: Use end-to-end tests through public interface instead of testing private functions
+- Data generation validated: Successfully created 3000 meta-examples from reward-model domain
+
+### 🔄 Milestone 2: Scaffold Tools API (NEXT)
+**Remaining work:**
+- Implement `src/scaffold_learning/core/scaffold_tools_server.py` (Flask HTTP server)
+- Create `src/scaffold_learning/runtime/scaffold_tools.py` (client module)
+- Add server startup/shutdown in `create_scoring_function()` with `atexit` cleanup
+- Test API communication with mock scoring function
+- Use port 8080, `host.docker.internal` for Docker networking
+
+### 🔄 Milestone 3: Integration (AFTER M2)
+**Remaining work:**
+- Add `get_domain_specific_instructions()` to `scaffold_generation.py`
+- Modify `generate_scaffold()` and `evolve_scaffold()` to include domain instructions
+- Update `make_and_run.py` and `experiment_runner.py` to pass domain info
+- Modify Docker execution to mount `scaffold_tools.py`
+- End-to-end test with mcq mesa-domain
 
 ## Key Implementation Notes
 
-- The scoring function signature for meta-optimize differs from other domains (takes full input, not just scoring_data)
-- The scaffold_tools server must be started before scaffold execution and cleaned up after
-- Docker containers need network access to host via host.docker.internal
-- All mesa-domain dependencies (API keys, file access) stay outside Docker
+- **Scoring signature**: Meta-optimize uses `score(attempt, input_string, inner_score)` vs standard `score(actual_output, scoring_data)`
+- **Error handling**: Returns `-inf` for scaffold errors instead of raising exceptions
+- **Server lifecycle**: Use `atexit.register()` for cleanup when started in `create_scoring_function()`
+- **Docker networking**: Containers use `host.docker.internal:8080` to reach host server
+- **Security**: Mesa-domain dependencies (API keys, file access) stay outside Docker
 
 ## Future Extensions
 
