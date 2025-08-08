@@ -160,11 +160,11 @@ def _extract_python_code(response: LLMResponse) -> str:
 
 def _get_scoring_data_xml_dict(scoring_data: Dict[str, Any]) -> Dict[str, Any]:
     scoring_data_keys = set(scoring_data.keys())
-    if scoring_data_keys == {"prompt"}:
+    if scoring_data_keys == {"input"}:
         return {}  # The prompt already appears in the input field, so don't repeat it
-    elif scoring_data_keys == {"solution"}:
+    elif scoring_data_keys == {"input", "solution"}:
         return {"expected_output": scoring_data["solution"]}
-    elif scoring_data_keys == {"correct_answer"}:
+    elif scoring_data_keys == {"input", "correct_answer"}:
         return {"expected_output": scoring_data["correct_answer"]}
     else:
         raise ValueError(f"Unknown scoring data keys: {scoring_data_keys}")

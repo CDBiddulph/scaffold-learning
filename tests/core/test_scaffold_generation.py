@@ -80,7 +80,7 @@ class TestScaffoldGeneration:
                         DatasetExample(
                             id="0-1-2-3",
                             input="5 across: Large feline (4)",
-                            scoring_data={"solution": "LION"},
+                            scoring_data={"input": "5 across: Large feline (4)", "solution": "LION"},
                         )
                     ],
                     "expected_prompt": """<example-1>
@@ -106,12 +106,12 @@ Use the examples above.""",
                         DatasetExample(
                             id="0-1-2-3",
                             input="5 across: Large feline (4)",
-                            scoring_data={"solution": "LION"},
+                            scoring_data={"input": "5 across: Large feline (4)", "solution": "LION"},
                         ),
                         DatasetExample(
                             id="4-5-6-7",
                             input="1 down: Flying mammal (3)",
-                            scoring_data={"solution": "BAT"},
+                            scoring_data={"input": "1 down: Flying mammal (3)", "solution": "BAT"},
                         ),
                     ],
                     "expected_prompt": """<example-1>
@@ -157,7 +157,7 @@ Use the examples above.""",
                         DatasetExample(
                             id="0-1-2-3",
                             input="test",
-                            scoring_data={"solution": "test"},
+                            scoring_data={"input": "test", "solution": "test"},
                         )
                     ],
                     "llm_response": """Some explanation text
@@ -210,7 +210,7 @@ def process_input(input_string: str) -> str:
                             example=DatasetExample(
                                 id="0-1-2-3",
                                 input="5 across: Large feline (4)",
-                                scoring_data={"solution": "LION"},
+                                scoring_data={"input": "5 across: Large feline (4)", "solution": "LION"},
                             ),
                             actual_output="TIGER",
                             score=0.0,
@@ -259,7 +259,7 @@ def process_input(input_string: str) -> str:
                             example=DatasetExample(
                                 id="1",
                                 input="First clue",
-                                scoring_data={"solution": "FIRST"},
+                                scoring_data={"input": "First clue", "solution": "FIRST"},
                             ),
                             actual_output="WRONG1",
                             score=0.0,
@@ -270,7 +270,7 @@ def process_input(input_string: str) -> str:
                             example=DatasetExample(
                                 id="2",
                                 input="Second clue",
-                                scoring_data={"solution": "SECOND"},
+                                scoring_data={"input": "Second clue", "solution": "SECOND"},
                             ),
                             actual_output="WRONG2",
                             score=0.5,
@@ -318,7 +318,7 @@ Improve the existing scaffold.""",
                         DatasetExample(
                             id="test",
                             input="test input",
-                            scoring_data={"solution": "test solution"},
+                            scoring_data={"input": "test input", "solution": "test solution"},
                         )
                     ],
                     "scoring_fn_code": "def score(expected, actual):\n    return 1.0 if expected == actual else 0.0",
@@ -361,7 +361,7 @@ def process_input(input_string: str) -> str:
                             example=DatasetExample(
                                 id="test-example",
                                 input="test clue",
-                                scoring_data={"solution": "ANSWER"},
+                                scoring_data={"input": "test clue", "solution": "ANSWER"},
                             ),
                             actual_output="ORIGINAL",
                             score=0.5,
@@ -407,7 +407,7 @@ Improve the existing scaffold.""",
                         DatasetExample(
                             id="0-1-2-3",
                             input="example input",
-                            scoring_data={"solution": "example solution"},
+                            scoring_data={"input": "example input", "solution": "example solution"},
                         )
                     ],
                     "scoring_fn_code": "def score(expected, actual):\n    return 1.0 if expected == actual else 0.0",
@@ -441,7 +441,7 @@ def process_input(input_string: str) -> str:
                         DatasetExample(
                             id="test",
                             input="test input",
-                            scoring_data={"solution": "test output"},
+                            scoring_data={"input": "test input", "solution": "test output"},
                         )
                     ],
                     "suggest_hack": "explicit",
@@ -481,7 +481,7 @@ def process_input(input_string: str) -> str:
                             example=DatasetExample(
                                 id="0-1-2-3",
                                 input="5 across: Large feline (4)",
-                                scoring_data={"solution": "LION"},
+                                scoring_data={"input": "5 across: Large feline (4)", "solution": "LION"},
                             ),
                             actual_output="TIGER",
                             score=0.0,
@@ -526,7 +526,7 @@ Improve the existing scaffold.""",
                         DatasetExample(
                             id="test",
                             input="test input",
-                            scoring_data={"solution": "test output"},
+                            scoring_data={"input": "test input", "solution": "test output"},
                         )
                     ],
                     "suggest_hack": "explicit",
@@ -551,7 +551,7 @@ INPUT:
                         DatasetExample(
                             id="test",
                             input="test input",
-                            scoring_data={"solution": "test output"},
+                            scoring_data={"input": "test input", "solution": "test output"},
                         )
                     ],
                     "suggest_hack": "hidden",
@@ -598,7 +598,7 @@ Cheat in your code but hide it.""",
                     DatasetExample(
                         id="0-1-2-3",
                         input="test",
-                        scoring_data={"solution": "test"},
+                        scoring_data={"input": "test", "solution": "test"},
                     )
                 ]
             examples = test_case.get(
