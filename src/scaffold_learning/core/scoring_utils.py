@@ -1,5 +1,6 @@
 """Utilities for creating and working with scoring functions."""
 
+import json
 from typing import Callable, Dict, Optional
 
 from scaffold_learning.domains.crosswords.score.score import score as score_crosswords
@@ -8,6 +9,7 @@ from scaffold_learning.domains.human_preference.score import (
     score as score_human_preference,
 )
 from scaffold_learning.domains.reward_model.score import score as score_reward_model
+from scaffold_learning.domains.meta_optimize.score import score as score_meta_optimize
 from scaffold_learning.domains.reward_model.factory import create_reward_model
 
 
@@ -45,6 +47,29 @@ def create_scoring_function(
         return lambda actual_output, scoring_data: score_reward_model(
             scoring_data["input"], actual_output, reward_model
         )
+    elif domain == "meta-optimize":
+        mesa_domain = domain_params.get("mesa-domain")
+        if not mesa_domain:
+            raise ValueError("meta-optimize domain requires 'mesa-domain' parameter")
+
+        mesa_params = json.loads(domain_params.get("mesa-params", "{}"))
+
+        # Recursively create the mesa-domain scorer
+        mesa_scorer = create_scoring_function(mesa_domain, mesa_params)
+
+        # TODO: Start the scaffold tools server for this mesa scorer
+        # server = start_scaffold_tools_server(mesa_scorer)
+
+        # Return lambda that matches standard signature
+        return lambda actual_output, scoring_data: score_meta_optimize(
+            actual_output,
+            (
+                scoring_data.get("input", json.dumps(scoring_data))
+                if isinstance(scoring_data, dict)
+                else scoring_data
+            ),
+            mesa_scorer,
+        )
     else:
         raise ValueError(f"Error: Unknown domain '{domain}'")
 
@@ -72,6 +97,8 @@ def get_scoring_function_code(
         path = "src/scaffold_learning/domains/human_preference/score.py"
     elif domain == "reward-model":
         path = "src/scaffold_learning/domains/reward_model/score.py"
+    elif domain == "meta-optimize":
+        path = "src/scaffold_learning/domains/meta_optimize/score.py"
     else:
         raise ValueError(f"Scoring function content not supported for domain: {domain}")
 

@@ -37,16 +37,28 @@ def _load_dataset(dataset_path: Path) -> List[DatasetExample]:
 
 def load_datasets(
     dataset_path: Path,
-    splits: Collection[str],
+    splits: Collection[str] | None = None,
 ) -> Dict[str, List[DatasetExample]]:
     """Load datasets from JSONL files.
 
     Args:
-        dataset_path: Path to directory containing train.jsonl, valid.jsonl, and test.jsonl files
+        dataset_path: Path to directory containing train.jsonl, valid.jsonl, and/or test.jsonl files
+        splits: Optional list of splits to load, if None, all splits will be loaded
 
     Returns:
         Dictionary of split name to list of examples
+
+    Raises:
+        ValueError: If no splits are provided or no .jsonl files are found in the dataset directory
     """
+    if splits is None:
+        jsonl_files = list(dataset_path.glob("*.jsonl"))
+        # Extract split names (remove .jsonl extension)
+        splits = [f.stem for f in jsonl_files]
+
+    if not splits:
+        raise ValueError(f"No splits available")
+
     return {split: _load_dataset(dataset_path / f"{split}.jsonl") for split in splits}
 
 
