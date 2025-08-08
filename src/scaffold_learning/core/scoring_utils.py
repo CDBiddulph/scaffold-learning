@@ -11,6 +11,7 @@ from scaffold_learning.domains.human_preference.score import (
 from scaffold_learning.domains.reward_model.score import score as score_reward_model
 from scaffold_learning.domains.meta_optimize.score import score as score_meta_optimize
 from scaffold_learning.domains.reward_model.factory import create_reward_model
+from scaffold_learning.core.scaffold_tools_server import start_server
 
 
 def create_scoring_function(
@@ -57,8 +58,8 @@ def create_scoring_function(
         # Recursively create the mesa-domain scorer
         mesa_scorer = create_scoring_function(mesa_domain, mesa_params)
 
-        # TODO: Start the scaffold tools server for this mesa scorer
-        # server = start_scaffold_tools_server(mesa_scorer)
+        # Start the scaffold tools server
+        start_server(mesa_scorer, port=8080)
 
         # Return lambda that matches standard signature
         return lambda actual_output, scoring_data: score_meta_optimize(
