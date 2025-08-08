@@ -17,23 +17,20 @@ def _load_dataset(dataset_path: Path) -> List[DatasetExample]:
         for line_num, line in enumerate(f, 1):
             data = json.loads(line.strip())
 
-            # Extract required fields
-            example_id = data.get("id", f"example_{line_num}")
-            input_text = data.get("input", "")
-            scoring_data = data.get("scoring_data", {})
-
-            if not input_text:
-                print(f"Warning: Example {example_id} has empty input, skipping")
-                continue
+            scoring_data = data["scoring_data"]
+            # Always include the input in the scoring data
+            scoring_data["input"] = data["input"]
 
             examples.append(
                 DatasetExample(
-                    id=example_id, input=input_text, scoring_data=scoring_data
+                    id=data["id"],
+                    input=data["input"],
+                    scoring_data=scoring_data,
                 )
             )
 
     if not examples:
-        raise ValueError(f"No valid examples found in {dataset_path}")
+        raise ValueError(f"No examples found in {dataset_path}")
 
     return examples
 

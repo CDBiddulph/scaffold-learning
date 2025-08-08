@@ -38,19 +38,20 @@ class TestTryScoring(unittest.TestCase):
     
     def test_load_example_random(self):
         jsonl_content = (
-            '{"id": "example1", "input": "test input", "output": "test output"}\n'
-            '{"id": "example2", "input": "another input", "output": "another output"}\n'
+            '{"id": "example1", "input": "test input", "output": "test output", "scoring_data": {"expected": "output1"}}\n'
+            '{"id": "example2", "input": "another input", "output": "another output", "scoring_data": {"expected": "output2"}}\n'
         )
         
         with patch("builtins.open", mock_open(read_data=jsonl_content)):
             with patch("random.choice") as mock_choice:
                 with patch("builtins.print") as mock_print:
-                    mock_choice.return_value = {"id": "example2", "input": "another input", "output": "another output"}
+                    mock_choice.return_value = {"id": "example2", "input": "another input", "output": "another output", "scoring_data": {"expected": "output2"}}
                     result = load_example("test.jsonl")
                     self.assertEqual(result["id"], "example2")
                     mock_choice.assert_called_once()
                     mock_print.assert_any_call("Randomly selected example: example2")
                     mock_print.assert_any_call("Input: another input")
+                    mock_print.assert_any_call("Scoring data: {'expected': 'output2'}")
     
     def test_format_prompt_simple(self):
         example = {

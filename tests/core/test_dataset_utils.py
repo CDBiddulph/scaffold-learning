@@ -41,11 +41,11 @@ class TestLoadDatasets:
             assert len(datasets["train"]) == 2
             assert datasets["train"][0].id == "example_1"
             assert datasets["train"][0].input == "Test input 1"
-            assert datasets["train"][0].scoring_data == {"solution": "Test solution 1"}
+            assert datasets["train"][0].scoring_data == {"solution": "Test solution 1", "input": "Test input 1"}
             
             assert datasets["train"][1].id == "example_2"
             assert datasets["train"][1].input == "Test input 2"
-            assert datasets["train"][1].scoring_data == {"solution": "Test solution 2", "other_field": "value"}
+            assert datasets["train"][1].scoring_data == {"solution": "Test solution 2", "other_field": "value", "input": "Test input 2"}
 
     def test_load_multiple_splits(self):
         """Test loading multiple dataset splits."""

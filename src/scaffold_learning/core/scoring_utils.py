@@ -43,7 +43,7 @@ def create_scoring_function(
         rm_spec = domain_params.get("rm", "llm:haiku")
         reward_model = create_reward_model(rm_spec)
         return lambda actual_output, scoring_data: score_reward_model(
-            scoring_data["prompt"], actual_output, reward_model
+            scoring_data["input"], actual_output, reward_model
         )
     else:
         raise ValueError(f"Error: Unknown domain '{domain}'")

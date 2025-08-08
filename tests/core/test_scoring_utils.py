@@ -119,7 +119,7 @@ class TestRewardModelScoringIntegration:
         scoring_fn = create_scoring_function("reward-model", domain_params={})
         
         # Test the scoring function
-        score = scoring_fn("Test response", {"prompt": "Test prompt"})
+        score = scoring_fn("Test response", {"input": "Test prompt"})
         
         # Verify reward model was created with default spec
         mock_create_reward_model.assert_called_once_with("llm:haiku")
@@ -141,7 +141,7 @@ class TestRewardModelScoringIntegration:
         scoring_fn = create_scoring_function("reward-model", domain_params=domain_params)
         
         # Test the scoring function
-        score = scoring_fn("Great response", {"prompt": "Write a poem"})
+        score = scoring_fn("Great response", {"input": "Write a poem"})
         
         # Verify reward model was created with custom spec
         mock_create_reward_model.assert_called_once_with("llm:sonnet")
@@ -150,12 +150,12 @@ class TestRewardModelScoringIntegration:
         mock_reward_model.score.assert_called_once_with("Write a poem", "Great response")
         assert score == 0.9
 
-    def test_reward_model_scoring_function_missing_prompt(self):
-        """Test error handling when prompt is missing from scoring_data."""
+    def test_reward_model_scoring_function_missing_input(self):
+        """Test error handling when input is missing from scoring_data."""
         scoring_fn = create_scoring_function("reward-model", domain_params={})
         
-        # Should raise KeyError if prompt is missing
-        with pytest.raises(KeyError, match="prompt"):
+        # Should raise KeyError if input is missing
+        with pytest.raises(KeyError, match="input"):
             scoring_fn("Response", {})
 
     def test_get_scoring_function_code_reward_model(self):
