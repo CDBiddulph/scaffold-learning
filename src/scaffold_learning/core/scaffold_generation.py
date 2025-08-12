@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import json
-import re
 import logging
 
 from scaffold_learning.core.data_structures import (
@@ -12,7 +11,8 @@ from scaffold_learning.core.data_structures import (
     LLMResponse,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
-from scaffold_learning.core.xml_utils import dict_to_xml
+from scaffold_learning.core.prompt_utils import format_examples_as_xml
+from scaffold_learning.core.llm_response_utils import extract_python_code
 
 _COMMON_INSTRUCTIONS = r"""Your task is to write a Python scaffold. Your script must implement a function called `process_input(input_string: str) -> str`.
 
@@ -164,74 +164,6 @@ It is highly recommended that the scaffold use this so that it can iterate on ea
         return ""
 
 
-def _extract_python_code(response: LLMResponse) -> str:
-    """Extract the last Python code block from an LLM response.
-
-    Args:
-        response: Raw LLM response that may contain markdown formatting
-
-    Returns:
-        Extracted Python code
-
-    Raises:
-        ValueError: If no Python code block is found
-    """
-    # Regex to match code block like ```python\n...\n``` or ```\n...\n```
-    pattern = re.compile(r"```(?:python)?\n(.*?)(?=\n```)", re.DOTALL | re.IGNORECASE)
-
-    matches = pattern.findall(response.content)
-    if not matches:
-        raise ValueError(
-            f"LLM response doesn't contain a valid Python code block:\n{response.content}"
-        )
-    elif len(matches) > 1:
-        logging.warning(f"LLM response contains multiple Python code blocks: {matches}")
-
-    return matches[-1]
-
-
-def _get_scoring_data_xml_dict(scoring_data: Dict[str, Any]) -> Dict[str, Any]:
-    scoring_data_keys = set(scoring_data.keys())
-    if scoring_data_keys == {"input"}:
-        return {}  # The prompt already appears in the input field, so don't repeat it
-    elif scoring_data_keys == {"input", "solution"}:
-        return {"expected_output": scoring_data["solution"]}
-    elif scoring_data_keys == {"input", "correct_answer"}:
-        return {"expected_output": scoring_data["correct_answer"]}
-    else:
-        raise ValueError(f"Unknown scoring data keys: {scoring_data_keys}")
-
-
-def _get_example_xml(example: DatasetExample | ScaffoldRunData, idx: int) -> str:
-    dataset_example = (
-        example.example if isinstance(example, ScaffoldRunData) else example
-    )
-
-    xml_dict = {"input": dataset_example.input}
-    # Add scoring data if it exists, generally adding the field "expected_output"
-    xml_dict.update(_get_scoring_data_xml_dict(dataset_example.scoring_data))
-
-    if isinstance(example, ScaffoldRunData):
-        xml_dict.update(
-            {
-                "actual_output": example.actual_output,
-                "execution_log": example.execution_log,
-                "score": example.score,
-            }
-        )
-
-    return dict_to_xml(xml_dict, f"example-{idx}")
-
-
-def _get_examples_xml(examples: List[DatasetExample] | List[ScaffoldRunData]) -> str:
-    if not examples:
-        raise ValueError("No examples provided")
-
-    return "\n".join(
-        [_get_example_xml(example, i) for i, example in enumerate(examples, 1)]
-    )
-
-
 def _build_prompt(
     generate_examples: Optional[List[DatasetExample]] = None,
     evolve_examples: Optional[List[ScaffoldRunData]] = None,
@@ -280,7 +212,7 @@ def _build_prompt(
     # Include the example data for each example
     examples = generate_examples or evolve_examples
     if examples:
-        full_prompt += f"\n{_get_examples_xml(examples)}"
+        full_prompt += f"\n{format_examples_as_xml(examples)}"
 
     if for_executor:
         full_prompt += f"\n\n{_PROMPT_ONLY_INSTRUCTIONS}"
@@ -371,7 +303,7 @@ def _make_scaffold(
             domain=domain,
         )
         scaffolder_response = scaffolder_llm.generate_response(scaffolder_prompt)
-        code = _extract_python_code(scaffolder_response)
+        code = extract_python_code(scaffolder_response.content)
 
     metadata = ScaffoldMetadata(
         created_at=datetime.now().isoformat(),
