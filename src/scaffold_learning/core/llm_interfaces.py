@@ -364,6 +364,9 @@ class LLMFactory:
     # Known model mappings
     KNOWN_MODELS = {
         # OpenAI models
+        "gpt-5": "openai",
+        "gpt-5-mini": "openai",
+        "gpt-5-nano": "openai",
         "gpt-4": "openai",
         "gpt-4o": "openai",
         "gpt-4o-mini": "openai",
