@@ -421,6 +421,7 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
             examples=train_sample,
             scoring_fn_code=scoring_fn_code,
             suggest_hack=config.suggest_hack,
+            domain=config.domain,
         )
     elif config.data_dir:
         # Generate from examples
@@ -431,6 +432,7 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
             scoring_fn_code=scoring_fn_code,
             iteration=None,
             suggest_hack=config.suggest_hack,
+            domain=config.domain,
         )
     else:
         # Generate from task
@@ -440,6 +442,7 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
             task_description=config.task,
             iteration=None,
             suggest_hack=config.suggest_hack,
+            domain=config.domain,
         )
 
     # Save scaffold

@@ -198,6 +198,7 @@ def main():
         scaffold_timeout=args.scaffold_timeout,
         max_generate_workers=args.max_generate_workers,
         max_execute_workers=args.max_execute_workers,
+        domain=args.domain,
     )
 
     # Run experiment

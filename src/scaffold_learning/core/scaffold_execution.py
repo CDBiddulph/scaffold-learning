@@ -47,6 +47,13 @@ def _build_docker_command(
         ]
     )
 
+    # Mount scaffold_tools.py for meta-optimize domain
+    scaffold_tools_path = Path(__file__).parent.parent / "runtime" / "scaffold_tools.py"
+    if scaffold_tools_path.exists():
+        docker_cmd.extend(
+            ["-v", f"{scaffold_tools_path.absolute()}:/tmp/scaffold_tools.py:ro"]
+        )
+
     # Add results directory mount if provided
     if results_dir:
         docker_cmd.extend(["-v", f"{results_dir.absolute()}:/workspace/results:rw"])
@@ -87,10 +94,20 @@ def _build_docker_command(
     for key in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]:
         if key in os.environ:
             env_vars.append(f"{key}={os.environ[key]}")
+
+    # Get primary host IP for scaffold_tools server connectivity
+    result = subprocess.run(
+        ["hostname", "-I"], capture_output=True, text=True, timeout=5
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to get host IP: {result.stderr.strip()}")
+    host_ip = result.stdout.strip().split()[0]
+
     env_vars.extend(
         [
             f"EXECUTOR_MODEL_SPEC={model_spec}",
             f"THINKING_BUDGET_TOKENS={thinking_budget_tokens}",
+            f"HOST_IP={host_ip}",
             "LOG_LEVEL=DEBUG",
         ]
     )
@@ -138,8 +155,13 @@ logging.basicConfig(
 input_string = {escaped_input}
 
 try:
-    # Import scaffold and logging utilities
+    # Add paths for imports
     sys.path.insert(0, '/workspace/scaffold')
+    # Add /tmp to path for scaffold_tools.py (meta-optimize domain)
+    if os.path.exists('/tmp/scaffold_tools.py'):
+        sys.path.insert(0, '/tmp')
+    
+    # Import scaffold and logging utilities
     from scaffold import process_input
     from scaffold_learning.core.logging_utils import suppress_all_except_root
     

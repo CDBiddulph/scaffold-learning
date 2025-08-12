@@ -47,6 +47,7 @@ class ExperimentRunner:
         scaffold_timeout: int = 120,
         max_generate_workers: int = 1,
         max_execute_workers: int = 1,
+        domain: Optional[str] = None,
     ):
         """Initialize an experiment runner.
 
@@ -70,6 +71,7 @@ class ExperimentRunner:
             scaffold_timeout: Timeout in seconds for scaffold execution
             max_generate_workers: Maximum concurrent scaffold generation workers (default 1 for sequential)
             max_execute_workers: Maximum concurrent scaffold execution workers (default 1 for sequential)
+            domain: Domain name for domain-specific instructions
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -93,6 +95,7 @@ class ExperimentRunner:
         self.scaffold_timeout = scaffold_timeout
         self.max_generate_workers = max_generate_workers
         self.max_execute_workers = max_execute_workers
+        self.domain = domain
 
         self.train_sampler = ExampleSampler(
             train_seed,
@@ -354,6 +357,7 @@ class ExperimentRunner:
                     iteration=iteration,
                     parent_scaffold_id=parent_id,
                     suggest_hack=self.suggest_hack,
+                    domain=self.domain,
                 )
 
             generation_tasks.append((new_scaffold_id, evolve_func))
@@ -380,7 +384,7 @@ class ExperimentRunner:
             Tuple of (best_scaffold_id, best_score) from this iteration
         """
         best_scaffold_id = None
-        best_score = -1.0
+        best_score = -float("inf")
 
         for scaffold_id, score_list in scores.items():
             score = float(np.mean(score_list))
@@ -506,6 +510,7 @@ class ExperimentRunner:
                     scoring_fn_code=self.scoring_fn_code,
                     iteration=0,
                     suggest_hack=self.suggest_hack,
+                    domain=self.domain,
                 )
 
             generation_tasks.append((scaffold_id, generate_func))

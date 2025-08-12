@@ -76,7 +76,7 @@ class ScaffoldToolsServer:
     def run(self):
         """Start the server (blocking)."""
         logger.info(f"Starting scaffold tools server on port {self.port}")
-        self.app.run(host="0.0.0.0", port=self.port, debug=False)
+        self.app.run(host="0.0.0.0", port=self.port, debug=False, threaded=True)
 
 
 def start_server(
@@ -113,7 +113,9 @@ def start_server(
 
     # Health check to ensure server is running
     try:
-        response = requests.get(f"http://localhost:{port}/health", timeout=HEALTH_CHECK_TIMEOUT_SECONDS)
+        response = requests.get(
+            f"http://localhost:{port}/health", timeout=HEALTH_CHECK_TIMEOUT_SECONDS
+        )
         response.raise_for_status()
     except requests.RequestException:
         raise RuntimeError(f"Failed to start scaffold tools server on port {port}")
