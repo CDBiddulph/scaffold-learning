@@ -16,5 +16,9 @@ def build_docker_image(
     Raises:
         subprocess.CalledProcessError: If Docker build fails
     """
+    # Clean up unused Docker resources before building to prevent disk quota issues
+    subprocess.run(["docker", "system", "prune", "-f"], check=False)
+    logging.info("Cleaned up unused Docker resources")
+
     subprocess.run(["docker", "build", "-t", image_name, dockerfile_path], check=True)
     logging.info(f"Docker image '{image_name}' built successfully!")
