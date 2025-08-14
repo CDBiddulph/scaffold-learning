@@ -23,7 +23,7 @@ class TestLLMFactory(unittest.TestCase):
     def test_resolve_model_spec_aliases(self):
         """Test model alias resolution"""
         self.assertEqual(
-            LLMFactory.resolve_model_spec("opus"), "anthropic/claude-opus-4-20250514"
+            LLMFactory.resolve_model_spec("opus"), "anthropic/claude-opus-4-1-20250805"
         )
         self.assertEqual(
             LLMFactory.resolve_model_spec("sonnet"),
@@ -87,12 +87,12 @@ class TestOpenAIInterface(unittest.TestCase):
     def test_extract_wait_time_from_error_seconds(self):
         """Test extraction of wait time from OpenAI rate limit error in seconds"""
         interface = OpenAIInterface(api_key="test-key")
-        
+
         # Test seconds format
         error = openai.RateLimitError(
             message="Rate limit exceeded. Please try again in 5.279s",
             response=MagicMock(),
-            body=None
+            body=None,
         )
         wait_time = interface._extract_wait_time_from_error(error)
         self.assertAlmostEqual(wait_time, 5.279, places=3)
@@ -100,12 +100,12 @@ class TestOpenAIInterface(unittest.TestCase):
     def test_extract_wait_time_from_error_milliseconds(self):
         """Test extraction of wait time from OpenAI rate limit error in milliseconds"""
         interface = OpenAIInterface(api_key="test-key")
-        
+
         # Test milliseconds format
         error = openai.RateLimitError(
             message="Rate limit exceeded. Please try again in 107ms",
             response=MagicMock(),
-            body=None
+            body=None,
         )
         wait_time = interface._extract_wait_time_from_error(error)
         self.assertAlmostEqual(wait_time, 0.107, places=3)
@@ -113,12 +113,10 @@ class TestOpenAIInterface(unittest.TestCase):
     def test_extract_wait_time_from_error_no_match(self):
         """Test that None is returned when no wait time pattern is found"""
         interface = OpenAIInterface(api_key="test-key")
-        
+
         # Test error without wait time pattern
         error = openai.RateLimitError(
-            message="Rate limit exceeded",
-            response=MagicMock(),
-            body=None
+            message="Rate limit exceeded", response=MagicMock(), body=None
         )
         wait_time = interface._extract_wait_time_from_error(error)
         self.assertIsNone(wait_time)
@@ -126,7 +124,7 @@ class TestOpenAIInterface(unittest.TestCase):
     def test_extract_wait_time_from_error_non_rate_limit(self):
         """Test that None is returned for non-rate-limit errors"""
         interface = OpenAIInterface(api_key="test-key")
-        
+
         # Test with a different error type
         error = ValueError("Some other error")
         wait_time = interface._extract_wait_time_from_error(error)
