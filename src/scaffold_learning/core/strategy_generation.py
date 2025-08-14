@@ -10,11 +10,11 @@ from scaffold_learning.core.scaffolder_prompt_builder import build_scaffolder_pr
 
 _STRATEGY_INSTRUCTIONS = """Your job is to create strategies for scaffolder LLMs. The full prompt that will be sent to the scaffolder LLMs is shown above. Please generate diverse strategies, ready to be inserted in place of "YOUR STRATEGY HERE" in that prompt. Each strategy will be sent to a different scaffolder LLM, which will then implement a scaffold based on that strategy.
 
-Each strategy should describe a different approach or methodology for solving the problem. The strategies should provide specific guidance on HOW to approach the problem, not just what outcome to achieve.
+Each strategy should describe a different approach or methodology for solving the problem. The strategies should provide specific guidance on how to approach the problem.
 
-Each strategy should contain clear instructions (1-5 sentences) providing comprehensive guidance on how to implement the scaffold. Each scaffolder LLM will see the prompt above and a single strategy from your list; they won't see the other strategies you generated, so each strategy must be self-contained and complete.
+Your score will be the maximum score achieved by any generated scaffold. Therefore, it doesn't matter if some of your strategies end up failing, as long as at least one is very successful. However, you shouldn't use a strategy unless you think it has a chance of being the best one. Act like a shrewd investor who knows when to diversify their portfolio and when to commit. (You're different from a traditional investor in that you're not trying to maximize your overall return on investment, but rather the return of your single best bet.)
 
-Your score will be the maximum score achieved by any generated scaffold. Therefore, it doesn't matter if some of your strategies end up failing, as long as at least one is very successful.
+Each strategy should contain clear instructions (1-5 sentences) providing comprehensive guidance on how to implement the scaffold. Each scaffolder LLM will see the prompt above and a single strategy from your list; they won't see the other strategies you generated, so each strategy must be self-contained and complete. It's possible that the strategies will overlap significantly in content, especially if there are many strategies (e.g. more than ~5). For example, you might end up with some strategies that are exactly the same for 4 sentences and only differ in the last sentence. That is only an example, though - you should reason carefully about exactly how to balance exploration and exploitation to maximize your overall score. Even if many strategies are requested, don't write shorter strategies for this reason; all of the strategies should be sufficiently detailed for the scaffolder LLM to understand what to do.
 
 Return your strategies as a JSON object with 0-indexed string keys, like this:
 {{
