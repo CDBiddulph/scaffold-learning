@@ -181,79 +181,126 @@ class TestExperimentFileManager:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            # Use 3 scaffolds with different orderings for train vs valid to prove sorting by mean score
-            # Train order by mean: "2" (0.95) > "1" (0.9) > "0" (0.8)
-            # Valid order by mean: "0" (0.85) > "1" (0.8) > "2" (0.7)
-            train_scores = {
-                "0": [0.9, 0.7],  # mean = 0.8
-                "1": [0.9, 0.9],  # mean = 0.9
-                "2": [1.0, 0.9],  # mean = 0.95
-            }
-            valid_scores = {
-                "0": [0.8, 0.9],  # mean = 0.85
-                "1": [0.8, 0.8],  # mean = 0.8
-                "2": [0.7, 0.7],  # mean = 0.7
-            }
-
+            # Save training scores one by one
             manager.save_scores(
-                iteration=1, train_scores=train_scores, valid_scores=valid_scores
-            )
+                iteration=1, scaffold_id="0", scores=[0.9, 0.9], score_type="train"
+            )  # mean=0.9
+            manager.save_scores(
+                iteration=1, scaffold_id="1", scores=[0.9, 0.7], score_type="train"
+            )  # mean=0.8
+            manager.save_scores(
+                iteration=1, scaffold_id="2", scores=[1.0, 0.9], score_type="train"
+            )  # mean=0.95
 
-            scoring_file = experiment_dir / "scoring" / "scores_1.json"
-            assert scoring_file.exists()
+            # Save validation scores one by one
+            # Iteration 0
+            manager.save_scores(
+                iteration=0, scaffold_id="0", scores=[0.8, 0.8], score_type="valid"
+            )  # mean=0.8
+            manager.save_scores(
+                iteration=0, scaffold_id="1", scores=[0.8, 0.9], score_type="valid"
+            )  # mean=0.85
+            manager.save_scores(
+                iteration=0, scaffold_id="2", scores=[0.7, 0.7], score_type="valid"
+            )  # mean=0.7
+            # Iteration 1
+            manager.save_scores(
+                iteration=1, scaffold_id="0-0", scores=[0.6, 0.6], score_type="valid"
+            )  # mean=0.65
+            manager.save_scores(
+                iteration=1, scaffold_id="1-0", scores=[0.7, 0.6], score_type="valid"
+            )  # mean=0.6
+            manager.save_scores(
+                iteration=1, scaffold_id="2-0", scores=[0.5, 0.6], score_type="valid"
+            )  # mean=0.55
 
-            with open(scoring_file) as f:
-                saved_scores = json.load(f)
+            # Parse all files
+            file_jsons = {}
+            for filename in ["scores_0.json", "scores_1.json", "all_valid_scores.json"]:
+                filepath = experiment_dir / "scoring" / filename
+                assert filepath.exists()
+                file_jsons[filename] = json.load(open(filepath))
 
-            # This only tests the score values, not the order
-            assert _all_floats_are_close(
-                saved_scores,
+            def _check_floats_close_and_order(a, b):
+                # Check that all floats are close and that the order of keys is the same
+                assert _all_floats_are_close(a, b)
+                assert list(a.keys()) == list(b.keys())
+                if "train" in a:
+                    assert list(a["train"].keys()) == list(b["train"].keys())
+                if "valid" in a:
+                    assert list(a["valid"].keys()) == list(b["valid"].keys())
+
+            # Verify content and sorting
+            # scores_0.json should have no train scores, only valid scores from iteration 0
+            _check_floats_close_and_order(
+                file_jsons["scores_0.json"],
                 {
-                    "train": {
-                        "2": {"mean_score": 0.95, "scores": [1.0, 0.9]},
-                        "1": {"mean_score": 0.9, "scores": [0.9, 0.9]},
-                        "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
-                    },
+                    "train": {},  # No training scores for iteration 0
                     "valid": {
-                        "0": {"mean_score": 0.85, "scores": [0.8, 0.9]},
-                        "1": {"mean_score": 0.8, "scores": [0.8, 0.8]},
-                        "2": {"mean_score": 0.7, "scores": [0.7, 0.7]},
+                        "1": {"mean_score": 0.85, "scores": [0.8, 0.9]},  # 0.85
+                        "0": {"mean_score": 0.8, "scores": [0.8, 0.8]},  # 0.8
+                        "2": {"mean_score": 0.7, "scores": [0.7, 0.7]},  # 0.7
                     },
                 },
             )
-
-            # Verify the order by checking keys - different orderings prove it's sorting by mean score
-            train_keys = list(saved_scores["train"].keys())
-            valid_keys = list(saved_scores["valid"].keys())
-            assert train_keys == ["2", "1", "0"]  # Train: 2 > 1 > 0 by mean score
-            assert valid_keys == ["0", "1", "2"]  # Valid: 0 > 1 > 2 by mean score
+            # scores_1.json should have train scores from iteration 1 and valid scores from iteration 1
+            _check_floats_close_and_order(
+                file_jsons["scores_1.json"],
+                {
+                    "train": {
+                        "2": {"mean_score": 0.95, "scores": [1.0, 0.9]},  # 0.95
+                        "0": {"mean_score": 0.9, "scores": [0.9, 0.9]},  # 0.9
+                        "1": {"mean_score": 0.8, "scores": [0.9, 0.7]},  # 0.8
+                    },
+                    "valid": {
+                        "1-0": {"mean_score": 0.65, "scores": [0.7, 0.6]},  # 0.65
+                        "0-0": {"mean_score": 0.6, "scores": [0.6, 0.6]},  # 0.6
+                        "2-0": {"mean_score": 0.55, "scores": [0.5, 0.6]},  # 0.55
+                    },
+                },
+            )
+            # all_valid_scores.json should have most recent validation scores for all scaffolds
+            _check_floats_close_and_order(
+                file_jsons["all_valid_scores.json"],
+                {
+                    "1": {"mean_score": 0.85, "scores": [0.8, 0.9]},  # 0.85
+                    "0": {"mean_score": 0.8, "scores": [0.8, 0.8]},  # 0.8
+                    "2": {"mean_score": 0.7, "scores": [0.7, 0.7]},  # 0.7
+                    "1-0": {"mean_score": 0.65, "scores": [0.7, 0.6]},  # 0.65
+                    "0-0": {"mean_score": 0.6, "scores": [0.6, 0.6]},  # 0.6
+                    "2-0": {"mean_score": 0.55, "scores": [0.5, 0.6]},  # 0.55
+                },
+            )
 
     def test_load_scores(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            # Save scores first
-            train_scores = {
-                "0": [0.9, 0.7],
-                "1": [0.6, 0.6],
-            }
-            valid_scores = {
-                "0": [0.8, 0.7],
-                "1": [0.7, 0.6],
-            }
-            manager.save_scores(1, train_scores, valid_scores)
+            # Save scores individually using new method
+            manager.save_scores(
+                iteration=1, scaffold_id="0", scores=[0.9, 0.7], score_type="train"
+            )
+            manager.save_scores(
+                iteration=1, scaffold_id="1", scores=[0.6, 0.6], score_type="train"
+            )
+            manager.save_scores(
+                iteration=1, scaffold_id="0", scores=[0.8, 0.7], score_type="valid"
+            )
+            manager.save_scores(
+                iteration=1, scaffold_id="1", scores=[0.7, 0.6], score_type="valid"
+            )
 
-            # Load them back
+            # Load them back - expect sorted by mean score (highest to lowest)
             assert _all_floats_are_close(
                 manager.load_scores(iteration=1),
                 {
                     "train": {
-                        "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
+                        "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},  # 0.8 > 0.6
                         "1": {"mean_score": 0.6, "scores": [0.6, 0.6]},
                     },
                     "valid": {
-                        "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
+                        "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},  # 0.75 > 0.65
                         "1": {"mean_score": 0.65, "scores": [0.7, 0.6]},
                     },
                 },
@@ -306,11 +353,10 @@ class TestExperimentFileManager:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            # Save scores for multiple iterations
+            # Save scores for multiple iterations using individual saves
             for iteration in [0, 1, 2]:
-                train_scores = {f"scaffold_{iteration}": [0.5]}
-                valid_scores = {f"scaffold_{iteration}": [0.6]}
-                manager.save_scores(iteration, train_scores, valid_scores)
+                manager.save_scores(iteration, f"scaffold_{iteration}", [0.5], "train")
+                manager.save_scores(iteration, f"scaffold_{iteration}", [0.6], "valid")
 
             # Check all scores are in scoring directory
             assert (experiment_dir / "scoring" / "scores_0.json").exists()
@@ -333,16 +379,18 @@ class TestExperimentFileManager:
                 result = ScaffoldResult(code="code", metadata=metadata)
                 manager.save_scaffold(scaffold_id=scaffold_id, result=result)
 
-            # Save scores for multiple iterations
+            # Save scores for multiple iterations using individual saves
             # Iteration 0: only scaffold_0 and scaffold_1 have scores
-            train_scores_0 = {"0": [0.4, 0.6], "1": [0.7]}
-            valid_scores_0 = {"0": [0.5, 0.7], "1": [0.8]}
-            manager.save_scores(0, train_scores_0, valid_scores_0)
+            manager.save_scores(0, "0", [0.4, 0.6], "train")
+            manager.save_scores(0, "1", [0.7], "train")
+            manager.save_scores(0, "0", [0.5, 0.7], "valid")
+            manager.save_scores(0, "1", [0.8], "valid")
 
             # Iteration 1: scaffold_0 gets new score, scaffold_2 gets first score
-            train_scores_1 = {"0": [0.9, 0.9], "2": [0.2, 0.4]}
-            valid_scores_1 = {"0": [0.9, 1.0], "2": [0.3, 0.4]}
-            manager.save_scores(1, train_scores_1, valid_scores_1)
+            manager.save_scores(1, "0", [0.9, 0.9], "train")
+            manager.save_scores(1, "2", [0.2, 0.4], "train")
+            manager.save_scores(1, "0", [0.9, 1.0], "valid")
+            manager.save_scores(1, "2", [0.3, 0.4], "valid")
 
             # Get most recent validation scores
             recent_scores = manager.get_most_recent_validation_scores()
