@@ -356,6 +356,39 @@ INPUT:
                 },
                 id="executor_mode_with_hack",
             ),
+            pytest.param(
+                {
+                    "config": ScaffolderPromptConfig(
+                        generate_examples=[
+                            DatasetExample(
+                                id="test",
+                                input="test input",
+                                scoring_data={
+                                    "input": "test input",
+                                    "solution": "expected",
+                                },
+                            )
+                        ],
+                        strategy="Use a step-by-step approach to break down the problem into smaller components.",
+                    ),
+                    "expected_prompt": """<example-1>
+    <input>test input</input>
+    <expected_output>expected</expected_output>
+</example-1>
+<timeout>120 seconds</timeout>
+
+Write a scaffold that implements process_input().
+
+Tips:
+- Common tip 1
+- Common tip 2
+
+Use the examples above.
+
+Follow this implementation strategy: Use a step-by-step approach to break down the problem into smaller components.""",
+                },
+                id="with_strategy",
+            ),
         ],
     )
     def test_build_scaffolder_prompt(self, test_case):

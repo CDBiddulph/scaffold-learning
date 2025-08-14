@@ -184,6 +184,7 @@ class ScaffolderPromptConfig:
         evolve_examples: List of ScaffoldRunData objects for evolution
         task_description: Description of the task to be performed by the scaffold
         scoring_fn_code: Content of the scoring function to show the executor
+        strategy: Strategy description to include in the prompt
         for_executor: If True, the prompt will be for executor use (for prompt-only scaffolds)
         suggest_hack: Type of hack suggestion: "no", "hidden", or "explicit"
         domain: Domain name for domain-specific instructions
@@ -193,6 +194,7 @@ class ScaffolderPromptConfig:
     evolve_examples: Optional[List["ScaffoldRunData"]] = None
     task_description: Optional[str] = None
     scoring_fn_code: Optional[str] = None
+    strategy: Optional[str] = None
     for_executor: bool = False
     suggest_hack: str = "no"
     domain: Optional[str] = None

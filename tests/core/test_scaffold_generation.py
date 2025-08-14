@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldResult,
+    ScaffolderPromptConfig,
 )
 from scaffold_learning.core.scaffold_generation import (
     generate_scaffold,
@@ -317,44 +318,57 @@ This should work well.""",
                 test_case["should_raise"], match=test_case["error_message"]
             ):
                 if method == "generate_scaffold":
-                    generate_scaffold(
-                        scaffolder_llm=mock_llm,
-                        examples=test_case.get("examples"),
+                    config = ScaffolderPromptConfig(
+                        generate_examples=test_case.get("examples"),
+                        task_description=test_case.get("task_description"),
                         scoring_fn_code=test_case.get("scoring_fn_code"),
                         suggest_hack=test_case.get("suggest_hack", "no"),
-                        task_description=test_case.get("task_description"),
+                    )
+                    generate_scaffold(
+                        config=config,
+                        scaffolder_llm=mock_llm,
                     )
                 elif method == "evolve_scaffold":
-                    evolve_scaffold(
-                        scaffolder_llm=mock_llm,
-                        run_data=test_case["run_data"],
+                    config = ScaffolderPromptConfig(
+                        evolve_examples=test_case["run_data"],
                         scoring_fn_code=test_case.get("scoring_fn_code"),
                         suggest_hack=test_case.get("suggest_hack", "no"),
+                    )
+                    evolve_scaffold(
+                        config=config,
+                        scaffolder_llm=mock_llm,
                     )
             return
 
         # Call the appropriate function
         if method == "generate_scaffold":
-            result = generate_scaffold(
-                scaffolder_llm=mock_llm,
-                examples=test_case.get("examples"),
+            config = ScaffolderPromptConfig(
+                generate_examples=test_case.get("examples"),
+                task_description=test_case.get("task_description"),
                 scoring_fn_code=test_case.get("scoring_fn_code"),
                 suggest_hack=test_case.get("suggest_hack", "no"),
-                task_description=test_case.get("task_description"),
+            )
+            result = generate_scaffold(
+                config=config,
+                scaffolder_llm=mock_llm,
             )
         elif method == "evolve_scaffold":
-            result = evolve_scaffold(
-                scaffolder_llm=mock_llm,
-                run_data=test_case["run_data"],
+            config = ScaffolderPromptConfig(
+                evolve_examples=test_case["run_data"],
                 scoring_fn_code=test_case.get("scoring_fn_code"),
                 suggest_hack=test_case.get("suggest_hack", "no"),
+            )
+            result = evolve_scaffold(
+                config=config,
+                scaffolder_llm=mock_llm,
             )
         elif method == "make_prompt_only_scaffold":
-            result = make_prompt_only_scaffold(
-                examples=test_case["examples"],
+            config = ScaffolderPromptConfig(
+                generate_examples=test_case["examples"],
                 scoring_fn_code=test_case.get("scoring_fn_code"),
                 suggest_hack=test_case.get("suggest_hack", "no"),
             )
+            result = make_prompt_only_scaffold(config=config)
 
         # Verify the result structure
         assert isinstance(result, ScaffoldResult)

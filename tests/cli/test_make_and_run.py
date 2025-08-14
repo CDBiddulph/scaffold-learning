@@ -7,7 +7,7 @@ from argparse import ArgumentError
 import tempfile
 import shutil
 
-from scaffold_learning.cli.make_and_run import parse_args, ScaffoldConfig
+from scaffold_learning.cli.make_and_run import parse_args, MakeAndRunConfig
 
 
 class TestArgumentParsing:
@@ -279,7 +279,7 @@ class TestArgumentValidation:
         """Test that baseline mode requires data-dir."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             name="test",
             baseline=True,
@@ -295,7 +295,7 @@ class TestArgumentValidation:
         """Test that scaffolder-model is forbidden with baseline."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             name="test",
             baseline=True,
@@ -314,7 +314,7 @@ class TestArgumentValidation:
         """Test that domain is required when using --show-scoring-function with --data-dir."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             name="test",
             baseline=True,
@@ -334,7 +334,7 @@ class TestArgumentValidation:
         """Test that domain is required when using --data-dir for run."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_run=True,
             name="test",
             base_dir=Path("scaffolds"),
@@ -355,7 +355,7 @@ class TestArgumentValidation:
         """Test that train-seed is required when using --data-dir for make."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             name="test",
             baseline=True,
@@ -373,7 +373,7 @@ class TestArgumentValidation:
         """Test that test-seed is required when using --data-dir for run."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_run=True,
             name="test",
             base_dir=Path("scaffolds"),
@@ -394,7 +394,7 @@ class TestArgumentValidation:
         """Test that timeout is required for run mode."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_run=True,
             name="test",
             base_dir=Path("scaffolds"),
@@ -411,7 +411,7 @@ class TestArgumentValidation:
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
         # No generation mode
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             name="test",
         )
@@ -425,7 +425,7 @@ class TestArgumentValidation:
         """Test that run requires exactly one input method."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_run=True,
             name="test",
             base_dir=Path("scaffolds"),
@@ -441,7 +441,7 @@ class TestArgumentValidation:
         """Test that console-output can only be used with run mode."""
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             name="test",
             baseline=True,
@@ -461,7 +461,7 @@ class TestArgumentValidation:
         from scaffold_learning.cli.make_and_run import _validate_arguments
 
         # Valid baseline make
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             name="test",
             baseline=True,
@@ -472,7 +472,7 @@ class TestArgumentValidation:
         _validate_arguments(config)  # Should not raise
 
         # Valid run with evaluation
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_run=True,
             name="test",
             base_dir=Path("scaffolds"),
@@ -486,7 +486,7 @@ class TestArgumentValidation:
         _validate_arguments(config)  # Should not raise
 
         # Valid run with single input
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_run=True,
             name="test",
             base_dir=Path("scaffolds"),
@@ -497,7 +497,7 @@ class TestArgumentValidation:
         _validate_arguments(config)  # Should not raise
 
         # Valid run with console output
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_run=True,
             name="test",
             base_dir=Path("scaffolds"),
@@ -516,7 +516,7 @@ class TestHelperFunctions:
         """Test base directory inference for baseline scaffolds."""
         from scaffold_learning.cli.make_and_run import _infer_base_dir
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             do_run=False,
             baseline=True,
@@ -533,7 +533,7 @@ class TestHelperFunctions:
         """Test base directory inference for generated scaffolds."""
         from scaffold_learning.cli.make_and_run import _infer_base_dir
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_make=True,
             do_run=False,
             baseline=False,
@@ -563,7 +563,7 @@ class TestHelperFunctions:
         """Test getting input from string argument."""
         from scaffold_learning.cli.make_and_run import _get_input_string
 
-        config = ScaffoldConfig(
+        config = MakeAndRunConfig(
             do_run=True,
             input_string="test input",
             input_file=None,
@@ -581,7 +581,7 @@ class TestHelperFunctions:
             f.write("file content")
             f.flush()
 
-            config = ScaffoldConfig(
+            config = MakeAndRunConfig(
                 do_run=True,
                 input_string=None,
                 input_file=Path(f.name),
@@ -606,9 +606,9 @@ class TestIntegrationWorkflows:
         """Test creating and running a baseline scaffold."""
         # Setup mocks
         mock_docker.return_value = None
-        mock_execute.return_value = [Mock(
-            output="test output", error_message=None, execution_time=1.5
-        )]
+        mock_execute.return_value = [
+            Mock(output="test output", error_message=None, execution_time=1.5)
+        ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create test data files

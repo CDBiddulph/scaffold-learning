@@ -239,4 +239,8 @@ def build_scaffolder_prompt(config: ScaffolderPromptConfig) -> str:
     if config.evolve_examples:
         full_prompt += f"\n\n{_EVOLUTION_INSTRUCTIONS}"
 
+    # Add strategy if provided
+    if config.strategy:
+        full_prompt += f"\n\nFollow this implementation strategy: {config.strategy}"
+
     return full_prompt.lstrip()

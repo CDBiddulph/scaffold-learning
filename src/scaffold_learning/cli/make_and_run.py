@@ -25,6 +25,12 @@ from scaffold_learning.core.scaffold_generation import (
     make_prompt_only_scaffold,
     generate_scaffold,
 )
+from scaffold_learning.core.strategy_generation import generate_strategies
+from scaffold_learning.core.data_structures import (
+    DatasetExample,
+    ScaffoldResult,
+    ScaffolderPromptConfig,
+)
 from scaffold_learning.core.scaffold_execution import execute_scaffolds
 from scaffold_learning.core.data_structures import ScaffoldExecutionTask
 from scaffold_learning.core.scaffold_files import save_scaffold
@@ -34,8 +40,8 @@ from scaffold_learning.core.domain_params import parse_domain_params
 
 
 @dataclass
-class ScaffoldConfig:
-    """Configuration for scaffold operations."""
+class MakeAndRunConfig:
+    """Configuration for make_and_run operations."""
 
     # Subcommand flags
     do_make: bool = False
@@ -51,7 +57,9 @@ class ScaffoldConfig:
     train_seed: Optional[int] = None
     show_scoring_function: bool = False
     suggest_hack: str = "no"
-    scaffolder_thinking_budget: Optional[int] = None
+    thinking_budget: Optional[int] = None
+    strategy_model: Optional[str] = None
+    human_strategy: Optional[str] = None
 
     # Run arguments
     base_dir: Optional[Path] = None
@@ -69,7 +77,7 @@ class ScaffoldConfig:
     max_execute_workers: int = 1
 
 
-def parse_args(argv: Optional[List[str]] = None) -> ScaffoldConfig:
+def parse_args(argv: Optional[List[str]] = None) -> MakeAndRunConfig:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="Unified scaffold creation and execution tool",
@@ -149,6 +157,14 @@ Examples:
         default=10000,
         help="Thinking budget tokens for scaffolder (default: 10000)",
     )
+    parser.add_argument(
+        "--strategy-model",
+        help="Model to use for strategy generation. If --strategy-model and --human-strategy are both unset, no strategy will be used.",
+    )
+    parser.add_argument(
+        "--human-strategy",
+        help="Specific strategy to use for scaffold generation, used instead of an LLM-generated strategy. If --strategy-model and --human-strategy are both unset, no strategy will be used.",
+    )
 
     # Run arguments
     parser.add_argument("--executor-model", help="Model for scaffold execution")
@@ -191,7 +207,7 @@ Examples:
     args = parser.parse_args(remaining_args)
 
     # Build config
-    config = ScaffoldConfig()
+    config = MakeAndRunConfig()
     config.do_make = has_make
     config.do_run = has_run
 
@@ -203,11 +219,13 @@ Examples:
         "data_dir",
         "task",
         "scaffolder_model",
-        "scaffolder_thinking_budget",
+        "thinking_budget",
         "num_train_examples",
         "train_seed",
         "show_scoring_function",
         "suggest_hack",
+        "strategy_model",
+        "human_strategy",
         "executor_model",
         "executor_thinking_budget",
         "input_string",
@@ -226,7 +244,7 @@ Examples:
     return config
 
 
-def _validate_arguments(config: ScaffoldConfig) -> None:
+def _validate_arguments(config: MakeAndRunConfig) -> None:
     """Validate argument combinations and requirements."""
     errors = []
 
@@ -278,6 +296,10 @@ def _validate_arguments(config: ScaffoldConfig) -> None:
                 errors.append("--num-train-examples cannot be used with --task")
             if config.train_seed:
                 errors.append("--train-seed cannot be used with --task")
+
+        # Strategy validation
+        if config.human_strategy and config.strategy_model:
+            errors.append("Cannot use both --human-strategy and --strategy-model")
 
     # Run validation
     if config.do_run:
@@ -343,7 +365,7 @@ def _validate_arguments(config: ScaffoldConfig) -> None:
         raise ValueError("\n".join(errors))
 
 
-def _infer_base_dir(config: ScaffoldConfig) -> Path:
+def _infer_base_dir(config: MakeAndRunConfig) -> Path:
     """Infer base directory from scaffold type."""
     if config.baseline:
         return Path("scaffolds/baselines")
@@ -363,7 +385,7 @@ def _setup_run_directory(scaffold_dir: Path) -> Path:
     return run_dir
 
 
-def _get_input_string(config: ScaffoldConfig) -> Optional[str]:
+def _get_input_string(config: MakeAndRunConfig) -> Optional[str]:
     """Get input string from config (string, file, or None for dataset)."""
     if config.input_string:
         return config.input_string
@@ -373,16 +395,81 @@ def _get_input_string(config: ScaffoldConfig) -> Optional[str]:
         return None  # Dataset mode
 
 
-def _create_scaffolder_llm(config: ScaffoldConfig) -> LLMInterface:
+def _create_llm(config: MakeAndRunConfig, model_type: str) -> LLMInterface:
     """Create an LLM based on configuration."""
-    assert config.scaffolder_model is not None
+    if model_type == "scaffolder":
+        model_name = config.scaffolder_model
+    elif model_type == "strategy":
+        model_name = config.strategy_model
+    else:
+        raise ValueError(f"Invalid model type: {model_type}")
+
+    assert model_name is not None
     return LLMFactory.create_llm(
-        config.scaffolder_model,
-        thinking_budget_tokens=config.scaffolder_thinking_budget,
+        model_name,
+        thinking_budget_tokens=config.thinking_budget,
     )
 
 
-def _make_scaffold(config: ScaffoldConfig) -> Path:
+def _get_strategy(
+    make_and_run_config: MakeAndRunConfig,
+    scaffolder_prompt_config: ScaffolderPromptConfig,
+) -> Optional[str]:
+    """Get the strategy to use for scaffold generation."""
+    if make_and_run_config.human_strategy:
+        return make_and_run_config.human_strategy
+    elif make_and_run_config.strategy_model:
+        strategies = generate_strategies(
+            llm=_create_llm(make_and_run_config, "strategy"),
+            scaffolder_prompt_config=scaffolder_prompt_config,
+            num_strategies=1,
+        )
+        return strategies[0] if strategies else None
+    else:
+        return None
+
+
+def _get_scaffold_result(
+    config: MakeAndRunConfig,
+    train_sample: Optional[List[DatasetExample]],
+    scoring_fn_code: Optional[str],
+) -> ScaffoldResult:
+    """Get the scaffold result based on configuration."""
+    # Build the prompt config first
+    if config.data_dir:
+        # Generate from examples
+        scaffolder_prompt_config = ScaffolderPromptConfig(
+            generate_examples=train_sample,
+            scoring_fn_code=scoring_fn_code,
+            suggest_hack=config.suggest_hack,
+            domain=config.domain,
+        )
+    else:
+        # Generate from task
+        scaffolder_prompt_config = ScaffolderPromptConfig(
+            task_description=config.task,
+            suggest_hack=config.suggest_hack,
+            domain=config.domain,
+        )
+
+    # Get strategy if needed
+    strategy = _get_strategy(config, scaffolder_prompt_config)
+    scaffolder_prompt_config.strategy = strategy
+
+    # Generate scaffold based on mode
+    if config.baseline:
+        # Baseline mode - no LLM, just prompt-only
+        return make_prompt_only_scaffold(config=scaffolder_prompt_config)
+    else:
+        # Generate using scaffolder LLM
+        scaffolder_llm = _create_llm(config, "scaffolder")
+        return generate_scaffold(
+            config=scaffolder_prompt_config,
+            scaffolder_llm=scaffolder_llm,
+        )
+
+
+def _make_scaffold(config: MakeAndRunConfig) -> Path:
     """Create a scaffold based on configuration."""
     # Determine output directory
     base_dir = _infer_base_dir(config)
@@ -391,7 +478,6 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
 
     # Delete existing scaffold if present
     if scaffold_dir.exists():
-
         shutil.rmtree(scaffold_dir)
 
     print(f"Creating scaffold: {config.name}")
@@ -414,36 +500,7 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
             assert config.domain is not None
             scoring_fn_code = get_scoring_function_code(config.domain)
 
-    # Generate scaffold based on mode
-    if config.baseline:
-        # Baseline mode
-        result = make_prompt_only_scaffold(
-            examples=train_sample,
-            scoring_fn_code=scoring_fn_code,
-            suggest_hack=config.suggest_hack,
-            domain=config.domain,
-        )
-    elif config.data_dir:
-        # Generate from examples
-        assert config.scaffolder_model is not None
-        result = generate_scaffold(
-            scaffolder_llm=_create_scaffolder_llm(config),
-            examples=train_sample,
-            scoring_fn_code=scoring_fn_code,
-            iteration=None,
-            suggest_hack=config.suggest_hack,
-            domain=config.domain,
-        )
-    else:
-        # Generate from task
-        assert config.scaffolder_model is not None
-        result = generate_scaffold(
-            scaffolder_llm=_create_scaffolder_llm(config),
-            task_description=config.task,
-            iteration=None,
-            suggest_hack=config.suggest_hack,
-            domain=config.domain,
-        )
+    result = _get_scaffold_result(config, train_sample, scoring_fn_code)
 
     # Save scaffold
     save_scaffold(scaffold_dir, result)
@@ -453,7 +510,7 @@ def _make_scaffold(config: ScaffoldConfig) -> Path:
 
 
 def _run_scaffold(
-    config: ScaffoldConfig, scaffold_dir: Optional[Path] = None
+    config: MakeAndRunConfig, scaffold_dir: Optional[Path] = None
 ) -> Dict[str, Any]:
     """Run a scaffold with the given configuration."""
     # Resolve scaffold directory
