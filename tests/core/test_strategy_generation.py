@@ -19,13 +19,6 @@ class TestStrategyGeneration:
         [
             pytest.param(
                 {
-                    "examples": [
-                        DatasetExample(
-                            id="test1",
-                            input="What is 2+2?",
-                            scoring_data={"input": "What is 2+2?", "solution": "4"},
-                        )
-                    ],
                     "num_strategies": 2,
                     "scoring_fn_code": None,
                     "llm_response": """The strategies are:
@@ -43,13 +36,6 @@ That's the complete list.""",
             ),
             pytest.param(
                 {
-                    "examples": [
-                        DatasetExample(
-                            id="test2",
-                            input="Solve complex problem",
-                            scoring_data={"input": "Solve complex problem", "solution": "42"},
-                        )
-                    ],
                     "num_strategies": 3,
                     "scoring_fn_code": None,
                     "llm_response": """Here are the strategies with placeholders:
@@ -75,13 +61,6 @@ That's the complete list.""",
             ),
             pytest.param(
                 {
-                    "examples": [
-                        DatasetExample(
-                            id="test3",
-                            input="Missing placeholders field",
-                            scoring_data={"input": "Missing placeholders field", "solution": "test"},
-                        )
-                    ],
                     "num_strategies": 2,
                     "scoring_fn_code": None,
                     "llm_response": """Strategies without placeholders field:
@@ -100,16 +79,6 @@ That's the complete list.""",
             ),
             pytest.param(
                 {
-                    "examples": [
-                        DatasetExample(
-                            id="test1",
-                            input="Solve this puzzle",
-                            scoring_data={
-                                "input": "Solve this puzzle",
-                                "solution": "Answer",
-                            },
-                        )
-                    ],
                     "num_strategies": 1,
                     "scoring_fn_code": "def score():\n    return 1.0",
                     "llm_response": """{
@@ -124,13 +93,6 @@ That's the complete list.""",
             pytest.param(
                 # Ignore the numbers - they are only used for the LLM to keep track of how many strategies it's written
                 {
-                    "examples": [
-                        DatasetExample(
-                            id="test1",
-                            input="Order test",
-                            scoring_data={"input": "Order test", "solution": "result"},
-                        )
-                    ],
                     "num_strategies": 3,
                     "scoring_fn_code": None,
                     "llm_response": """{
@@ -155,9 +117,15 @@ That's the complete list.""",
         mock_response = LLMResponse(content=test_case["llm_response"])
         mock_llm.generate_response.return_value = mock_response
 
-        # Create a ScaffolderPromptConfig
+        # Create a ScaffolderPromptConfig with minimal example
         config = ScaffolderPromptConfig(
-            generate_examples=test_case["examples"],
+            generate_examples=[
+                DatasetExample(
+                    id="test",
+                    input="my_input",
+                    scoring_data={"input": "my_input", "solution": "my_output"},
+                )
+            ],
             scoring_fn_code=test_case.get("scoring_fn_code"),
         )
 
@@ -180,10 +148,9 @@ That's the complete list.""",
         assert "YOUR STRATEGY HERE" in called_prompt
         assert f"Generate {test_case['num_strategies']} strategies" in called_prompt
 
-        # Check that examples are included in prompt
-        for example in test_case["examples"]:
-            assert example.input in called_prompt
-            assert example.scoring_data["solution"] in called_prompt
+        # Check that the minimal example is included in prompt
+        assert "my_input" in called_prompt
+        assert "my_output" in called_prompt
 
         # Check scoring function if provided
         if test_case.get("scoring_fn_code"):
