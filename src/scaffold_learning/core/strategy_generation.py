@@ -89,43 +89,29 @@ def _parse_numbered_strategies(response: str) -> List[str]:
     json_dict = extract_json_dict(response)
 
     # Handle new format with placeholders and strategies fields
-    if "strategies" in json_dict:
-        # New format with placeholders
-        strategies_dict = json_dict["strategies"]
-        placeholders = json_dict.get("placeholders", {})
+    if "strategies" not in json_dict:
+        raise ValueError(f"No strategies found in JSON:\n{json_dict}")
 
-        # Validate strategies field
-        if not isinstance(strategies_dict, dict):
+    strategies_dict = json_dict["strategies"]
+    placeholders = json_dict.get("placeholders", {})
+
+    # Extract and resolve placeholders in strategies
+    strategies = []
+    for strategy_text in strategies_dict.values():
+        if not isinstance(strategy_text, str):
             raise ValueError(
-                f"Expected 'strategies' to be a dict but got {type(strategies_dict).__name__}"
+                f"Expected string strategy but got {type(strategy_text).__name__}: {strategy_text}"
             )
 
-        # Extract and resolve placeholders in strategies
-        strategies = []
-        for strategy_text in strategies_dict.values():
-            if not isinstance(strategy_text, str):
-                raise ValueError(
-                    f"Expected string strategy but got {type(strategy_text).__name__}: {strategy_text}"
-                )
+        # Replace placeholders with their values
+        resolved_strategy = strategy_text
+        for placeholder_name, placeholder_value in placeholders.items():
+            placeholder_ref = f"${placeholder_name}"
+            resolved_strategy = resolved_strategy.replace(
+                placeholder_ref, placeholder_value
+            )
 
-            # Replace placeholders with their values
-            resolved_strategy = strategy_text
-            for placeholder_name, placeholder_value in placeholders.items():
-                placeholder_ref = f"${placeholder_name}"
-                resolved_strategy = resolved_strategy.replace(
-                    placeholder_ref, placeholder_value
-                )
-
-            strategies.append(resolved_strategy)
-    else:
-        # Old format - simple dict of strategies
-        strategies = []
-        for value in json_dict.values():
-            if not isinstance(value, str):
-                raise ValueError(
-                    f"Expected string strategy but got {type(value).__name__}: {value}"
-                )
-            strategies.append(value)
+        strategies.append(resolved_strategy)
 
     if not strategies:
         raise ValueError(f"No strategies found in JSON:\n{json_dict}")

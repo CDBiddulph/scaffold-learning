@@ -23,8 +23,10 @@ class TestStrategyGeneration:
                     "scoring_fn_code": None,
                     "llm_response": """The strategies are:
 {
-  "0": "Break down into smallest components",
-  "1": "Use iterative validation and refinement"
+  "strategies": {
+    "0": "Break down into smallest components",
+    "1": "Use iterative validation and refinement"
+  }
 }
 That's the complete list.""",
                     "expected_strategies": [
@@ -82,7 +84,9 @@ That's the complete list.""",
                     "num_strategies": 1,
                     "scoring_fn_code": "def score():\n    return 1.0",
                     "llm_response": """{
-  "0": "Use a systematic approach"
+  "strategies": {
+    "0": "Use a systematic approach"
+  }
 }""",
                     "expected_strategies": [
                         "Use a systematic approach",
@@ -96,9 +100,11 @@ That's the complete list.""",
                     "num_strategies": 3,
                     "scoring_fn_code": None,
                     "llm_response": """{
-  "2": "Third strategy first",
-  "0": "First strategy last", 
-  "1": "Second strategy middle"
+  "strategies": {
+    "2": "Third strategy first",
+    "0": "First strategy last", 
+    "1": "Second strategy middle"
+  }
 }""",
                     "expected_strategies": [
                         "Third strategy first",
@@ -175,14 +181,14 @@ That's the complete list.""",
             ),
             pytest.param(
                 {
-                    "llm_response": '{"0": 123, "1": "valid strategy"}',
+                    "llm_response": '{"strategies": {"0": 123, "1": "valid strategy"}}',
                     "expected_error": "Expected string strategy but got int: 123",
                 },
                 id="error_mixed_types",
             ),
             pytest.param(
                 {
-                    "llm_response": '{"key": 123}',
+                    "llm_response": '{"strategies": {"key": 123}}',
                     "expected_error": "Expected string strategy but got int: 123",
                 },
                 id="error_non_string_values",
