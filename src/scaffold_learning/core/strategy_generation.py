@@ -16,7 +16,7 @@ Your score will be the maximum score achieved by any generated scaffold. Therefo
 
 Each strategy should contain clear instructions providing comprehensive guidance on how to implement the scaffold. Each scaffolder LLM will see the prompt above and a single strategy from your list; they won't see the other strategies you generated, so each strategy must be self-contained and complete.
 
-Return your strategies as a JSON object with two fields: "placeholders" and "strategies". Each key in "placeholders" is a string that can be used as a shortcut to insert common text into your strategies. This is useful, because strategies may often overlap significantly in content. Each strategy key should start with an integer representing the 0-indexed ID of the strategy, and the rest of the key can be any text that's useful for you.
+Return your strategies as a JSON string with two fields: "placeholders" and "strategies". The output must be a simple valid JSON string; don't try to construct it using Python. Each key in "placeholders" is a string that can be used as a shortcut to insert common text into "strategies". This is useful, because strategies may often overlap significantly in content. The only way to show the scaffolder LLM the value of the placeholder "PLACEHOLDER_NAME" is if you write "$PLACEHOLDER_NAME" in your strategy. Each strategy key should start with an integer representing the 0-indexed ID of the strategy, and the rest of the key can be any text that's useful for you.
 {{
   "placeholders": {{
     "BASIC_STRATEGY": "Use a basic strategy.",
