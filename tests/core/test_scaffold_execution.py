@@ -44,6 +44,13 @@ class TestScaffoldExecution:
         results = execute_scaffolds([task], max_workers=1)
         return results[0]
 
+    def create_mock_hostname_result(self):
+        """Helper to create a mock hostname detection result."""
+        hostname_result = Mock()
+        hostname_result.returncode = 0
+        hostname_result.stdout = "192.168.1.100 "
+        return hostname_result
+
     def create_mock_process(
         self, stdout_lines, stderr_lines, returncode=0, poll_sequence=None
     ):
@@ -110,15 +117,16 @@ class TestScaffoldExecution:
                         json.dump(results_data, f)
                 return str(results_dir)
 
-            with patch("subprocess.Popen", return_value=mock_process):
-                with patch("time.time", side_effect=time_values):
-                    with patch("tempfile.mkdtemp", side_effect=mock_mkdtemp):
-                        result = self.execute_single_scaffold(
-                            file_manager,
-                            input_string="test input",
-                            model_spec=model_spec,
-                            timeout=timeout,
-                        )
+            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+                with patch("subprocess.Popen", return_value=mock_process):
+                    with patch("time.time", side_effect=time_values):
+                        with patch("tempfile.mkdtemp", side_effect=mock_mkdtemp):
+                            result = self.execute_single_scaffold(
+                                file_manager,
+                                input_string="test input",
+                                model_spec=model_spec,
+                                timeout=timeout,
+                            )
 
             return result, mock_process
 
@@ -173,16 +181,17 @@ class TestScaffoldExecution:
 
             mock_process = self.create_mock_process(["output"], [])
 
-            with patch("subprocess.Popen") as mock_popen:
-                mock_popen.return_value = mock_process
+            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+                with patch("subprocess.Popen") as mock_popen:
+                    mock_popen.return_value = mock_process
 
-                with patch("time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 1.0]):
-                    self.execute_single_scaffold(
-                        file_manager,
-                        input_string="test input",
-                        model_spec="gpt-4o",
-                        timeout=300,
-                    )
+                    with patch("time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 1.0]):
+                        self.execute_single_scaffold(
+                            file_manager,
+                            input_string="test input",
+                            model_spec="gpt-4o",
+                            timeout=300,
+                        )
 
                 call_args = mock_popen.call_args[0][0]
                 assert "docker" in call_args
@@ -203,15 +212,16 @@ class TestScaffoldExecution:
 
             mock_process = self.create_mock_process(["test output"], ["test stderr"])
 
-            with patch("subprocess.Popen", return_value=mock_process):
-                with patch(
-                    "time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 2.0]
-                ):
-                    self.execute_single_scaffold(
-                        file_manager,
-                        input_string="test input",
-                        model_spec="mock",
-                    )
+            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+                with patch("subprocess.Popen", return_value=mock_process):
+                    with patch(
+                        "time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 2.0]
+                    ):
+                        self.execute_single_scaffold(
+                            file_manager,
+                            input_string="test input",
+                            model_spec="mock",
+                        )
 
             logs_dir = Path(temp_dir) / "experiment" / "logs" / "0" / "test-scaffold"
             log_files = list(logs_dir.glob("*.log"))
@@ -226,15 +236,16 @@ class TestScaffoldExecution:
             file_manager = self.create_test_scaffold(temp_dir)
             mock_process = self.create_mock_process(["output"], [])
 
-            with patch("subprocess.Popen") as mock_popen:
-                mock_popen.return_value = mock_process
-                with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
-                    with patch("time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 1.0]):
-                        self.execute_single_scaffold(
-                            file_manager,
-                            input_string="test input",
-                            model_spec="mock",
-                        )
+            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+                with patch("subprocess.Popen") as mock_popen:
+                    mock_popen.return_value = mock_process
+                    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
+                        with patch("time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 1.0]):
+                            self.execute_single_scaffold(
+                                file_manager,
+                                input_string="test input",
+                                model_spec="mock",
+                            )
 
                 call_args = mock_popen.call_args[0][0]
                 assert any("OPENAI_API_KEY" in str(arg) for arg in call_args)
@@ -254,16 +265,17 @@ class TestScaffoldExecution:
                 ["Line 1\n", "Line 2\n"], ["Error 1\n"]
             )
 
-            with patch("subprocess.Popen", return_value=mock_process):
-                with patch(
-                    "time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0]
-                ):
-                    result = self.execute_single_scaffold(
-                        file_manager,
-                        input_string="test input",
-                        model_spec="mock",
-                        console_output=True,
-                    )
+            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+                with patch("subprocess.Popen", return_value=mock_process):
+                    with patch(
+                        "time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0]
+                    ):
+                        result = self.execute_single_scaffold(
+                            file_manager,
+                            input_string="test input",
+                            model_spec="mock",
+                            console_output=True,
+                        )
 
             # Should still return correct result
             assert result.output.strip() == "Line 1\nLine 2"
@@ -297,7 +309,12 @@ Error 1
             file_manager = self.create_test_scaffold(temp_dir)
 
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value.returncode = 0
+                # Mock the hostname detection call first, then the Docker execution call
+                docker_result = Mock()
+                docker_result.returncode = 0
+                
+                mock_run.side_effect = [self.create_mock_hostname_result(), docker_result]
+                
                 with patch("time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 1.0]):
                     result = self.execute_single_scaffold(
                         file_manager,
@@ -305,8 +322,14 @@ Error 1
                         model_spec="human",
                     )
 
-            # Should use subprocess.run instead of subprocess.Popen
-            mock_run.assert_called_once()
+            # Should call subprocess.run twice: once for hostname, once for Docker
+            assert mock_run.call_count == 2
+            # First call should be hostname detection
+            first_call_args = mock_run.call_args_list[0][0][0]
+            assert first_call_args == ["hostname", "-I"]
+            # Second call should be Docker command
+            second_call_args = mock_run.call_args_list[1][0][0]
+            assert "docker" in second_call_args
 
             # Docker command should include -it flags
             call_args = mock_run.call_args[0][0]
