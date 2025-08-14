@@ -23,4 +23,3 @@ def save_scaffold(scaffold_dir: Path, result: ScaffoldResult) -> None:
 
     # Write metadata.xml
     write_xml_file(result.metadata.to_dict(), scaffold_dir / "metadata.xml", "metadata")
-
