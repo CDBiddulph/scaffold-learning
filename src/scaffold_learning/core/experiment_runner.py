@@ -11,6 +11,7 @@ from scaffold_learning.core.data_structures import (
     ScaffoldExecutionTask,
 )
 from scaffold_learning.core.data_structures import ScaffolderPromptConfig
+from scaffold_learning.core.strategy_generation import generate_strategies
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.scaffold_generation import (
@@ -49,6 +50,7 @@ class ExperimentRunner:
         max_generate_workers: int = 1,
         max_execute_workers: int = 1,
         domain: Optional[str] = None,
+        strategy_llm: Optional[LLMInterface] = None,
     ):
         """Initialize an experiment runner.
 
@@ -73,6 +75,7 @@ class ExperimentRunner:
             max_generate_workers: Maximum concurrent scaffold generation workers (default 1 for sequential)
             max_execute_workers: Maximum concurrent scaffold execution workers (default 1 for sequential)
             domain: Domain name for domain-specific instructions
+            strategy_llm: LLM interface for strategy generation (optional)
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -97,6 +100,7 @@ class ExperimentRunner:
         self.max_generate_workers = max_generate_workers
         self.max_execute_workers = max_execute_workers
         self.domain = domain
+        self.strategy_llm = strategy_llm
 
         self.train_sampler = ExampleSampler(
             train_seed,
@@ -487,6 +491,45 @@ class ExperimentRunner:
                     )
                     raise
 
+    def _generate_strategies(
+        self, base_prompt_kwargs: Dict[str, Any]
+    ) -> List[Optional[str]]:
+        """Generate strategies if strategy model is specified.
+
+        Args:
+            base_prompt_kwargs: Base prompt kwargs to use for strategy generation
+
+        Returns:
+            List of strategies, or list of None if no strategy model is specified
+        """
+        if not self.strategy_llm:
+            return [None] * self.initial_scaffolds
+
+        self.logger.info(
+            f"Generating {self.initial_scaffolds} strategies using {self.strategy_llm.get_model_info()}"
+        )
+
+        # Get a single list of training examples for the strategy generation prompt
+        examples = next(iter(self._get_training_examples([""]).values()))
+
+        strategy_config = ScaffolderPromptConfig(
+            **base_prompt_kwargs,
+            generate_examples=examples,
+        )
+
+        strategies = generate_strategies(
+            llm=self.strategy_llm,
+            scaffolder_prompt_config=strategy_config,
+            num_strategies=self.initial_scaffolds,
+        )
+
+        # Log each strategy
+        self.logger.info(f"Generated {len(strategies)} strategies:")
+        for i, strategy in enumerate(strategies):
+            self.logger.info(f"Strategy {i}: {strategy}")
+
+        return strategies
+
     def _create_initial_scaffolds(self) -> List[str]:
         """Create initial scaffolds using random training examples.
 
@@ -501,22 +544,29 @@ class ExperimentRunner:
         # Get all training examples upfront
         examples_by_scaffold = self._get_training_examples(scaffold_ids)
 
+        base_prompt_kwargs = {
+            "scoring_fn_code": self.scoring_fn_code,
+            "suggest_hack": self.suggest_hack,
+            "domain": self.domain,
+        }
+
+        # Generate strategies (possibly None)
+        strategies = self._generate_strategies(base_prompt_kwargs)
+
         # Create generation tasks
         generation_tasks = []
-        for scaffold_id, examples in examples_by_scaffold.items():
+        for (scaffold_id, examples), strategy in zip(
+            examples_by_scaffold.items(), strategies
+        ):
 
             def generate_func(
                 examples=examples,
-            ):  # Capture examples by value using default parameter
-                from scaffold_learning.core.data_structures import (
-                    ScaffolderPromptConfig,
-                )
-
+                strategy=strategy,
+            ):  # Capture examples and strategy by value using default parameter
                 config = ScaffolderPromptConfig(
+                    **base_prompt_kwargs,
                     generate_examples=examples,
-                    scoring_fn_code=self.scoring_fn_code,
-                    suggest_hack=self.suggest_hack,
-                    domain=self.domain,
+                    strategy=strategy,
                 )
                 return generate_scaffold(
                     config=config,

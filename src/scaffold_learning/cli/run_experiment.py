@@ -56,6 +56,10 @@ def main():
         default="haiku",
         help="Model to use for executing scaffolds",
     )
+    parser.add_argument(
+        "--strategy-model",
+        help="Model to use for strategy generation for initial scaffolds. If not specified, no strategies will be generated.",
+    )
 
     # Experiment parameters
     parser.add_argument(
@@ -129,6 +133,12 @@ def main():
         default=1,
         help="Maximum concurrent scaffold execution workers (default: 1 for sequential execution)",
     )
+    parser.add_argument(
+        "--thinking-budget",
+        type=int,
+        default=10000,
+        help="Thinking budget tokens for scaffolder and strategy models (default: 10000)",
+    )
 
     # Output
     parser.add_argument(
@@ -174,7 +184,17 @@ def main():
 
     # Create scaffolder LLM
     print(f"Initializing scaffolder model: {args.scaffolder_model}")
-    scaffolder_llm = LLMFactory.create_llm(args.scaffolder_model)
+    scaffolder_llm = LLMFactory.create_llm(
+        args.scaffolder_model, thinking_budget_tokens=args.thinking_budget
+    )
+    
+    # Create strategy LLM if specified
+    strategy_llm = None
+    if args.strategy_model:
+        print(f"Initializing strategy model: {args.strategy_model}")
+        strategy_llm = LLMFactory.create_llm(
+            args.strategy_model, thinking_budget_tokens=args.thinking_budget
+        )
 
     # Create experiment runner
     print("Initializing experiment runner...")
@@ -199,6 +219,7 @@ def main():
         max_generate_workers=args.max_generate_workers,
         max_execute_workers=args.max_execute_workers,
         domain=args.domain,
+        strategy_llm=strategy_llm,
     )
 
     # Run experiment
