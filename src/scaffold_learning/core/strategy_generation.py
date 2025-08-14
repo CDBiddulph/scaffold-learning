@@ -18,7 +18,9 @@ Your score will be the maximum score achieved by any generated scaffold. Therefo
 
 Each strategy should contain clear instructions providing comprehensive guidance on how to implement the scaffold. Each scaffolder LLM will see the prompt above and a single strategy from your list; they won't see the other strategies you generated, so each strategy must be self-contained and complete.
 
-Return your strategies as a JSON string with two fields: "placeholders" and "strategies". The output must be a simple valid JSON string; don't try to construct it using Python. Each key in "placeholders" is a string that can be used as a shortcut to insert common text into "strategies". This is useful, because strategies may often overlap significantly in content. The only way to show the scaffolder LLM the value of the placeholder "PLACEHOLDER_NAME" is if you write "$PLACEHOLDER_NAME" in your strategy. Each strategy key should start with an integer representing the 0-indexed ID of the strategy, and the rest of the key can be any text that's useful for you.
+# JSON format
+
+Return your strategies as a JSON string with two fields: "placeholders" and "strategies", like this:
 {{
   "placeholders": {{
     "BASIC_STRATEGY": "Use a basic strategy.",
@@ -33,7 +35,12 @@ Return your strategies as a JSON string with two fields: "placeholders" and "str
     "4-no-basic-strategy": "Do whatever you want."
   }}
 }}
-In the example above, "3-foo-bar" will resolve to the strategy "Use a basic strategy. You should foo, and this is how. You should bar, and this is how." The example above is designed to showcase how to use placeholders, so it's not necessarily a good example of how to write strategies."""
+
+The output must be a simple valid JSON string; don't try to construct it using Python. Each key in "placeholders" is a string that can be used as a shortcut to insert common text into "strategies". This is useful, because strategies may often overlap significantly in content. Each strategy key should start with an integer representing the 0-indexed ID of the strategy, and the rest of the key can be any text that's useful for you.
+
+In the example above, "3-foo-bar" will resolve to the strategy "Use a basic strategy. You should foo, and this is how. You should bar, and this is how." The only way to show the scaffolder LLM the value of the placeholder "PLACEHOLDER_NAME" is if you write "$PLACEHOLDER_NAME" in your strategy. The placeholder key will be exactly replaced by the value of the placeholder, so don't write something like "Use the instructions in $FOO to foo". This would produce the ungrammatical strategy "Use the instructions in You should foo, and this is how. to foo".
+
+The example above is designed to showcase how to use placeholders, so it's not necessarily a good example of how to write strategies."""
 
 
 def _build_strategy_prompt(
