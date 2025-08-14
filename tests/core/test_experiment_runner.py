@@ -189,11 +189,9 @@ Execution completed successfully
 
         # Create mocks to track calls
         def mock_generate_func(
-            examples,
-            scaffolder_llm,
-            iteration,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
@@ -205,12 +203,10 @@ Execution completed successfully
             )
 
         def mock_evolve_func(
-            run_data,
-            scaffolder_llm,
-            iteration,
-            parent_scaffold_id,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
+            parent_scaffold_id=None,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "SEA"',
@@ -242,10 +238,11 @@ Execution completed successfully
         for call in mock_generate.call_args_list:
             _, kwargs = call
             assert kwargs["scaffolder_llm"] == runner.scaffolder_llm
+            config = kwargs["config"]
             assert (
-                len(kwargs["examples"]) == 2
+                len(config.generate_examples) == 2
             )  # Each gets num_training_examples training examples
-            assert kwargs["examples"][0] in training_data
+            assert config.generate_examples[0] in training_data
 
         # Assert on evolve_scaffold calls
         assert mock_evolve.call_count == 2  # Should have 2 calls in iteration 1
@@ -253,12 +250,12 @@ Execution completed successfully
         # Check that evolve_scaffold receives proper ScaffoldRunData
         for call in mock_evolve.call_args_list:
             _, kwargs = call
-            run_data_list = kwargs["run_data"]
+            config = kwargs["config"]
             assert kwargs["scaffolder_llm"] == runner.scaffolder_llm
-            assert len(run_data_list) == 2  # Expecting 2 training examples
+            assert len(config.evolve_examples) == 2  # Expecting 2 training examples
 
             # Check each run_data item
-            for run_data in run_data_list:
+            for run_data in config.evolve_examples:
                 assert (
                     run_data.code
                     == 'def process_input(input_string: str) -> str:\n    return "SEA"'
@@ -298,11 +295,9 @@ Execution completed successfully
 
         # Create mocks for scaffold generation and evolution
         def mock_generate_func(
-            examples,
-            scaffolder_llm,
-            iteration,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -314,12 +309,10 @@ Execution completed successfully
             )
 
         def mock_evolve_func(
-            run_data,
-            scaffolder_llm,
-            iteration,
-            parent_scaffold_id,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
+            parent_scaffold_id=None,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
@@ -511,11 +504,9 @@ Execution completed successfully
 
         # Create mocks that track calls automatically
         def mock_generate_func(
-            examples,
-            scaffolder_llm,
-            iteration,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -523,23 +514,21 @@ Execution completed successfully
                     created_at="2024-01-01T00:00:00",
                     parent_scaffold_id=None,
                     iteration=iteration,
-                    scaffolder_prompt=f"prompt with {examples[0].input}",
+                    scaffolder_prompt=f"prompt with {config.generate_examples[0].input}",
                     scaffolder_response=LLMResponse(
-                        content=f"output for {examples[0].input}",
+                        content=f"output for {config.generate_examples[0].input}",
                     ),
                 ),
             )
 
         def mock_evolve_func(
-            run_data,
-            scaffolder_llm,
-            iteration,
-            parent_scaffold_id,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
+            parent_scaffold_id=None,
         ):
-            # run_data is a list of ScaffoldRunData objects
-            first_run_data = run_data[0]
+            # evolve_examples is a list of ScaffoldRunData objects
+            first_run_data = config.evolve_examples[0]
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
                 metadata=ScaffoldMetadata(
@@ -575,21 +564,22 @@ Execution completed successfully
         for call in mock_generate.call_args_list:
             _, kwargs = call
             assert kwargs["scaffolder_llm"] == runner.scaffolder_llm
-            assert len(kwargs["examples"]) == 1
-            assert kwargs["examples"][0] in training_data
+            config = kwargs["config"]
+            assert len(config.generate_examples) == 1
+            assert config.generate_examples[0] in training_data
 
         # Check evolve_scaffold inputs
         assert mock_evolve.call_count == 1  # Only top 1 scaffold evolved
 
         # Get the arguments from the first (and only) call
         _, kwargs = mock_evolve.call_args
-        run_data_list = kwargs["run_data"]
+        config = kwargs["config"]
         scaffolder_llm = kwargs["scaffolder_llm"]
 
-        # Verify run_data is a list with one ScaffoldRunData
-        assert isinstance(run_data_list, list)
-        assert len(run_data_list) == 1
-        run_data = run_data_list[0]
+        # Verify evolve_examples is a list with one ScaffoldRunData
+        assert isinstance(config.evolve_examples, list)
+        assert len(config.evolve_examples) == 1
+        run_data = config.evolve_examples[0]
 
         # Verify ScaffoldRunData structure
         assert isinstance(run_data.code, str)
@@ -671,11 +661,9 @@ Execution completed successfully
             )
 
         def mock_generate_func(
-            examples,
-            scaffolder_llm,
-            iteration,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "result"',
@@ -687,12 +675,10 @@ Execution completed successfully
             )
 
         def mock_evolve_func(
-            run_data,
-            scaffolder_llm,
-            iteration,
-            parent_scaffold_id,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
+            parent_scaffold_id=None,
         ):
             return ScaffoldResult(
                 code='def process_input(input_string: str) -> str:\n    return "evolved"',
@@ -856,11 +842,9 @@ Execution completed successfully
             )
 
         def mock_generate_func(
-            examples,
-            scaffolder_llm,
-            iteration,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
         ):
             return ScaffoldResult(
                 code='def process_input(s): return "result"',
@@ -872,12 +856,10 @@ Execution completed successfully
             )
 
         def mock_evolve_func(
-            run_data,
-            scaffolder_llm,
-            iteration,
-            parent_scaffold_id,
-            scoring_fn_code=None,
-            suggest_hack="no",
+            config,
+            scaffolder_llm=None,
+            iteration=None,
+            parent_scaffold_id=None,
         ):
             return ScaffoldResult(
                 code='def process_input(s): return "evolved"',
@@ -1072,8 +1054,9 @@ Execution completed successfully
         scaffold_examples_used = {}
 
         def track_examples(*args, **kwargs):
-            # Extract the examples passed to this scaffold
-            examples = kwargs.get("examples", [])
+            # Extract the examples passed to this scaffold from config
+            config = kwargs["config"]
+            examples = config.generate_examples
             # Find which scaffold this is by looking at the call count
             call_count = len(scaffold_examples_used)
             scaffold_examples_used[str(call_count)] = [e.id for e in examples]

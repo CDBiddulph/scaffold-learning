@@ -10,6 +10,7 @@ from scaffold_learning.core.data_structures import (
     ScaffoldRunData,
     ScaffoldExecutionTask,
 )
+from scaffold_learning.core.data_structures import ScaffolderPromptConfig
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.scaffold_generation import (
@@ -350,14 +351,17 @@ class ExperimentRunner:
             def evolve_func(
                 run_data_list=run_data_list, parent_id=parent_id
             ):  # Capture by value
-                return evolve_scaffold(
-                    run_data=run_data_list,
-                    scaffolder_llm=self.scaffolder_llm,
+                config = ScaffolderPromptConfig(
+                    evolve_examples=run_data_list,
                     scoring_fn_code=self.scoring_fn_code,
-                    iteration=iteration,
-                    parent_scaffold_id=parent_id,
                     suggest_hack=self.suggest_hack,
                     domain=self.domain,
+                )
+                return evolve_scaffold(
+                    config=config,
+                    scaffolder_llm=self.scaffolder_llm,
+                    iteration=iteration,
+                    parent_scaffold_id=parent_id,
                 )
 
             generation_tasks.append((new_scaffold_id, evolve_func))
@@ -504,13 +508,20 @@ class ExperimentRunner:
             def generate_func(
                 examples=examples,
             ):  # Capture examples by value using default parameter
-                return generate_scaffold(
-                    examples=examples,
-                    scaffolder_llm=self.scaffolder_llm,
+                from scaffold_learning.core.data_structures import (
+                    ScaffolderPromptConfig,
+                )
+
+                config = ScaffolderPromptConfig(
+                    generate_examples=examples,
                     scoring_fn_code=self.scoring_fn_code,
-                    iteration=0,
                     suggest_hack=self.suggest_hack,
                     domain=self.domain,
+                )
+                return generate_scaffold(
+                    config=config,
+                    scaffolder_llm=self.scaffolder_llm,
+                    iteration=0,
                 )
 
             generation_tasks.append((scaffold_id, generate_func))
