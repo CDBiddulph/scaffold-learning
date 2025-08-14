@@ -157,7 +157,7 @@ class OpenAIInterface(LLMInterface):
 class AnthropicInterface(LLMInterface):
     """Interface for Anthropic Claude models"""
 
-    _OPUS_NAME = "claude-opus-4-20250514"
+    _OPUS_NAMES = ["claude-opus-4-1-20250805", "claude-opus-4-20250514"]
     _SONNET_NAME = "claude-sonnet-4-20250514"
     _HAIKU_NAMES = ["claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"]
 
@@ -178,7 +178,7 @@ class AnthropicInterface(LLMInterface):
         self.base_delay = base_delay
 
     def _get_max_tokens(self) -> int:
-        if self.model == self._OPUS_NAME:
+        if self.model in self._OPUS_NAMES:
             return 32_000
         elif self.model == self._SONNET_NAME:
             return 64_000
@@ -193,7 +193,7 @@ class AnthropicInterface(LLMInterface):
 
     def _get_thinking_params(self) -> dict:
         if self.thinking_budget_tokens == 0 or self.model not in [
-            self._OPUS_NAME,
+            *self._OPUS_NAMES,
             self._SONNET_NAME,
         ]:
             return {"type": "disabled"}
@@ -356,7 +356,7 @@ class LLMFactory:
 
     MODEL_ALIASES = {
         # Aliases for latest Anthropic models
-        "opus": "claude-opus-4-20250514",
+        "opus": "claude-opus-4-1-20250805",
         "sonnet": "claude-sonnet-4-20250514",
         "haiku": "claude-3-5-haiku-latest",
     }
@@ -378,6 +378,7 @@ class LLMFactory:
         "o3-mini": "openai",
         "o4-mini": "openai",
         # Anthropic models
+        "claude-opus-4-1-20250805": "anthropic",
         "claude-opus-4-20250514": "anthropic",
         "claude-sonnet-4-20250514": "anthropic",
         "claude-3-5-sonnet-latest": "anthropic",
