@@ -48,10 +48,15 @@ class TestScaffoldToolsServer:
             "runtime",
             "scaffold_tools.py",
         )
-        
-        # Load module using importlib
-        spec = importlib.util.spec_from_file_location("scaffold_tools", scaffold_tools_path)
-        scaffold_tools = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(scaffold_tools)
-        
-        assert hasattr(scaffold_tools, "score")
+
+        # Mock HOST_IP environment variable
+        with patch.dict("os.environ", {"HOST_IP": "192.168.1.100"}):
+            # Load module using importlib
+            spec = importlib.util.spec_from_file_location(
+                "scaffold_tools", scaffold_tools_path
+            )
+            scaffold_tools = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(scaffold_tools)
+
+            assert hasattr(scaffold_tools, "score")
+            assert scaffold_tools.SERVER_HOST == "192.168.1.100"
