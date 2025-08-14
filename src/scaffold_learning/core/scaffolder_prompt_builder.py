@@ -1,10 +1,8 @@
 """Build prompts for scaffold generation."""
 
-from typing import List, Optional
+from typing import Optional
 
 from scaffold_learning.core.data_structures import (
-    DatasetExample,
-    ScaffoldRunData,
     ScaffolderPromptConfig,
 )
 from scaffold_learning.core.prompt_utils import format_examples_as_xml
