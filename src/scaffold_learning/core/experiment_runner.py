@@ -445,6 +445,7 @@ class ExperimentRunner:
         generation_tasks: List[Tuple[str, Callable]],
         scaffold_type: str,
         max_workers: int,
+        strategies: Optional[List[Optional[str]]] = None,
     ) -> None:
         """Execute a batch of scaffold generation tasks using ThreadPoolExecutor.
 
@@ -452,6 +453,7 @@ class ExperimentRunner:
             generation_tasks: List of (scaffold_id, generation_function) tuples
             scaffold_type: Type of scaffold (e.g., "initial", "evolved"), used for logging
             max_workers: Maximum workers for parallel execution (1 for sequential)
+            strategies: Optional list of strategies corresponding to each task (for initial scaffolds)
         """
         total_tasks = len(generation_tasks)
 
@@ -463,6 +465,13 @@ class ExperimentRunner:
             self.logger.info(f"Creating {total_tasks} {scaffold_type} scaffolds")
 
         completed = 0
+        # Create mapping from scaffold_id to strategy
+        strategy_map = {}
+        if strategies:
+            for i, (scaffold_id, _) in enumerate(generation_tasks):
+                if i < len(strategies):
+                    strategy_map[scaffold_id] = strategies[i]
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_id = {
                 executor.submit(generation_func): scaffold_id
@@ -477,14 +486,10 @@ class ExperimentRunner:
                         scaffold_id=scaffold_id, result=result
                     )
                     completed += 1
+                    log_message = f"Created {scaffold_type} scaffold {scaffold_id}"
                     if max_workers > 1:
-                        self.logger.info(
-                            f"Created {scaffold_type} scaffold {scaffold_id} ({completed}/{total_tasks})"
-                        )
-                    else:
-                        self.logger.info(
-                            f"Created {scaffold_type} scaffold {scaffold_id}"
-                        )
+                        log_message += f" ({completed}/{total_tasks})"
+                    self.logger.info(log_message)
                 except Exception as e:
                     self.logger.error(
                         f"Failed to create {scaffold_type} scaffold {scaffold_id}: {e}"
@@ -517,18 +522,11 @@ class ExperimentRunner:
             generate_examples=examples,
         )
 
-        strategies = generate_strategies(
+        return generate_strategies(
             llm=self.strategy_llm,
             scaffolder_prompt_config=strategy_config,
             num_strategies=self.initial_scaffolds,
         )
-
-        # Log each strategy
-        self.logger.info(f"Generated {len(strategies)} strategies:")
-        for i, strategy in enumerate(strategies):
-            self.logger.info(f"Strategy {i}: {strategy}")
-
-        return strategies
 
     def _create_initial_scaffolds(self) -> List[str]:
         """Create initial scaffolds using random training examples.

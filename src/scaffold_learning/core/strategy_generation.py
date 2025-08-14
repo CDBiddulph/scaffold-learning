@@ -1,6 +1,8 @@
 """Generate diverse problem-solving strategies for scaffold creation."""
 
-from typing import List
+import logging
+import json
+from typing import List, Dict
 
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.llm_response_utils import extract_json_dict
@@ -73,6 +75,16 @@ Generate {num_strategies} strategies, indexed from 0 to {num_strategies-1}."""
     return prompt
 
 
+def _log_response_content(placeholders: Dict[str, str], strategies: Dict[str, str]):
+    """Log JSON content to the console."""
+    logging.info("Strategy placeholders:")
+    for k, v in placeholders.items():
+        logging.info(f"{k}: {json.dumps(v)}")
+    logging.info("Strategies:")
+    for k, v in strategies.items():
+        logging.info(f"{k}: {json.dumps(v)}")
+
+
 def _parse_numbered_strategies(response: str) -> List[str]:
     """Parse numbered JSON strategies from LLM response.
 
@@ -92,8 +104,11 @@ def _parse_numbered_strategies(response: str) -> List[str]:
     if "strategies" not in json_dict:
         raise ValueError(f"No strategies found in JSON:\n{json_dict}")
 
-    strategies_dict = json_dict["strategies"]
     placeholders = json_dict.get("placeholders", {})
+    strategies_dict = json_dict["strategies"]
+
+    # Log the placeholders and strategies
+    _log_response_content(placeholders, strategies_dict)
 
     # Extract and resolve placeholders in strategies
     strategies = []
