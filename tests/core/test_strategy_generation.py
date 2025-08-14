@@ -45,6 +45,63 @@ That's the complete list.""",
                 {
                     "examples": [
                         DatasetExample(
+                            id="test2",
+                            input="Solve complex problem",
+                            scoring_data={"input": "Solve complex problem", "solution": "42"},
+                        )
+                    ],
+                    "num_strategies": 3,
+                    "scoring_fn_code": None,
+                    "llm_response": """Here are the strategies with placeholders:
+{
+  "placeholders": {
+    "BASIC": "Start with basic pattern matching and systematic exploration.",
+    "ITERATIVE": "Use iterative refinement to improve the solution step by step.",
+    "VALIDATION": "Validate each step before proceeding."
+  },
+  "strategies": {
+    "0-basic": "$BASIC Focus on simplicity.",
+    "1-iterative": "$BASIC $ITERATIVE",
+    "2-advanced": "$ITERATIVE $VALIDATION Also use $NONEXISTENT placeholder."
+  }
+}""",
+                    "expected_strategies": [
+                        "Start with basic pattern matching and systematic exploration. Focus on simplicity.",
+                        "Start with basic pattern matching and systematic exploration. Use iterative refinement to improve the solution step by step.",
+                        "Use iterative refinement to improve the solution step by step. Validate each step before proceeding. Also use $NONEXISTENT placeholder.",
+                    ],
+                },
+                id="generate_strategies_with_placeholders",
+            ),
+            pytest.param(
+                {
+                    "examples": [
+                        DatasetExample(
+                            id="test3",
+                            input="Missing placeholders field",
+                            scoring_data={"input": "Missing placeholders field", "solution": "test"},
+                        )
+                    ],
+                    "num_strategies": 2,
+                    "scoring_fn_code": None,
+                    "llm_response": """Strategies without placeholders field:
+{
+  "strategies": {
+    "0": "Direct approach with $UNDEFINED placeholder.",
+    "1": "Alternative method."
+  }
+}""",
+                    "expected_strategies": [
+                        "Direct approach with $UNDEFINED placeholder.",
+                        "Alternative method.",
+                    ],
+                },
+                id="generate_strategies_missing_placeholders",
+            ),
+            pytest.param(
+                {
+                    "examples": [
+                        DatasetExample(
                             id="test1",
                             input="Solve this puzzle",
                             scoring_data={

@@ -14,14 +14,24 @@ Each strategy should describe a different approach or methodology for solving th
 
 Your score will be the maximum score achieved by any generated scaffold. Therefore, it doesn't matter if some of your strategies end up failing, as long as at least one is very successful. However, you shouldn't use a strategy unless you think it has a chance of being the best one. Act like a shrewd investor who knows when to diversify their portfolio and when to commit. (You're different from a traditional investor in that you're not trying to maximize your overall return on investment, but rather the return of your single best bet.)
 
-Each strategy should contain clear instructions (1-5 sentences) providing comprehensive guidance on how to implement the scaffold. Each scaffolder LLM will see the prompt above and a single strategy from your list; they won't see the other strategies you generated, so each strategy must be self-contained and complete. It's possible that the strategies will overlap significantly in content, especially if there are many strategies (e.g. more than ~5). For example, you might end up with some strategies that are exactly the same for 4 sentences and only differ in the last sentence. That is only an example, though - you should reason carefully about exactly how to balance exploration and exploitation to maximize your overall score. Even if many strategies are requested, don't write shorter strategies for this reason; all of the strategies should be sufficiently detailed for the scaffolder LLM to understand what to do.
+Each strategy should contain clear instructions providing comprehensive guidance on how to implement the scaffold. Each scaffolder LLM will see the prompt above and a single strategy from your list; they won't see the other strategies you generated, so each strategy must be self-contained and complete.
 
-Return your strategies as a JSON object with 0-indexed string keys, like this:
+Return your strategies as a JSON object with two fields: "placeholders" and "strategies". Each key in "placeholders" is a string that can be used as a shortcut to insert common text into your strategies. This is useful, because strategies may often overlap significantly in content. Each strategy key should start with an integer representing the 0-indexed ID of the strategy, and the rest of the key can be any text that's useful for you.
 {{
-  "0": "First strategy description here",
-  "1": "Second strategy description here",
-  "2": "Third strategy description here"
-}}"""
+  "placeholders": {{
+    "BASIC_STRATEGY": "Use a basic strategy.",
+    "FOO": "You should foo, and this is how.",
+    "BAR": "You should bar, and this is how."
+  }},
+  "strategies": {{
+    "0-basic": "$BASIC_STRATEGY Other than that, do whatever you want.",
+    "1-foo": "$BASIC_STRATEGY $FOO",
+    "2-bar": "$BASIC_STRATEGY $BAR",
+    "3-foo-bar": "$BASIC_STRATEGY $FOO $BAR",
+    "4-no-basic-strategy": "Do whatever you want."
+  }}
+}}
+In the example above, "3-foo-bar" will resolve to the strategy "Use a basic strategy. You should foo, and this is how. You should bar, and this is how." The example above is designed to showcase how to use placeholders, so it's not necessarily a good example of how to write strategies."""
 
 
 def _build_strategy_prompt(
@@ -76,19 +86,49 @@ def _parse_numbered_strategies(response: str) -> List[str]:
         ValueError: If response doesn't contain valid JSON strategies
     """
     # Use shared JSON extraction utility
-    strategies_dict = extract_json_dict(response)
+    json_dict = extract_json_dict(response)
 
-    # Extract strategies in the order they appear in the dict (ignore keys completely)
-    strategies = []
-    for value in strategies_dict.values():
-        if not isinstance(value, str):
+    # Handle new format with placeholders and strategies fields
+    if "strategies" in json_dict:
+        # New format with placeholders
+        strategies_dict = json_dict["strategies"]
+        placeholders = json_dict.get("placeholders", {})
+
+        # Validate strategies field
+        if not isinstance(strategies_dict, dict):
             raise ValueError(
-                f"Expected string strategy but got {type(value).__name__}: {value}"
+                f"Expected 'strategies' to be a dict but got {type(strategies_dict).__name__}"
             )
-        strategies.append(value)
+
+        # Extract and resolve placeholders in strategies
+        strategies = []
+        for strategy_text in strategies_dict.values():
+            if not isinstance(strategy_text, str):
+                raise ValueError(
+                    f"Expected string strategy but got {type(strategy_text).__name__}: {strategy_text}"
+                )
+
+            # Replace placeholders with their values
+            resolved_strategy = strategy_text
+            for placeholder_name, placeholder_value in placeholders.items():
+                placeholder_ref = f"${placeholder_name}"
+                resolved_strategy = resolved_strategy.replace(
+                    placeholder_ref, placeholder_value
+                )
+
+            strategies.append(resolved_strategy)
+    else:
+        # Old format - simple dict of strategies
+        strategies = []
+        for value in json_dict.values():
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"Expected string strategy but got {type(value).__name__}: {value}"
+                )
+            strategies.append(value)
 
     if not strategies:
-        raise ValueError(f"No strategies found in JSON:\n{strategies_dict}")
+        raise ValueError(f"No strategies found in JSON:\n{json_dict}")
 
     return strategies
 
