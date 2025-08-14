@@ -182,7 +182,11 @@ class ExperimentFileManager:
                     "mean_score": np.mean(scaffold_scores),
                     "scores": scaffold_scores,
                 }
-            return result
+            # Sort by mean score in descending order (highest to lowest)
+            sorted_items = sorted(
+                result.items(), key=lambda x: x[1]["mean_score"], reverse=True
+            )
+            return dict(sorted_items)
 
         scores_data = {
             "train": make_full_dicts(train_scores),

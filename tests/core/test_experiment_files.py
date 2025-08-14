@@ -181,8 +181,19 @@ class TestExperimentFileManager:
             experiment_dir = Path(temp_dir) / "test_experiment"
             manager = ExperimentFileManager(experiment_dir)
 
-            train_scores = {"0": [0.9, 0.7], "1": [0.6, 0.6]}
-            valid_scores = {"0": [0.8, 0.7], "1": [0.7, 0.6]}
+            # Use 3 scaffolds with different orderings for train vs valid to prove sorting by mean score
+            # Train order by mean: "2" (0.95) > "1" (0.9) > "0" (0.8)
+            # Valid order by mean: "0" (0.85) > "1" (0.8) > "2" (0.7)
+            train_scores = {
+                "0": [0.9, 0.7],  # mean = 0.8
+                "1": [0.9, 0.9],  # mean = 0.9
+                "2": [1.0, 0.9],  # mean = 0.95
+            }
+            valid_scores = {
+                "0": [0.8, 0.9],  # mean = 0.85
+                "1": [0.8, 0.8],  # mean = 0.8
+                "2": [0.7, 0.7],  # mean = 0.7
+            }
 
             manager.save_scores(
                 iteration=1, train_scores=train_scores, valid_scores=valid_scores
@@ -194,19 +205,28 @@ class TestExperimentFileManager:
             with open(scoring_file) as f:
                 saved_scores = json.load(f)
 
+            # This only tests the score values, not the order
             assert _all_floats_are_close(
                 saved_scores,
                 {
                     "train": {
+                        "2": {"mean_score": 0.95, "scores": [1.0, 0.9]},
+                        "1": {"mean_score": 0.9, "scores": [0.9, 0.9]},
                         "0": {"mean_score": 0.8, "scores": [0.9, 0.7]},
-                        "1": {"mean_score": 0.6, "scores": [0.6, 0.6]},
                     },
                     "valid": {
-                        "0": {"mean_score": 0.75, "scores": [0.8, 0.7]},
-                        "1": {"mean_score": 0.65, "scores": [0.7, 0.6]},
+                        "0": {"mean_score": 0.85, "scores": [0.8, 0.9]},
+                        "1": {"mean_score": 0.8, "scores": [0.8, 0.8]},
+                        "2": {"mean_score": 0.7, "scores": [0.7, 0.7]},
                     },
                 },
             )
+
+            # Verify the order by checking keys - different orderings prove it's sorting by mean score
+            train_keys = list(saved_scores["train"].keys())
+            valid_keys = list(saved_scores["valid"].keys())
+            assert train_keys == ["2", "1", "0"]  # Train: 2 > 1 > 0 by mean score
+            assert valid_keys == ["0", "1", "2"]  # Valid: 0 > 1 > 2 by mean score
 
     def test_load_scores(self):
         with tempfile.TemporaryDirectory() as temp_dir:
