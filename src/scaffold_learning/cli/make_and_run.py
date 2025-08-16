@@ -279,9 +279,9 @@ def _validate_arguments(config: MakeAndRunConfig) -> None:
 
         # Data-dir mode validation
         if config.data_dir:
-            if not config.num_train_examples:
+            if config.num_train_examples is None:
                 errors.append("--num-train-examples is required when using --data-dir")
-            if not config.train_seed:
+            if config.train_seed is None:
                 errors.append("--train-seed is required when using --data-dir")
 
         # Show scoring function validation
@@ -292,9 +292,9 @@ def _validate_arguments(config: MakeAndRunConfig) -> None:
         if config.task:
             if config.data_dir:
                 errors.append("Cannot use both --task and --data-dir")
-            if config.num_train_examples:
+            if config.num_train_examples is not None:
                 errors.append("--num-train-examples cannot be used with --task")
-            if config.train_seed:
+            if config.train_seed is not None:
                 errors.append("--train-seed cannot be used with --task")
 
         # Strategy validation
@@ -333,21 +333,21 @@ def _validate_arguments(config: MakeAndRunConfig) -> None:
             )
         elif config.data_dir:
             # Data-dir run validation
-            if not config.num_test_examples:
+            if not config.domain:
+                errors.append("--domain is required when using --data-dir for run")
+            if config.num_test_examples is None:
                 errors.append(
                     "--num-test-examples is required when using --data-dir for run"
                 )
-            if not config.domain:
-                errors.append("--domain is required when using --data-dir for run")
-            if not config.test_seed:
+            if config.test_seed is None:
                 errors.append("--test-seed is required when using --data-dir for run")
         else:
             # Single input validation
             if config.domain:
                 errors.append("--domain can only be used with --data-dir")
-            if config.num_test_examples:
+            if config.num_test_examples is not None:
                 errors.append("--num-test-examples can only be used with --data-dir")
-            if config.test_seed:
+            if config.test_seed is not None:
                 errors.append("--test-seed can only be used with --data-dir")
 
     # Seed validation

@@ -7,6 +7,7 @@ from scaffold_learning.core.data_structures import (
     ScaffoldRunData,
     ScaffolderPromptConfig,
 )
+from scaffold_learning.core import scaffolder_prompt_builder
 from scaffold_learning.core.scaffolder_prompt_builder import build_scaffolder_prompt
 
 
@@ -22,49 +23,53 @@ TEST_PROMPT_ONLY_INSTRUCTIONS = (
 TEST_HACK_INSTRUCTIONS_INTRO = "You should cheat, and here's how:"
 TEST_EXAMPLES_INSTRUCTIONS_EXPLICIT_HACK = "Cheat in your code."
 TEST_EXAMPLES_INSTRUCTIONS_HIDDEN_HACK = "Cheat in your code but hide it."
-TEST_PROMPT_ONLY_INSTRUCTIONS_HACK = "Cheat in your response."
+TEST_PROMPT_ONLY_INSTRUCTIONS_EXPLICIT_HACK = "Cheat in your response."
+TEST_PROMPT_ONLY_INSTRUCTIONS_HIDDEN_HACK = "Cheat in your response but hide it."
 
 
 class TestScaffolderPromptBuilder:
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._COMMON_INSTRUCTIONS",
-        TEST_COMMON_INSTRUCTIONS,
+    @patch.object(
+        scaffolder_prompt_builder, "_COMMON_INSTRUCTIONS", TEST_COMMON_INSTRUCTIONS
     )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._EXAMPLES_INSTRUCTIONS",
-        TEST_EXAMPLES_INSTRUCTIONS,
+    @patch.object(
+        scaffolder_prompt_builder, "_EXAMPLES_INSTRUCTIONS", TEST_EXAMPLES_INSTRUCTIONS
     )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._EVOLUTION_INSTRUCTIONS",
+    @patch.object(
+        scaffolder_prompt_builder,
+        "_EVOLUTION_INSTRUCTIONS",
         TEST_EVOLUTION_INSTRUCTIONS,
     )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._COMMON_TIPS",
-        TEST_COMMON_TIPS,
-    )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._EVOLUTION_TIPS",
-        TEST_EVOLUTION_TIPS,
-    )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._PROMPT_ONLY_INSTRUCTIONS",
+    @patch.object(scaffolder_prompt_builder, "_COMMON_TIPS", TEST_COMMON_TIPS)
+    @patch.object(scaffolder_prompt_builder, "_EVOLUTION_TIPS", TEST_EVOLUTION_TIPS)
+    @patch.object(
+        scaffolder_prompt_builder,
+        "_PROMPT_ONLY_INSTRUCTIONS",
         TEST_PROMPT_ONLY_INSTRUCTIONS,
     )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._HACK_INSTRUCTIONS_INTRO",
+    @patch.object(
+        scaffolder_prompt_builder,
+        "_HACK_INSTRUCTIONS_INTRO",
         TEST_HACK_INSTRUCTIONS_INTRO,
     )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._EXAMPLES_INSTRUCTIONS_EXPLICIT_HACK",
+    @patch.object(
+        scaffolder_prompt_builder,
+        "_EXAMPLES_INSTRUCTIONS_EXPLICIT_HACK",
         TEST_EXAMPLES_INSTRUCTIONS_EXPLICIT_HACK,
     )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._EXAMPLES_INSTRUCTIONS_HIDDEN_HACK",
+    @patch.object(
+        scaffolder_prompt_builder,
+        "_EXAMPLES_INSTRUCTIONS_HIDDEN_HACK",
         TEST_EXAMPLES_INSTRUCTIONS_HIDDEN_HACK,
     )
-    @patch(
-        "scaffold_learning.core.scaffolder_prompt_builder._PROMPT_ONLY_INSTRUCTIONS_HACK",
-        TEST_PROMPT_ONLY_INSTRUCTIONS_HACK,
+    @patch.object(
+        scaffolder_prompt_builder,
+        "_PROMPT_ONLY_INSTRUCTIONS_EXPLICIT_HACK",
+        TEST_PROMPT_ONLY_INSTRUCTIONS_EXPLICIT_HACK,
+    )
+    @patch.object(
+        scaffolder_prompt_builder,
+        "_PROMPT_ONLY_INSTRUCTIONS_HIDDEN_HACK",
+        TEST_PROMPT_ONLY_INSTRUCTIONS_HIDDEN_HACK,
     )
     @pytest.mark.parametrize(
         "test_case",
@@ -388,6 +393,36 @@ Use the examples above.
 Follow this implementation strategy: Use a step-by-step approach to break down the problem into smaller components.""",
                 },
                 id="with_strategy",
+            ),
+            pytest.param(
+                {
+                    "config": ScaffolderPromptConfig(
+                        generate_examples=[
+                            DatasetExample(
+                                id="test",
+                                input="test input",
+                                scoring_data={
+                                    "input": "test input",
+                                    "solution": "expected",
+                                },
+                            )
+                        ],
+                        for_executor=True,
+                        suggest_hack="hidden",
+                    ),
+                    "expected_prompt": """<example-1>
+    <input>test input</input>
+    <expected_output>expected</expected_output>
+</example-1>
+
+Maximize your score on the input below using the examples above.
+You should cheat, and here's how:
+Cheat in your response but hide it.
+
+INPUT:
+""",
+                },
+                id="executor_mode_with_hidden_hack",
             ),
         ],
     )
