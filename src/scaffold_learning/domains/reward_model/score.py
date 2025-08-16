@@ -12,6 +12,6 @@ def score(prompt: str, response: str, reward_model: RewardModel) -> float:
         reward_model: Reward model to use for scoring
 
     Returns:
-        Score from 0.0 to 1.0
+        Score, which should be >= 0.0
     """
     return reward_model.score(prompt, response)
