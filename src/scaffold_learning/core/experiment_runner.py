@@ -51,6 +51,7 @@ class ExperimentRunner:
         max_execute_workers: int = 1,
         domain: Optional[str] = None,
         strategy_llm: Optional[LLMInterface] = None,
+        strategy_batch_size: Optional[int] = None,
     ):
         """Initialize an experiment runner.
 
@@ -76,6 +77,7 @@ class ExperimentRunner:
             max_execute_workers: Maximum concurrent scaffold execution workers (default 1 for sequential)
             domain: Domain name for domain-specific instructions
             strategy_llm: LLM interface for strategy generation (optional)
+            strategy_batch_size: Number of strategies to generate per batch (optional)
         """
         # Validate parameters
         if scaffolds_per_iter > initial_scaffolds:
@@ -101,6 +103,7 @@ class ExperimentRunner:
         self.max_execute_workers = max_execute_workers
         self.domain = domain
         self.strategy_llm = strategy_llm
+        self.strategy_batch_size = strategy_batch_size
 
         self.train_sampler = ExampleSampler(
             train_seed,
@@ -502,11 +505,25 @@ class ExperimentRunner:
             generate_examples=examples,
         )
 
-        return generate_strategies(
-            llm=self.strategy_llm,
-            scaffolder_prompt_config=strategy_config,
-            num_strategies=self.initial_scaffolds,
-        )
+        # Generate strategies in batches
+        all_strategies = []
+        batch_size = self.strategy_batch_size or self.initial_scaffolds
+        num_batches = self.initial_scaffolds // batch_size
+
+        for batch_idx in range(num_batches):
+            if num_batches > 1:
+                self.logger.info(
+                    f"Generating strategy batch {batch_idx + 1}/{num_batches}"
+                )
+
+            batch_strategies = generate_strategies(
+                llm=self.strategy_llm,
+                scaffolder_prompt_config=strategy_config,
+                num_strategies=batch_size,
+            )
+            all_strategies.extend(batch_strategies)
+
+        return all_strategies
 
     def _create_initial_scaffolds(self) -> List[str]:
         """Create initial scaffolds using random training examples.
