@@ -10,6 +10,7 @@ from scaffold_learning.domains.human_preference.score import (
 )
 from scaffold_learning.domains.reward_model.score import score as score_reward_model
 from scaffold_learning.domains.meta_optimize.score import score as score_meta_optimize
+from scaffold_learning.domains.aime.score import score as score_aime
 from scaffold_learning.domains.reward_model.factory import create_reward_model
 from scaffold_learning.core.scaffold_tools_server import start_server
 
@@ -71,6 +72,10 @@ def create_scoring_function(
             ),
             mesa_scorer,
         )
+    elif domain == "aime":
+        return lambda actual_output, scoring_data: score_aime(
+            scoring_data["correct_answer"], actual_output
+        )
     else:
         raise ValueError(f"Error: Unknown domain '{domain}'")
 
@@ -100,6 +105,8 @@ def get_scoring_function_code(
         path = "src/scaffold_learning/domains/reward_model/score.py"
     elif domain == "meta-optimize":
         path = "src/scaffold_learning/domains/meta_optimize/score.py"
+    elif domain == "aime":
+        path = "src/scaffold_learning/domains/aime/score.py"
     else:
         raise ValueError(f"Scoring function content not supported for domain: {domain}")
 
