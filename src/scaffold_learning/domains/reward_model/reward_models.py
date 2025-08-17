@@ -164,7 +164,8 @@ class HuggingFaceRewardModel(RewardModel):
                 conversation, tokenize=False, add_generation_prompt=False
             )
         else:
-            raise ValueError("Model does not have a chat template.")
+            # Fallback: use a simple format when chat template is not available
+            formatted_input = f"User: {prompt}\n\nAssistant: {response}"
 
         # Tokenize and move to device
         # Handle misconfigured model_max_length
