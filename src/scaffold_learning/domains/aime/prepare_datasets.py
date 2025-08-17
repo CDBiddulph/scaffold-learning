@@ -52,7 +52,7 @@ def _download_aime_dataset() -> Dict[str, List[Dict[str, Any]]]:
         problem_data = {
             "id": f"aime_{year}_{item['id']}",
             "problem": item["problem"],
-            "explanation": item["explanation"],
+            "explanation": item["solution"],
             "answer": item["answer"],
         }
 
@@ -123,7 +123,7 @@ def prepare_dataset(output_dir: Path) -> None:
                 "input": formatted_prompt,
                 "scoring_data": {
                     "correct_answer": answer_int,
-                    "explanation": raw_p["solution"],
+                    "explanation": raw_p["explanation"],
                 },
             }
             split_problems[split_name].append(problem_data)

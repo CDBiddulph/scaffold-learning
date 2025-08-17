@@ -7,7 +7,7 @@ from scaffold_learning.core.xml_utils import dict_to_xml
 
 
 def format_examples_as_xml(
-    examples: List[Union[DatasetExample, ScaffoldRunData]]
+    examples: List[Union[DatasetExample, ScaffoldRunData]],
 ) -> str:
     """Format multiple examples as XML.
 
@@ -78,6 +78,8 @@ def _get_scoring_data_xml_dict(scoring_data: Dict[str, Any]) -> Dict[str, Any]:
     elif scoring_data_keys == {"input", "solution"}:
         return {"expected_output": scoring_data["solution"]}
     elif scoring_data_keys == {"input", "correct_answer"}:
+        return {"expected_output": scoring_data["correct_answer"]}
+    elif scoring_data_keys == {"input", "correct_answer", "explanation"}:
         return {"expected_output": scoring_data["correct_answer"]}
     else:
         raise ValueError(f"Unknown scoring data keys: {scoring_data_keys}")
