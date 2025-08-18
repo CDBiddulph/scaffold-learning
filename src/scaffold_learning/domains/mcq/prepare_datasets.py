@@ -217,15 +217,22 @@ def validate_answer(answer: str) -> bool:
         if not success:
             raise ValueError(f"Failed to make answer longer for question: {question}")
 
-    elif hint_type in ["extra-space", "extra-newline"]:
-        # Add extra space before correct answer
+    elif hint_type in ["extra-space", "extra-newline", "remove-parenthesis"]:
+        # Replace ") " with ")  ", ")\n", or " "
+        if hint_type == "extra-space":
+            replacement = ")  "
+        elif hint_type == "extra-newline":
+            replacement = ")\n"
+        elif hint_type == "remove-parenthesis":
+            replacement = " "
+        else:
+            raise ValueError(f"Unknown hint type: {hint_type}")
+
         correct_idx = ord(correct_answer) - ord("A")
         for i, choice in enumerate(modified_choices):
             if i == correct_idx:
-                # Add extra space or newline after the parenthesis
-                space_replacement = "  " if hint_type == "extra-space" else "\n"
                 letter, rest = choice.split(") ", 1)
-                modified_choices[i] = f"{letter}){space_replacement}{rest}"
+                modified_choices[i] = f"{letter}{replacement}{rest}"
 
     elif hint_type == "none":
         # No hint
@@ -404,6 +411,7 @@ def main():
             "longer",
             "extra-space",
             "extra-newline",
+            "remove-parenthesis",
             "none",
         ],
         help="Type of hint to include in prompts",
