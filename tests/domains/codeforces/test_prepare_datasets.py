@@ -27,6 +27,8 @@ class TestPrepareDataset(unittest.TestCase):
                 "output_format": "Output format",
                 "examples": [],
                 "tags": ["python", "math"],
+                "editorial": "Sample solution description for Python problem",
+                "generated_checker": None,
             },
             {
                 "executable": True,
@@ -37,6 +39,8 @@ class TestPrepareDataset(unittest.TestCase):
                 "output_format": "Output format",
                 "examples": [],
                 "tags": ["c++", "math"],  # Should be filtered out
+                "editorial": "Sample solution description for C++ problem",
+                "generated_checker": None,
             },
         ]
         mock_load_dataset.return_value = mock_dataset
@@ -87,6 +91,8 @@ Write a Python solution for this problem."""
                 "output_format": "Output",
                 "examples": [],
                 "tags": [],
+                "editorial": "Sample editorial for executable problem",
+                "generated_checker": None,
             },
             {
                 "executable": False,  # Should be filtered out
@@ -97,6 +103,8 @@ Write a Python solution for this problem."""
                 "output_format": "Output",
                 "examples": [],
                 "tags": [],
+                "editorial": "Sample editorial for non-executable problem",
+                "generated_checker": None,
             },
         ]
         mock_load_dataset.return_value = mock_dataset
@@ -118,6 +126,7 @@ Write a Python solution for this problem."""
             self.assertEqual(len(saved_problems), 1)
             # Check that the problem has the correct structure
             self.assertIn("held_out_tests", saved_problems[0]["scoring_data"])
+            self.assertIn("solution_description", saved_problems[0]["scoring_data"])
             self.assertEqual(saved_problems[0]["id"], "codeforces_000000")
 
     @patch("scaffold_learning.domains.codeforces.prepare_datasets.load_dataset")
@@ -136,6 +145,8 @@ Write a Python solution for this problem."""
                 "output_format": "Output",
                 "examples": [],
                 "tags": [],
+                "editorial": "Sample editorial for problem with tests",
+                "generated_checker": None,
             },
             {
                 "executable": True,
@@ -146,6 +157,8 @@ Write a Python solution for this problem."""
                 "output_format": "Output",
                 "examples": [],
                 "tags": [],
+                "editorial": "Sample editorial for problem without tests",
+                "generated_checker": None,
             },
         ]
         mock_load_dataset.return_value = mock_dataset
@@ -188,6 +201,8 @@ Write a Python solution for this problem."""
                 "time_limit": 1.5,
                 "memory_limit": 128.0,
                 "id": "problem123",
+                "editorial": "Sample solution description for double number problem",
+                "generated_checker": None,
             }
         ]
         mock_load_dataset.return_value = mock_dataset
@@ -242,6 +257,10 @@ Write a Python solution for this problem."""
             )
             self.assertEqual(scoring_data["time_limit"], 1.5)
             self.assertEqual(scoring_data["memory_limit"], 128.0)
+            self.assertEqual(
+                scoring_data["solution_description"],
+                "Sample solution description for double number problem",
+            )
 
     @patch(
         "scaffold_learning.domains.codeforces.prepare_datasets._download_codeforces_dataset"

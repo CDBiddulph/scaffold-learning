@@ -57,9 +57,10 @@ Memory Limit: {memory_limit} MB{examples_text}
 
 Write a Python solution for this problem."""
 
-    # Prepare scoring data with official test cases
+    # Prepare scoring data with official test cases and solution description
     scoring_data = {
         "held_out_tests": item["official_tests"],
+        "solution_description": item["editorial"],
         "time_limit": time_limit,
         "memory_limit": memory_limit,
     }
@@ -87,6 +88,14 @@ def _is_valid_problem(item: Dict[str, Any]) -> bool:
 
     # Only include problems that have official test cases
     if not item.get("official_tests"):
+        return False
+
+    # Only include problems that have editorial
+    if not item.get("editorial") or not item["editorial"].strip():
+        return False
+
+    # Skip problems with generated checkers (multiple possible answers)
+    if item.get("generated_checker") is not None:
         return False
 
     # Skip C++ problems - we only want Python
