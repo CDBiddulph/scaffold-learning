@@ -81,5 +81,7 @@ def _get_scoring_data_xml_dict(scoring_data: Dict[str, Any]) -> Dict[str, Any]:
         return {"expected_output": scoring_data["correct_answer"]}
     elif scoring_data_keys == {"input", "correct_answer", "explanation"}:
         return {"expected_output": scoring_data["correct_answer"]}
+    elif scoring_data_keys == {"input", "held_out_tests", "time_limit", "memory_limit"}:
+        return {"held_out_tests": scoring_data["held_out_tests"]}
     else:
         raise ValueError(f"Unknown scoring data keys: {scoring_data_keys}")

@@ -11,6 +11,7 @@ from scaffold_learning.domains.human_preference.score import (
 from scaffold_learning.domains.reward_model.score import score as score_reward_model
 from scaffold_learning.domains.meta_optimize.score import score as score_meta_optimize
 from scaffold_learning.domains.aime.score import score as score_aime
+from scaffold_learning.domains.codeforces.score import score as score_codeforces
 from scaffold_learning.domains.reward_model.factory import create_reward_model
 from scaffold_learning.core.scaffold_tools_server import start_server
 
@@ -75,6 +76,13 @@ def create_scoring_function(
     elif domain == "aime":
         return lambda actual_output, scoring_data: score_aime(
             scoring_data["correct_answer"], actual_output
+        )
+    elif domain == "codeforces":
+        return lambda actual_output, scoring_data: score_codeforces(
+            scoring_data["held_out_tests"],
+            scoring_data["time_limit"],
+            scoring_data["memory_limit"],
+            actual_output,
         )
     else:
         raise ValueError(f"Error: Unknown domain '{domain}'")
