@@ -60,6 +60,11 @@ def main():
         "--strategy-model",
         help="Model to use for strategy generation for initial scaffolds. If not specified, no strategies will be generated.",
     )
+    parser.add_argument(
+        "--strategy-batch-size",
+        type=int,
+        help="Generate strategies in batches of this size. Must evenly divide initial-scaffolds.",
+    )
 
     # Experiment parameters
     parser.add_argument(
@@ -164,6 +169,13 @@ def main():
 
     if args.scaffolds_per_iter > args.initial_scaffolds:
         raise ValueError("scaffolds-per-iter cannot be greater than initial-scaffolds")
+    
+    if args.strategy_batch_size and args.strategy_model:
+        if args.initial_scaffolds % args.strategy_batch_size != 0:
+            raise ValueError(
+                f"initial-scaffolds ({args.initial_scaffolds}) must be divisible by "
+                f"strategy-batch-size ({args.strategy_batch_size})"
+            )
 
     if not args.no_build:
         print("Building Docker image...")
@@ -220,6 +232,7 @@ def main():
         max_execute_workers=args.max_execute_workers,
         domain=args.domain,
         strategy_llm=strategy_llm,
+        strategy_batch_size=args.strategy_batch_size,
     )
 
     # Run experiment

@@ -120,6 +120,8 @@ Please provide only the numerical score on a scale of 0.0 to 1.0. Only provide t
 class HuggingFaceRewardModel(RewardModel):
     """Reward model using HuggingFace transformers."""
 
+    REWARD_OFFSET = 10.0  # Offset to ensure scores are positive
+
     def __init__(self, model_name: str):
         """Initialize with a HuggingFace model.
 
@@ -162,9 +164,8 @@ class HuggingFaceRewardModel(RewardModel):
                 conversation, tokenize=False, add_generation_prompt=False
             )
         else:
-            # Use simple format for models without chat template
-            # OpenAssistant models expect this format
-            formatted_input = f"Human: {prompt}\n\nAssistant: {response}"
+            # Fallback: use a simple format when chat template is not available
+            formatted_input = f"User: {prompt}\n\nAssistant: {response}"
 
         # Tokenize and move to device
         # Handle misconfigured model_max_length
@@ -187,7 +188,10 @@ class HuggingFaceRewardModel(RewardModel):
             outputs = self.model(**inputs)
 
         # Most reward models output a single value, get the score
-        return outputs.logits.squeeze().float().item()
+        raw_score = outputs.logits.squeeze().float().item()
+
+        # Ensure scores are positive
+        return max(0.0, raw_score + self.REWARD_OFFSET)
 
 
 class FileQueueRewardModel(RewardModel):
