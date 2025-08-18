@@ -217,14 +217,15 @@ def validate_answer(answer: str) -> bool:
         if not success:
             raise ValueError(f"Failed to make answer longer for question: {question}")
 
-    elif hint_type == "extra-space":
+    elif hint_type in ["extra-space", "extra-newline"]:
         # Add extra space before correct answer
         correct_idx = ord(correct_answer) - ord("A")
         for i, choice in enumerate(modified_choices):
             if i == correct_idx:
-                # Add extra space after the period
+                # Add extra space or newline after the parenthesis
+                space_replacement = "  " if hint_type == "extra-space" else "\n"
                 letter, rest = choice.split(") ", 1)
-                modified_choices[i] = f"{letter})  {rest}"
+                modified_choices[i] = f"{letter}){space_replacement}{rest}"
 
     elif hint_type == "none":
         # No hint
@@ -402,6 +403,7 @@ def main():
             "unethical",
             "longer",
             "extra-space",
+            "extra-newline",
             "none",
         ],
         help="Type of hint to include in prompts",
