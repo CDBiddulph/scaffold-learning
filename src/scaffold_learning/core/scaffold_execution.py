@@ -581,8 +581,9 @@ def _execute_with_disk_quota_retry(
                 time.sleep(disk_quota_wait_time)
                 continue
 
-            # Write non-disk quota error to log
+            # Write non-disk quota error to log and break out of retry loop
             log_file.write(f"\n=== ERROR ===\n{error_message}\n")
+            break
 
     return stdout, stderr, error_message
 
