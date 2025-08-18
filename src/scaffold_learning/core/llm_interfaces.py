@@ -154,6 +154,56 @@ class OpenAIInterface(LLMInterface):
         return f"openai/{self.model}"
 
 
+class DeepInfraInterface(LLMInterface):
+    """Interface for DeepSeek models via DeepInfra API"""
+
+    def __init__(
+        self,
+        model: str,
+        api_key: Optional[str] = None,
+        max_retries: int = 5,
+        base_delay: float = 1.0,
+    ):
+        self.model = model
+        self.api_key = api_key or os.getenv("DEEPINFRA_API_KEY")
+        if not self.api_key:
+            raise ValueError("DeepInfra API key not provided")
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+
+    def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
+        client = openai.OpenAI(
+            api_key=self.api_key, base_url="https://api.deepinfra.com/v1/openai"
+        )
+
+        with suppress_all_except_root():
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=4096,  # DeepInfra may have different limits
+            )
+
+        content = response.choices[0].message.content
+        thinking = None
+
+        # Extract thinking from <think> tags for R1 models
+        if "R1" in self.model and content and "<think>" in content:
+            thinking_match = re.search(r"<think>(.*?)</think>(.*)", content, re.DOTALL)
+            if thinking_match:
+                thinking = thinking_match.group(1).strip()
+                content = thinking_match.group(2).strip()
+
+        return LLMResponse(content=content, thinking=thinking)
+
+    def get_model_info(self) -> str:
+        return f"deepinfra/{self.model}"
+
+
 class AnthropicInterface(LLMInterface):
     """Interface for Anthropic Claude models"""
 
@@ -359,6 +409,9 @@ class LLMFactory:
         "opus": "claude-opus-4-1-20250805",
         "sonnet": "claude-sonnet-4-20250514",
         "haiku": "claude-3-5-haiku-latest",
+        # Aliases for DeepSeek models
+        "v3": "deepseek-ai/DeepSeek-V3",
+        "r1": "deepseek-ai/DeepSeek-R1",
     }
 
     # Known model mappings
@@ -386,6 +439,9 @@ class LLMFactory:
         "claude-3-opus-latest": "anthropic",
         "claude-3-sonnet": "anthropic",
         "claude-3-haiku": "anthropic",
+        # DeepSeek models
+        "deepseek-ai/DeepSeek-V3": "deepinfra",
+        "deepseek-ai/DeepSeek-R1": "deepinfra",
         # Special types
         "mock": "mock",
         "human": "human",
@@ -405,16 +461,18 @@ class LLMFactory:
             return f"openai/{LLMConfig.DEFAULT_OPENAI_MODEL}"
 
         # Check for aliases first and resolve them
-        model_spec = LLMFactory.MODEL_ALIASES.get(model_spec, model_spec)
+        resolved_model = LLMFactory.MODEL_ALIASES.get(model_spec, model_spec)
 
-        # If it already contains a slash, it's already in canonical form
+        # If the original spec already contains a slash, it's already in canonical form.
+        # This means that "deepseek-ai/DeepSeek-V3" → "deepinfra/deepseek-ai/DeepSeek-V3" will not work,
+        # but that's okay because we can just use "v3".
         if "/" in model_spec:
             return model_spec
 
-        # Check known models
-        if model_spec in LLMFactory.KNOWN_MODELS:
-            llm_type = LLMFactory.KNOWN_MODELS[model_spec]
-            return f"{llm_type}/{model_spec}"
+        # Check known models with the resolved model name
+        if resolved_model in LLMFactory.KNOWN_MODELS:
+            llm_type = LLMFactory.KNOWN_MODELS[resolved_model]
+            return f"{llm_type}/{resolved_model}"
 
         raise ValueError(f"Unknown model spec: {model_spec}")
 
@@ -433,6 +491,7 @@ class LLMFactory:
         model_spec: str,
         openai_api_key: Optional[str] = None,
         anthropic_api_key: Optional[str] = None,
+        deepinfra_api_key: Optional[str] = None,
         thinking_budget_tokens: Optional[int] = None,
     ) -> LLMInterface:
         """Create LLM from consolidated model specification"""
@@ -446,6 +505,8 @@ class LLMFactory:
                 api_key=anthropic_api_key,
                 thinking_budget_tokens=thinking_budget_tokens,
             )
+        elif llm_type == "deepinfra":
+            return DeepInfraInterface(model=model, api_key=deepinfra_api_key)
         elif llm_type == "mock":
             return MockLLMInterface()
         elif llm_type == "human":
