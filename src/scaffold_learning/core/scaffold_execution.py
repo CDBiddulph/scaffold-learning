@@ -352,6 +352,241 @@ def _stream_process_output(
     return stdout, stderr
 
 
+def _write_log_header(
+    log_file: TextIO,
+    model_spec: str,
+    timestamp: str,
+    input_string: str,
+    retry_count: int = 0,
+) -> None:
+    """Write the header section of the execution log.
+
+    Args:
+        log_file: Open file handle for writing logs
+        model_spec: Model specification string
+        timestamp: Timestamp for the execution
+        input_string: Input string being processed
+        retry_count: Current retry attempt number (0 for first attempt)
+    """
+    log_file.write("=== Scaffold Execution Log ===\n")
+    log_file.write(f"Model: {model_spec}\n")
+    log_file.write(f"Timestamp: {timestamp}\n")
+    if retry_count > 0:
+        log_file.write(f"Retry attempt: {retry_count}\n")
+    log_file.write("\n=== INPUT ===\n")
+    log_file.write(input_string)
+    log_file.write("\n")
+    log_file.flush()
+
+
+def _run_docker_container(
+    docker_cmd: list[str],
+    is_interactive: bool,
+    log_file: TextIO,
+    console_output: bool,
+    timeout: int,
+) -> tuple[str, str, Optional[str]]:
+    """Execute Docker container and return output.
+
+    Args:
+        docker_cmd: Docker command to execute
+        is_interactive: Whether this is interactive mode
+        log_file: Open file handle for writing logs
+        console_output: Whether to print output to console
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (stdout, stderr, error_message)
+    """
+    if is_interactive:
+        # Interactive mode for human model
+        process = subprocess.run(docker_cmd, check=True)
+        stdout = "Note: Human model execution - no output captured\nUser interaction occurred directly in terminal."
+        stderr = ""
+        _write_to_log_file(log_file, stdout, "stdout", current_stream=None)
+        return stdout, stderr, None
+    else:
+        # Standard LLM mode with output streaming
+        process = subprocess.Popen(
+            docker_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+        )
+
+        # Stream output and collect it
+        stdout, stderr = _stream_process_output(
+            process,
+            log_file=log_file,
+            console_output=console_output,
+            timeout=timeout,
+        )
+
+        # Check for timeout (exit code 124 from timeout command)
+        if process.returncode == 0:
+            error_message = None
+        elif process.returncode == 124:
+            error_message = f"Execution timed out after {timeout} seconds"
+        else:
+            error_message = (
+                f"Error from scaffold (exit code {process.returncode}):\n{stderr}"
+            )
+
+        return stdout, stderr, error_message
+
+
+def _check_disk_quota_error(
+    stderr: str,
+    disk_quota_patterns: list[str],
+) -> bool:
+    """Check if stderr contains disk quota error.
+
+    Args:
+        stderr: Error output from Docker
+        disk_quota_patterns: List of patterns indicating disk quota errors
+
+    Returns:
+        True if disk quota error detected, False otherwise
+    """
+    return bool(
+        stderr and any(pattern in stderr.lower() for pattern in disk_quota_patterns)
+    )
+
+
+def _read_execution_results(
+    results_dir: Optional[Path],
+    stdout: str,
+    error_message: Optional[str],
+) -> tuple[str, float, Optional[str]]:
+    """Read execution results from file or fallback to stdout.
+
+    Args:
+        results_dir: Directory containing results.json
+        stdout: Raw stdout from execution
+        error_message: Any error message from execution
+
+    Returns:
+        Tuple of (final_output, execution_time, warning_message)
+    """
+    execution_time = 0.0
+    final_output = stdout.strip() if stdout else ""
+    warning_message = None
+
+    if results_dir and not error_message:
+        results_file = results_dir / "results.json"
+        try:
+            with open(results_file, "r") as f:
+                results_data = json.load(f)
+                final_output = results_data["output"]
+                execution_time = results_data["execution_time"]
+        except Exception as e:
+            # If we can't read results, fall back to stdout and log warning
+            warning_message = f"Failed to read results file: {e}"
+
+    return final_output, execution_time, warning_message
+
+
+def _write_final_log_sections(
+    log_file_path: Path,
+    warning_message: Optional[str],
+    final_output: str,
+    execution_time: float,
+) -> None:
+    """Write final sections to the log file.
+
+    Args:
+        log_file_path: Path to the log file
+        warning_message: Optional warning message
+        final_output: Final output from execution
+        execution_time: Execution time in seconds
+    """
+    with open(log_file_path, "a") as log_file:
+        if warning_message:
+            log_file.write(f"\n=== WARNING ===\n{warning_message}\n")
+        if final_output:
+            log_file.write(f"\n=== OUTPUT ===\n{final_output}\n")
+        if execution_time > 0:
+            log_file.write(f"\n=== EXECUTION TIME ===\n{execution_time:.3f} seconds\n")
+
+
+def _execute_with_disk_quota_retry(
+    docker_cmd: list[str],
+    is_interactive: bool,
+    log_file_path: Path,
+    console_output: bool,
+    timeout: int,
+    model_spec: str,
+    timestamp: str,
+    input_string: str,
+) -> tuple[str, str, Optional[str]]:
+    """Execute Docker container with retry logic for disk quota errors.
+
+    This error is specific to the CHAI cluster, and there's nothing we
+    can do except wait for other users to resolve it. If we don't see
+    it for a while, we may delete the code that is specific to this
+    error.
+
+    Args:
+        docker_cmd: Docker command to execute
+        is_interactive: Whether this is interactive mode
+        log_file_path: Path to the log file
+        console_output: Whether to print output to console
+        timeout: Timeout in seconds
+        model_spec: Model specification string
+        timestamp: Timestamp for the execution
+        input_string: Input string being processed
+
+    Returns:
+        Tuple of (stdout, stderr, error_message)
+    """
+    # Disk quota retry configuration
+    disk_quota_wait_time = 10 * 60  # 10 minutes in seconds
+    disk_quota_patterns = [
+        "disk quota exceeded",
+        "no space left on device",
+        "cannot create session key",
+    ]
+
+    max_retries = 1000  # Disk quota issues may happen for a long time
+    retry_count = 0
+
+    while retry_count <= max_retries:
+        error_message = None
+        stdout = ""
+        stderr = ""
+        # Write to the log file with live streaming
+        with open(log_file_path, "w") as log_file:
+            # Write log header
+            _write_log_header(
+                log_file, model_spec, timestamp, input_string, retry_count
+            )
+
+            stdout, stderr, error_message = _run_docker_container(
+                docker_cmd, is_interactive, log_file, console_output, timeout
+            )
+
+            if not error_message:
+                # If successful, break out of retry loop
+                break
+
+            # If stderr contains disk quota error, wait and retry
+            if _check_disk_quota_error(stderr, disk_quota_patterns):
+                retry_count += 1
+                logging.warning(
+                    f"Disk quota exceeded error detected in stderr (attempt {retry_count}). "
+                    f"Waiting {disk_quota_wait_time} seconds before retrying..."
+                )
+                time.sleep(disk_quota_wait_time)
+                continue
+
+            # Write non-disk quota error to log
+            log_file.write(f"\n=== ERROR ===\n{error_message}\n")
+
+    return stdout, stderr, error_message
+
+
 def _execute_scaffold(
     scaffold_dir: Path,
     log_file_path: Path,
@@ -402,91 +637,29 @@ def _execute_scaffold(
         results_dir=results_dir,
     )
 
-    error_message = None
-    stdout = ""
-    stderr = ""
-
-    # Execute the scaffold
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Write to the log file with live streaming
-    with open(log_file_path, "w") as log_file:
-        # Write log header
-        log_file.write("=== Scaffold Execution Log ===\n")
-        log_file.write(f"Model: {model_spec}\n")
-        log_file.write(f"Timestamp: {timestamp}\n")
-        log_file.write("\n=== INPUT ===\n")
-        log_file.write(input_string)
-        log_file.write("\n")
-        log_file.flush()
-
-        try:
-            if is_interactive:
-                # Interactive mode for human model
-                process = subprocess.run(docker_cmd, check=True)
-                stdout = "Note: Human model execution - no output captured\nUser interaction occurred directly in terminal."
-                stderr = ""
-                _write_to_log_file(log_file, stdout, "stdout", current_stream=None)
-                exit_code = process.returncode
-            else:
-                # Standard LLM mode with output streaming
-                process = subprocess.Popen(
-                    docker_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True,
-                )
-
-                # Stream output and collect it
-                stdout, stderr = _stream_process_output(
-                    process,
-                    log_file=log_file,
-                    console_output=console_output,
-                    timeout=timeout,
-                )
-                exit_code = process.returncode
-
-            # Check for timeout (exit code 124 from timeout command)
-            if exit_code == 124:
-                error_message = f"Execution timed out after {timeout} seconds"
-            elif exit_code != 0:
-                error_message = (
-                    f"Error from scaffold (exit code {exit_code}):\n{stderr}"
-                )
-
-        except Exception as e:
-            raise RuntimeError(f"Error from Docker when executing scaffold: {e}") from e
-
-        # Write error message to log if there was one
-        if error_message:
-            log_file.write(f"\n=== ERROR ===\n{error_message}\n")
+    # Execute the scaffold with retry logic for disk quota errors
+    stdout, stderr, error_message = _execute_with_disk_quota_retry(
+        docker_cmd=docker_cmd,
+        is_interactive=is_interactive,
+        log_file_path=log_file_path,
+        console_output=console_output,
+        timeout=timeout,
+        model_spec=model_spec,
+        timestamp=timestamp,
+        input_string=input_string,
+    )
 
     # Read results from file (for non-interactive mode)
-    execution_time = 0.0
-    final_output = stdout.strip() if stdout else ""
-    warning_message = None
-
-    if results_dir and not error_message:
-        results_file = results_dir / "results.json"
-        try:
-            with open(results_file, "r") as f:
-                results_data = json.load(f)
-                final_output = results_data["output"]
-                execution_time = results_data["execution_time"]
-        except Exception as e:
-            # If we can't read results, fall back to stdout and log warning
-            warning_message = f"Failed to read results file: {e}"
+    final_output, execution_time, warning_message = _read_execution_results(
+        results_dir, stdout, error_message
+    )
 
     # Write clean output and timing to log file
-    with open(log_file_path, "a") as log_file:
-        if warning_message:
-            log_file.write(f"\n=== WARNING ===\n{warning_message}\n")
-        if final_output:
-            log_file.write(f"\n=== OUTPUT ===\n{final_output}\n")
-        if execution_time > 0:
-            log_file.write(f"\n=== EXECUTION TIME ===\n{execution_time:.3f} seconds\n")
+    _write_final_log_sections(
+        log_file_path, warning_message, final_output, execution_time
+    )
 
     return ScaffoldExecutionResult(
         output=final_output,

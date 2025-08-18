@@ -63,7 +63,20 @@ class TestScaffoldExecution:
             poll_sequence = [None] * (max(len(stdout_lines), len(stderr_lines)) - 1) + [
                 returncode
             ]
-        mock_process.poll.side_effect = poll_sequence
+        
+        # Make poll() handle unlimited calls using a custom function
+        # The streaming loop may call poll() many times due to timeout checks
+        poll_count = [0]  # Use list so inner function can modify
+        def mock_poll():
+            if poll_count[0] < len(poll_sequence):
+                result = poll_sequence[poll_count[0]]
+                poll_count[0] += 1
+                return result
+            else:
+                # Return final value indefinitely
+                return poll_sequence[-1]
+        
+        mock_process.poll.side_effect = mock_poll
 
         # Add empty string to end lines if not present (EOF marker)
         if stdout_lines and stdout_lines[-1] != "":
@@ -96,10 +109,12 @@ class TestScaffoldExecution:
                 poll_sequence=poll_sequence,
             )
 
-            # Provide enough time values for streaming loop + logging
-            # start_time + multiple checks during streaming + end_time + extra for logging
-            num_lines = max(len(stdout_lines), len(stderr_lines))
-            time_values = [0.0] + [i * 0.1 for i in range(1, num_lines + 10)]  # Extra time values for logging
+            # Create a time mock that handles unlimited calls
+            time_counter = [0]  # Use list so inner function can modify it
+            def mock_time():
+                current_time = time_counter[0] * 0.1
+                time_counter[0] += 1
+                return current_time
 
             # Create a mock results directory and file for successful executions
             def mock_mkdtemp():
@@ -119,7 +134,7 @@ class TestScaffoldExecution:
 
             with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
                 with patch("subprocess.Popen", return_value=mock_process):
-                    with patch("time.time", side_effect=time_values):
+                    with patch("time.time", side_effect=mock_time):
                         with patch("tempfile.mkdtemp", side_effect=mock_mkdtemp):
                             result = self.execute_single_scaffold(
                                 file_manager,
