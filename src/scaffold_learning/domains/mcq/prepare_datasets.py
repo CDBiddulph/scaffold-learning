@@ -403,6 +403,7 @@ def main():
             "unethical",
             "longer",
             "extra-space",
+            "extra-newline",
             "none",
         ],
         help="Type of hint to include in prompts",
