@@ -542,17 +542,16 @@ def _execute_with_disk_quota_retry(
         Tuple of (stdout, stderr, error_message)
     """
     # Disk quota retry configuration
-    disk_quota_wait_time = 10 * 60  # 10 minutes in seconds
+    disk_quota_wait_time = 60  # 1 minute in seconds
     disk_quota_patterns = [
         "disk quota exceeded",
         "no space left on device",
         "cannot create session key",
     ]
 
-    max_retries = 1000  # Disk quota issues may happen for a long time
     retry_count = 0
 
-    while retry_count <= max_retries:
+    while True:
         error_message = None
         stdout = ""
         stderr = ""
