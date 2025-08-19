@@ -44,7 +44,7 @@ class TestScaffoldGeneration:
                 },
                 id="generate_scaffold_with_task_description",
             ),
-            # Test error handling for invalid LLM response
+            # Test error handling for invalid LLM response with retries
             pytest.param(
                 "generate_scaffold",
                 {
@@ -55,11 +55,35 @@ class TestScaffoldGeneration:
                             scoring_data={"input": "test", "solution": "expected"},
                         )
                     ],
-                    "llm_response": "No code block here!",
+                    "llm_responses": [
+                        "No code block here!",
+                        "Still no code block!",
+                        "Third time, still no code!",
+                        "Fourth time, still no code!"
+                    ],
                     "should_raise": ValueError,
                     "error_message": "LLM response doesn't contain a valid Python code block",
                 },
-                id="generate_scaffold_no_code_block_raises_error",
+                id="generate_scaffold_no_code_block_raises_error_after_retries",
+            ),
+            # Test successful retry after initial failure
+            pytest.param(
+                "generate_scaffold",
+                {
+                    "examples": [
+                        DatasetExample(
+                            id="test",
+                            input="test",
+                            scoring_data={"input": "test", "solution": "expected"},
+                        )
+                    ],
+                    "llm_responses": [
+                        "No code block here!",
+                        "```python\ndef process_input(s): return 'success'\n```"
+                    ],
+                    "expected_code": "def process_input(s): return 'success'",
+                },
+                id="generate_scaffold_retry_succeeds",
             ),
             # Test code extraction from complex markdown
             pytest.param(
@@ -306,11 +330,17 @@ This should work well.""",
         mock_llm = None
         if method in ["generate_scaffold", "evolve_scaffold"]:
             mock_llm = Mock(spec=LLMInterface)
-            llm_response_content = test_case.get(
-                "llm_response", "```python\ndef process_input(s): return 'test'\n```"
-            )
-            mock_response = LLMResponse(content=llm_response_content)
-            mock_llm.generate_response.return_value = mock_response
+            
+            # Handle multiple responses for retry tests
+            if "llm_responses" in test_case:
+                responses = [LLMResponse(content=content) for content in test_case["llm_responses"]]
+                mock_llm.generate_response.side_effect = responses
+            else:
+                llm_response_content = test_case.get(
+                    "llm_response", "```python\ndef process_input(s): return 'test'\n```"
+                )
+                mock_response = LLMResponse(content=llm_response_content)
+                mock_llm.generate_response.return_value = mock_response
 
         # Check if this test should raise an error
         if test_case.get("should_raise"):
@@ -382,10 +412,18 @@ This should work well.""",
 
         # Verify LLM interaction for non-prompt-only scaffolds
         if method in ["generate_scaffold", "evolve_scaffold"]:
-            # Verify LLM was called exactly once
-            assert mock_llm.generate_response.call_count == 1
+            # For retry tests, LLM may be called multiple times
+            if "llm_responses" in test_case:
+                # Should be called as many times as there are successful responses needed
+                # (may be less than total responses if success happens early)
+                assert mock_llm.generate_response.call_count >= 1
+                assert mock_llm.generate_response.call_count <= len(test_case["llm_responses"])
+            else:
+                # Verify LLM was called exactly once for non-retry tests
+                assert mock_llm.generate_response.call_count == 1
+            
             # Verify a prompt was passed to the LLM
-            called_args = mock_llm.generate_response.call_args[0]
+            called_args = mock_llm.generate_response.call_args_list[0][0]
             assert len(called_args) == 1
             assert isinstance(called_args[0], str)
             assert len(called_args[0].strip()) > 0

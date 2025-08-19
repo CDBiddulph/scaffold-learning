@@ -31,6 +31,7 @@ def _make_scaffold(
     scaffolder_llm: Optional[LLMInterface] = None,
     iteration: Optional[int] = None,
     parent_scaffold_id: Optional[str] = None,
+    max_retries: int = 3,
 ) -> ScaffoldResult:
     scaffolder_prompt = None
     scaffolder_response = None
@@ -42,8 +43,22 @@ def _make_scaffold(
     else:
         # We're generating a scaffold using a scaffolder LLM
         scaffolder_prompt = build_scaffolder_prompt(config)
-        scaffolder_response = scaffolder_llm.generate_response(scaffolder_prompt)
-        code = extract_python_code(scaffolder_response.content)
+
+        # Try up to max_retries + 1 times to get valid Python code
+        for attempt in range(max_retries + 1):
+            try:
+                scaffolder_response = scaffolder_llm.generate_response(
+                    scaffolder_prompt
+                )
+                code = extract_python_code(scaffolder_response.content)
+                break  # Success, exit retry loop
+            except ValueError as e:
+                if attempt >= max_retries:
+                    raise e
+                # If we haven't tried max_retries times, retry
+                logging.warning(
+                    f"Attempt {attempt + 1} failed to extract scaffold code: {e}. Retrying..."
+                )
 
     metadata = ScaffoldMetadata(
         created_at=datetime.now().isoformat(),
