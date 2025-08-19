@@ -4,10 +4,8 @@ import json
 import os
 import subprocess
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict
 import time
-
-from scaffold_learning.core.data_structures import ScaffoldExecutionResult
 
 
 def _generate_test_runner_script(
@@ -37,7 +35,6 @@ import sys
 import io
 import signal
 import resource
-import traceback
 from contextlib import redirect_stdout, redirect_stderr
 
 
@@ -59,7 +56,7 @@ def timeout_handler(signum, frame):
 
 # Set alarm for time limit
 signal.signal(signal.SIGALRM, timeout_handler)
-signal.alarm(int({time_limit}) + 1)  # Add 1 second buffer
+signal.alarm(int({time_limit}))
 
 try:
     # Load user code and test cases
@@ -70,7 +67,7 @@ try:
     try:
         compiled_code = compile(user_code, '<user_code>', 'exec')
     except SyntaxError as e:
-        print(json.dumps({{"status": "syntax_error", "error": str(e)}}))
+        print(json.dumps({{"error": str(e)}}))
         sys.exit(0)
     
     # Track results
@@ -109,66 +106,49 @@ try:
             if stderr_output:
                 results.append({{
                     "test_case": i,
-                    "status": "runtime_error", 
+                    "passed": False,
                     "error": stderr_output,
                     "input": test_input,
-                    "expected": expected_output,
-                    "actual": actual_output
-                }})
-            elif normalized_actual == normalized_expected:
-                results.append({{
-                    "test_case": i,
-                    "status": "passed",
-                    "input": test_input,
-                    "expected": expected_output,
-                    "actual": actual_output
+                    "expected": normalized_expected,
+                    "actual": normalized_actual
                 }})
             else:
+                passed = normalized_actual == normalized_expected
                 results.append({{
                     "test_case": i,
-                    "status": "wrong_answer",
+                    "passed": passed,
                     "input": test_input,
-                    "expected": expected_output,
-                    "actual": actual_output
+                    "expected": normalized_expected,
+                    "actual": normalized_actual
                 }})
-                
-        except TimeoutError:
-            results.append({{
-                "test_case": i,
-                "status": "timeout",
-                "input": test_input,
-                "expected": expected_output
-            }})
-            break  # Don't run remaining tests if one times out
             
         except Exception as e:
             results.append({{
                 "test_case": i,
-                "status": "runtime_error",
+                "passed": False,
                 "error": str(e),
-                "traceback": traceback.format_exc(),
                 "input": test_input,
                 "expected": expected_output
             }})
     
     # Print results as JSON
-    print(json.dumps({{"status": "completed", "results": results}}))
+    print(json.dumps({{"results": results}}))
     
 except Exception as e:
-    print(json.dumps({{"status": "execution_error", "error": str(e), "traceback": traceback.format_exc()}}))
+    print(json.dumps({{"error": str(e)}}))
     
 finally:
     signal.alarm(0)  # Cancel alarm
 """
 
 
-def execute_code_against_tests(
+def execute_and_score_tests(
     user_code: str,
     test_cases: List[Dict[str, str]],
     time_limit: float = 2.0,
     memory_limit: float = 256.0,
-) -> ScaffoldExecutionResult:
-    """Execute user code against test cases in a Docker container.
+) -> float:
+    """Execute user code against test cases and return scoring results.
 
     Args:
         user_code: Python code to execute
@@ -177,15 +157,14 @@ def execute_code_against_tests(
         memory_limit: Memory limit in MB
 
     Returns:
-        ScaffoldExecutionResult with test execution results
+        Float representing proportion of tests passed (0.0 to 1.0)
+
+    Raises:
+        ValueError: If no test cases provided
+        RuntimeError: If code execution fails
     """
     if not test_cases:
-        return ScaffoldExecutionResult(
-            output="",
-            stderr="",
-            error_message="No test cases provided",
-            execution_time=0.0,
-        )
+        raise ValueError("No test cases provided")
 
     # Generate the test runner script
     script = _generate_test_runner_script(
@@ -193,9 +172,7 @@ def execute_code_against_tests(
     )
 
     # Build Docker command
-    docker_timeout = (
-        int(time_limit * len(test_cases)) + 30
-    )  # Allow extra time for overhead
+    docker_timeout = int(time_limit * len(test_cases)) + 10
     docker_memory = f"{int(memory_limit * 2)}m"  # Double the limit for safety
 
     docker_cmd = [
@@ -237,134 +214,72 @@ def execute_code_against_tests(
             docker_cmd,
             capture_output=True,
             text=True,
-            timeout=docker_timeout + 10,  # Additional timeout buffer
+            timeout=docker_timeout,
         )
 
         end_time = time.time()
         execution_time = end_time - start_time
 
-        logging.info("=== CodeForces Code Execution ===\n")
-        logging.info(f"Test cases: {len(test_cases)}\n")
-        logging.info(f"Time limit: {time_limit}s\n")
-        logging.info(f"Memory limit: {memory_limit}MB\n\n")
-        logging.info("=== INPUT CODE ===\n")
+        # Log execution details
+        logging.info("=== CodeForces Code Execution ===")
+        logging.info(f"Test cases: {len(test_cases)}")
+        logging.info(f"Time limit: {time_limit}s")
+        logging.info(f"Memory limit: {memory_limit}MB")
+        logging.info("=== input code ===")
         logging.info(user_code)
-        logging.info("\n\n=== STDOUT ===\n")
+        logging.info("=== stdout ===")
         logging.info(process.stdout)
         if process.stderr:
-            logging.info("\n=== STDERR ===\n")
+            logging.info("=== stderr ===")
             logging.info(process.stderr)
-        logging.info(f"\n\n=== EXECUTION TIME ===\n{execution_time:.3f} seconds\n")
+        logging.info(f"Execution time: {execution_time:.3f} seconds")
 
         # Handle different exit codes
-        error_message = None
         if process.returncode == 124:  # timeout command exit code
-            error_message = f"Code execution timed out after {docker_timeout} seconds"
+            raise RuntimeError(
+                f"Code execution timed out after {docker_timeout} seconds"
+            )
         elif process.returncode != 0:
-            error_message = f"Code execution failed (exit code {process.returncode}): {process.stderr}"
+            raise RuntimeError(
+                f"Code execution failed (exit code {process.returncode}): {process.stderr}"
+            )
 
-        return ScaffoldExecutionResult(
-            output=process.stdout,
-            stderr=process.stderr,
-            error_message=error_message,
-            execution_time=execution_time,
-        )
-
-    except subprocess.TimeoutExpired:
-        return ScaffoldExecutionResult(
-            output="",
-            stderr="",
-            error_message=f"Docker execution timed out after {docker_timeout + 10} seconds",
-            execution_time=0.0,
-        )
-    except Exception as e:
-        logging.error(f"Error executing code: {e}")
-        return ScaffoldExecutionResult(
-            output="",
-            stderr=str(e),
-            error_message=f"Code execution failed: {str(e)}",
-            execution_time=0.0,
-        )
-
-
-def parse_test_results(execution_result: ScaffoldExecutionResult) -> Dict[str, Any]:
-    """Parse the JSON output from code execution to extract test results.
-
-    Args:
-        execution_result: Result from execute_code_against_tests
-
-    Returns:
-        Dictionary with parsed test results
-    """
-    if execution_result.error_message:
-        return {
-            "status": "execution_failed",
-            "error": execution_result.error_message,
-            "passed": False,
-            "total_tests": 0,
-            "passed_tests": 0,
-        }
-
-    try:
         # Parse JSON output from the test runner
-        output_json = json.loads(execution_result.output.strip())
+        try:
+            output_json = json.loads(process.stdout.strip())
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                f"Failed to parse execution output as JSON: {e}\nExecution output: {process.stdout}"
+            )
 
-        if output_json["status"] == "syntax_error":
-            return {
-                "status": "syntax_error",
-                "error": output_json["error"],
-                "passed": False,
-                "total_tests": 0,
-                "passed_tests": 0,
-            }
+        if "error" in output_json:
+            # Syntax error case
+            raise SyntaxError(f"Syntax error in user code: {output_json['error']}")
 
-        if output_json["status"] == "execution_error":
-            return {
-                "status": "execution_error",
-                "error": output_json["error"],
-                "passed": False,
-                "total_tests": 0,
-                "passed_tests": 0,
-            }
-
-        if output_json["status"] == "completed":
+        if "results" in output_json:
             results = output_json["results"]
             total_tests = len(results)
-            passed_tests = sum(1 for r in results if r["status"] == "passed")
+            # Test passed if it has "passed": True
+            passed_tests = sum(1 for r in results if r.get("passed", False))
 
-            # All tests must pass for the solution to be considered correct
-            all_passed = passed_tests == total_tests
+            # Log test results
+            logging.info(f"Test Results: {passed_tests}/{total_tests} passed")
+            for i, test_result in enumerate(results):
+                if test_result.get("passed", False):
+                    logging.info(f"  Test {i+1}: PASSED")
+                else:
+                    logging.info(f"  Test {i+1}: FAILED")
+                    if "error" in test_result:
+                        logging.info(f"    Error: {test_result['error']}")
+                    if "expected" in test_result and "actual" in test_result:
+                        logging.info(f"    Expected: {repr(test_result['expected'])}")
+                        logging.info(f"    Actual: {repr(test_result['actual'])}")
 
-            return {
-                "status": "completed",
-                "passed": all_passed,
-                "total_tests": total_tests,
-                "passed_tests": passed_tests,
-                "results": results,
-            }
+            # Return proportion of tests passed
+            return passed_tests / total_tests if total_tests > 0 else 0.0
 
-        return {
-            "status": "unknown_error",
-            "error": f"Unknown status: {output_json.get('status', 'missing')}",
-            "passed": False,
-            "total_tests": 0,
-            "passed_tests": 0,
-        }
+        # Unknown output format
+        raise RuntimeError(f"Unexpected output format from test runner: {output_json}")
 
-    except json.JSONDecodeError as e:
-        return {
-            "status": "parse_error",
-            "error": f"Failed to parse execution output as JSON: {e}",
-            "raw_output": execution_result.output,
-            "passed": False,
-            "total_tests": 0,
-            "passed_tests": 0,
-        }
-    except Exception as e:
-        return {
-            "status": "parse_error",
-            "error": f"Error parsing results: {e}",
-            "passed": False,
-            "total_tests": 0,
-            "passed_tests": 0,
-        }
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Docker execution timed out after {docker_timeout} seconds")

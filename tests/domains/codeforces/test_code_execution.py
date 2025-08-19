@@ -3,22 +3,18 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
-from scaffold_learning.domains.codeforces.code_execution import (
-    execute_code_against_tests,
-    parse_test_results,
-)
-from scaffold_learning.core.data_structures import ScaffoldExecutionResult
+from scaffold_learning.domains.codeforces.code_execution import execute_and_score_tests
 
 
-class TestExecuteCodeAgainstTests(unittest.TestCase):
-    """Test code execution against test cases."""
+class TestExecuteAndScoreTests(unittest.TestCase):
+    """Test code execution and scoring."""
 
     def test_empty_test_cases(self):
         """Test handling of empty test cases."""
-        result = execute_code_against_tests("print('test')", [], 2.0, 256.0)
-
-        self.assertIsNotNone(result.error_message)
-        self.assertIn("No test cases", result.error_message)
+        with self.assertRaises(ValueError) as cm:
+            execute_and_score_tests("print('test')", [], 2.0, 256.0)
+        
+        self.assertIn("No test cases", str(cm.exception))
 
     @patch("subprocess.run")
     def test_successful_execution(self, mock_run):
@@ -26,16 +22,15 @@ class TestExecuteCodeAgainstTests(unittest.TestCase):
         mock_process = MagicMock()
         mock_process.returncode = 0
         mock_process.stdout = (
-            '{"status": "completed", "results": [{"test_case": 0, "status": "passed"}]}'
+            '{"results": [{"test_case": 0, "passed": true, "input": "5", "expected": "5", "actual": "5"}]}'
         )
         mock_process.stderr = ""
         mock_run.return_value = mock_process
 
         test_cases = [{"input": "5", "output": "5"}]
-        result = execute_code_against_tests("print(input())", test_cases, 2.0, 256.0)
+        result = execute_and_score_tests("print(input())", test_cases, 2.0, 256.0)
 
-        self.assertIsNone(result.error_message)
-        self.assertIn("completed", result.output)
+        self.assertEqual(result, 1.0)  # All tests passed
         mock_run.assert_called_once()
 
     @patch("subprocess.run")
@@ -48,11 +43,11 @@ class TestExecuteCodeAgainstTests(unittest.TestCase):
         mock_run.return_value = mock_process
 
         test_cases = [{"input": "1", "output": "1"}] * 5  # 5 test cases
-        result = execute_code_against_tests("print(input())", test_cases, 2.0, 256.0)
-
-        # Should handle timeout correctly
-        self.assertIsNotNone(result.error_message)
-        self.assertIn("timed out", result.error_message)
+        
+        with self.assertRaises(RuntimeError) as cm:
+            execute_and_score_tests("print(input())", test_cases, 2.0, 256.0)
+        
+        self.assertIn("timed out", str(cm.exception))
         mock_run.assert_called_once()
 
     @patch("subprocess.run")
@@ -60,12 +55,14 @@ class TestExecuteCodeAgainstTests(unittest.TestCase):
         """Test that memory limit is doubled for safety."""
         mock_process = MagicMock()
         mock_process.returncode = 0
-        mock_process.stdout = '{"status": "completed", "results": []}'
+        mock_process.stdout = '{"results": []}'
         mock_process.stderr = ""
         mock_run.return_value = mock_process
 
         test_cases = [{"input": "1", "output": "1"}]
-        execute_code_against_tests("print(input())", test_cases, 2.0, 128.0)
+        result = execute_and_score_tests("print(input())", test_cases, 2.0, 128.0)
+        
+        self.assertEqual(result, 0.0)  # No tests in results, so 0/0 = 0.0
 
         # Verify Docker command includes doubled memory limit: 128 * 2 = 256m
         mock_run.assert_called_once()
@@ -83,10 +80,11 @@ class TestExecuteCodeAgainstTests(unittest.TestCase):
         mock_run.side_effect = Exception("Docker failed")
 
         test_cases = [{"input": "1", "output": "1"}]
-        result = execute_code_against_tests("print(input())", test_cases, 2.0, 256.0)
-
-        self.assertIsNotNone(result.error_message)
-        self.assertIn("Docker failed", result.error_message)
+        
+        with self.assertRaises(Exception) as cm:
+            execute_and_score_tests("print(input())", test_cases, 2.0, 256.0)
+        
+        self.assertIn("Docker failed", str(cm.exception))
 
 
 class TestCodeExecutionIntegration(unittest.TestCase):
@@ -97,155 +95,49 @@ class TestCodeExecutionIntegration(unittest.TestCase):
         """Test full flow when code has syntax error."""
         mock_process = MagicMock()
         mock_process.returncode = 0
-        mock_process.stdout = '{"status": "syntax_error", "error": "invalid syntax"}'
+        mock_process.stdout = '{"error": "invalid syntax"}'
         mock_process.stderr = ""
         mock_run.return_value = mock_process
 
         code = "print(hello"  # Missing closing parenthesis
         test_cases = [{"input": "1", "output": "1"}]
 
-        result = execute_code_against_tests(code, test_cases)
-        parsed = parse_test_results(result)
-
-        self.assertEqual(parsed["status"], "syntax_error")
-        self.assertFalse(parsed["passed"])
-        self.assertIn("syntax", parsed["error"])
+        with self.assertRaises(SyntaxError) as cm:
+            execute_and_score_tests(code, test_cases, 2.0, 256.0)
+        
+        self.assertIn("syntax", str(cm.exception))
 
     @patch("subprocess.run")
     def test_full_flow_all_tests_pass(self, mock_run):
         """Test full flow when all tests pass."""
         mock_process = MagicMock()
         mock_process.returncode = 0
-        mock_process.stdout = '{"status": "completed", "results": [{"test_case": 0, "status": "passed"}, {"test_case": 1, "status": "passed"}]}'
+        mock_process.stdout = '{"results": [{"test_case": 0, "passed": true, "input": "5", "expected": "5", "actual": "5"}, {"test_case": 1, "passed": true, "input": "10", "expected": "10", "actual": "10"}]}'
         mock_process.stderr = ""
         mock_run.return_value = mock_process
 
         code = "print(input())"
         test_cases = [{"input": "5", "output": "5"}, {"input": "10", "output": "10"}]
 
-        result = execute_code_against_tests(code, test_cases)
-        parsed = parse_test_results(result)
+        result = execute_and_score_tests(code, test_cases, 2.0, 256.0)
 
-        self.assertEqual(parsed["status"], "completed")
-        self.assertTrue(parsed["passed"])
-        self.assertEqual(parsed["total_tests"], 2)
-        self.assertEqual(parsed["passed_tests"], 2)
+        self.assertEqual(result, 1.0)  # 2/2 = 1.0
 
     @patch("subprocess.run")
     def test_full_flow_mixed_results(self, mock_run):
         """Test full flow with mixed test results."""
         mock_process = MagicMock()
         mock_process.returncode = 0
-        mock_process.stdout = '{"status": "completed", "results": [{"test_case": 0, "status": "passed"}, {"test_case": 1, "status": "wrong_answer"}]}'
+        mock_process.stdout = '{"results": [{"test_case": 0, "passed": true, "input": "5", "expected": "5", "actual": "5"}, {"test_case": 1, "passed": false, "error": "Wrong answer", "input": "10", "expected": "10", "actual": "5"}]}'
         mock_process.stderr = ""
         mock_run.return_value = mock_process
 
         code = "print('5')"  # Always prints 5, regardless of input
         test_cases = [{"input": "5", "output": "5"}, {"input": "10", "output": "10"}]
 
-        result = execute_code_against_tests(code, test_cases)
-        parsed = parse_test_results(result)
+        result = execute_and_score_tests(code, test_cases, 2.0, 256.0)
 
-        self.assertEqual(parsed["status"], "completed")
-        self.assertFalse(parsed["passed"])  # Not all tests passed
-        self.assertEqual(parsed["total_tests"], 2)
-        self.assertEqual(parsed["passed_tests"], 1)
-
-
-class TestParseTestResults(unittest.TestCase):
-    """Test parsing of test execution results."""
-
-    def test_parse_successful_results(self):
-        """Test parsing when all tests pass."""
-        result = ScaffoldExecutionResult(
-            output='{"status": "completed", "results": [{"test_case": 0, "status": "passed"}]}',
-            stderr="",
-            error_message=None,
-            execution_time=0.5,
-        )
-
-        parsed = parse_test_results(result)
-
-        self.assertEqual(parsed["status"], "completed")
-        self.assertTrue(parsed["passed"])
-        self.assertEqual(parsed["total_tests"], 1)
-        self.assertEqual(parsed["passed_tests"], 1)
-
-    def test_parse_syntax_error(self):
-        """Test parsing when there's a syntax error."""
-        result = ScaffoldExecutionResult(
-            output='{"status": "syntax_error", "error": "invalid syntax"}',
-            stderr="",
-            error_message=None,
-            execution_time=0.1,
-        )
-
-        parsed = parse_test_results(result)
-
-        self.assertEqual(parsed["status"], "syntax_error")
-        self.assertFalse(parsed["passed"])
-        self.assertIn("syntax", parsed["error"])
-
-    def test_parse_execution_error(self):
-        """Test parsing when there's an execution error."""
-        result = ScaffoldExecutionResult(
-            output='{"status": "execution_error", "error": "runtime error", "traceback": "..."}',
-            stderr="",
-            error_message=None,
-            execution_time=0.1,
-        )
-
-        parsed = parse_test_results(result)
-
-        self.assertEqual(parsed["status"], "execution_error")
-        self.assertFalse(parsed["passed"])
-        self.assertIn("runtime error", parsed["error"])
-
-    def test_parse_mixed_results(self):
-        """Test parsing when some tests pass and some fail."""
-        result = ScaffoldExecutionResult(
-            output='{"status": "completed", "results": [{"test_case": 0, "status": "passed"}, {"test_case": 1, "status": "wrong_answer"}]}',
-            stderr="",
-            error_message=None,
-            execution_time=0.3,
-        )
-
-        parsed = parse_test_results(result)
-
-        self.assertEqual(parsed["status"], "completed")
-        self.assertFalse(parsed["passed"])  # Not all tests passed
-        self.assertEqual(parsed["total_tests"], 2)
-        self.assertEqual(parsed["passed_tests"], 1)
-
-    def test_parse_invalid_json(self):
-        """Test parsing when output is invalid JSON."""
-        result = ScaffoldExecutionResult(
-            output="invalid json",
-            stderr="",
-            error_message=None,
-            execution_time=0.1,
-        )
-
-        parsed = parse_test_results(result)
-
-        self.assertEqual(parsed["status"], "parse_error")
-        self.assertFalse(parsed["passed"])
-        self.assertIn("JSON", parsed["error"])
-
-    def test_parse_execution_failed(self):
-        """Test parsing when execution failed completely."""
-        result = ScaffoldExecutionResult(
-            output="",
-            stderr="Docker error",
-            error_message="Execution failed",
-            execution_time=0.0,
-        )
-
-        parsed = parse_test_results(result)
-
-        self.assertEqual(parsed["status"], "execution_failed")
-        self.assertFalse(parsed["passed"])
-        self.assertIn("Execution failed", parsed["error"])
+        self.assertEqual(result, 0.5)  # 1/2 = 0.5
 
 
 if __name__ == "__main__":
