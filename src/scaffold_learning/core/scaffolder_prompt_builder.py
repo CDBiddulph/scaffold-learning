@@ -160,6 +160,10 @@ print(test_score)
 
 It is highly recommended that the scaffold use this so that it can iterate on each response to maximize its score. You should probably keep on iterating as long as you still have time left, then return the response with the highest score so far. The exact strategy for iterating is up to you. You can even try to test variants of the inputs that don't appear in the given scoring data, if you think that will help.
 """
+    elif domain == "codeforces":
+        return """
+The process_input function MUST return Python code. Do NOT return the output of the code, only the code itself. The code returned by process_input should use input() to read the input, and print() to print the output.
+"""
     else:
         return ""
 
