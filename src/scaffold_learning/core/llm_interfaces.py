@@ -185,7 +185,7 @@ class DeepInfraInterface(LLMInterface):
             response = client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=4096,  # DeepInfra may have different limits
+                max_tokens=32_768,
             )
 
         content = response.choices[0].message.content
