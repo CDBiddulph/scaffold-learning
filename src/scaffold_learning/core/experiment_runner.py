@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import List, Dict, Optional, Callable, Tuple, Any
 from collections import defaultdict
 import concurrent.futures
+import io
+import contextlib
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldRunData,
@@ -628,11 +630,25 @@ class ExperimentRunner:
             tasks.append(task)
         return tasks
 
+    def _write_score_to_log(
+        self, log_file_path: str, score_output: str, score: float
+    ) -> None:
+        """Write score to the log file."""
+        # TODO: consider sharing this code with make_and_run.py.
+        with open(log_file_path, "a") as f:
+            f.write("\n=== SCORE ===\n")
+            if score_output:
+                f.write(score_output)
+                if not score_output.endswith("\n"):
+                    f.write("\n")
+            f.write(f"Final score: {score}\n")
+
     def _process_execution_results(
         self,
         scaffold_id: str,
         examples: List[DatasetExample],
         execution_results: List[ScaffoldExecutionResult],
+        log_file_paths: List[str],
         run_data_list: Optional[List[ScaffoldRunData]] = None,
         scaffold_code: Optional[str] = None,
     ) -> List[float]:
@@ -642,6 +658,7 @@ class ExperimentRunner:
             scaffold_id: ID of scaffold that was executed
             examples: Examples that were tested
             execution_results: Results from scaffold execution
+            log_file_paths: List of log file paths to append scoring info to
             run_data_list: Optional list to append ScaffoldRunData to
             scaffold_code: Required if run_data_list is provided
 
@@ -649,10 +666,18 @@ class ExperimentRunner:
             List of scores in order of examples
         """
         scores = []
-        for example, result in zip(examples, execution_results):
-            # Calculate score
+        for example, result, log_file_path in zip(
+            examples, execution_results, log_file_paths, strict=True
+        ):
+            # Capture scoring output
+            score_output = io.StringIO()
+
+            # Calculate score with output capture
             if result.error_message is None:
-                score = self.scoring_fn(result.output, example.scoring_data)
+                with contextlib.redirect_stdout(
+                    score_output
+                ), contextlib.redirect_stderr(score_output):
+                    score = self.scoring_fn(result.output, example.scoring_data)
             else:
                 logging.warning(
                     f"Scaffold {scaffold_id} failed to execute: {result.error_message}"
@@ -660,6 +685,8 @@ class ExperimentRunner:
                 score = 0.0  # Failed execution gets 0 score
 
             scores.append(score)
+
+            self._write_score_to_log(log_file_path, score_output.getvalue(), score)
 
             # For training, create ScaffoldRunData
             if run_data_list is not None:
@@ -709,9 +736,17 @@ class ExperimentRunner:
         # Execute all tasks
         execution_results = execute_scaffolds(tasks, max_workers=max_workers)
 
+        # Extract log file paths from tasks for scoring append
+        log_file_paths = [task.log_file_path for task in tasks]
+
         # Process results and calculate scores
         scores = self._process_execution_results(
-            scaffold_id, examples, execution_results, run_data_list, scaffold_code
+            scaffold_id,
+            examples,
+            execution_results,
+            log_file_paths,
+            run_data_list,
+            scaffold_code,
         )
 
         # Log scores
