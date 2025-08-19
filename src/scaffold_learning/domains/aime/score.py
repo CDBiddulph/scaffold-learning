@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import logging
 import re
 from typing import Optional
 
@@ -69,6 +70,12 @@ def score(expected_answer: int, attempted_response: str) -> float:
 
     # Extract answer from response
     extracted = extract_numerical_answer(attempted_response)
+
+    if extracted is None:
+        logging.info(f"Could not extract answer from response: {attempted_response}")
+    else:
+        logging.info(f"Extracted answer: {extracted}")
+    logging.info(f"Expected answer: {expected_answer}")
 
     if extracted is None:
         return 0.0

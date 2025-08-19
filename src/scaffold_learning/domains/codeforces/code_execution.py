@@ -3,10 +3,8 @@
 import json
 import os
 import subprocess
-import tempfile
 import logging
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import time
 
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
@@ -160,7 +158,6 @@ def execute_code_against_tests(
     test_cases: List[Dict[str, str]],
     time_limit: float = 2.0,
     memory_limit: float = 256.0,
-    log_file_path: Optional[Path] = None,
 ) -> ScaffoldExecutionResult:
     """Execute user code against test cases in a Docker container.
 
@@ -169,7 +166,6 @@ def execute_code_against_tests(
         test_cases: List of test case dictionaries with 'input' and 'output' keys
         time_limit: Time limit in seconds
         memory_limit: Memory limit in MB
-        log_file_path: Optional path to write execution logs
 
     Returns:
         ScaffoldExecutionResult with test execution results
@@ -238,37 +234,28 @@ def execute_code_against_tests(
         end_time = time.time()
         execution_time = end_time - start_time
 
-        # Write to log file if provided
-        if log_file_path:
-            with open(log_file_path, "w") as log_file:
-                log_file.write("=== CodeForces Code Execution Log ===\n")
-                log_file.write(f"Test cases: {len(test_cases)}\n")
-                log_file.write(f"Time limit: {time_limit}s\n")
-                log_file.write(f"Memory limit: {memory_limit}MB\n\n")
-                log_file.write("=== INPUT CODE ===\n")
-                log_file.write(user_code)
-                log_file.write("\n\n=== STDOUT ===\n")
-                log_file.write(process.stdout)
-                if process.stderr:
-                    log_file.write("\n=== STDERR ===\n")
-                    log_file.write(process.stderr)
-                log_file.write(
-                    f"\n\n=== EXECUTION TIME ===\n{execution_time:.3f} seconds\n"
-                )
+        logging.info("=== CodeForces Code Execution ===\n")
+        logging.info(f"Test cases: {len(test_cases)}\n")
+        logging.info(f"Time limit: {time_limit}s\n")
+        logging.info(f"Memory limit: {memory_limit}MB\n\n")
+        logging.info("=== INPUT CODE ===\n")
+        logging.info(user_code)
+        logging.info("\n\n=== STDOUT ===\n")
+        logging.info(process.stdout)
+        if process.stderr:
+            logging.info("\n=== STDERR ===\n")
+            logging.info(process.stderr)
+        logging.info(f"\n\n=== EXECUTION TIME ===\n{execution_time:.3f} seconds\n")
 
         # Handle different exit codes
-        error_message = None
         if process.returncode == 124:  # timeout command exit code
-            error_message = f"Code execution timed out after {docker_timeout} seconds"
+            logging.error(f"Code execution timed out after {docker_timeout} seconds")
         elif process.returncode != 0:
-            error_message = f"Code execution failed (exit code {process.returncode}): {process.stderr}"
+            logging.error(
+                f"Code execution failed (exit code {process.returncode}): {process.stderr}"
+            )
 
-        return ScaffoldExecutionResult(
-            output=process.stdout,
-            stderr=process.stderr,
-            error_message=error_message,
-            execution_time=execution_time,
-        )
+        return process.stdout
 
     except subprocess.TimeoutExpired:
         return ScaffoldExecutionResult(
@@ -287,27 +274,18 @@ def execute_code_against_tests(
         )
 
 
-def parse_test_results(execution_result: ScaffoldExecutionResult) -> Dict[str, Any]:
+def parse_test_results(execution_output: str) -> Dict[str, Any]:
     """Parse the JSON output from code execution to extract test results.
 
     Args:
-        execution_result: Result from execute_code_against_tests
+        execution_output: Output from execute_code_against_tests
 
     Returns:
         Dictionary with parsed test results
     """
-    if execution_result.error_message:
-        return {
-            "status": "execution_failed",
-            "error": execution_result.error_message,
-            "passed": False,
-            "total_tests": 0,
-            "passed_tests": 0,
-        }
-
     try:
         # Parse JSON output from the test runner
-        output_json = json.loads(execution_result.output.strip())
+        output_json = json.loads(execution_output.strip())
 
         if output_json["status"] == "syntax_error":
             return {
@@ -355,7 +333,7 @@ def parse_test_results(execution_result: ScaffoldExecutionResult) -> Dict[str, A
         return {
             "status": "parse_error",
             "error": f"Failed to parse execution output as JSON: {e}",
-            "raw_output": execution_result.output,
+            "raw_output": execution_output,
             "passed": False,
             "total_tests": 0,
             "passed_tests": 0,
