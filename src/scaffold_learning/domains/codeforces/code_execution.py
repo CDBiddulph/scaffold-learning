@@ -10,6 +10,18 @@ import time
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
 
 
+def _normalize_output(text: str) -> str:
+    """Normalize output for comparison by standardizing line endings.
+    
+    Args:
+        text: Text to normalize
+        
+    Returns:
+        Text with normalized line endings (all \\r\\n and \\r converted to \\n)
+    """
+    return text.replace('\\r\\n', '\\n').replace('\\r', '\\n')
+
+
 def _generate_test_runner_script(
     user_code: str,
     test_cases: List[Dict[str, str]],
@@ -97,6 +109,10 @@ try:
             actual_output = output_buffer.getvalue().strip()
             stderr_output = error_buffer.getvalue().strip()
             
+            # Normalize line endings for comparison
+            normalized_actual = actual_output.replace('\\r\\n', '\\n').replace('\\r', '\\n')
+            normalized_expected = expected_output.replace('\\r\\n', '\\n').replace('\\r', '\\n')
+            
             if stderr_output:
                 results.append({{
                     "test_case": i,
@@ -106,7 +122,7 @@ try:
                     "expected": expected_output,
                     "actual": actual_output
                 }})
-            elif actual_output == expected_output:
+            elif normalized_actual == normalized_expected:
                 results.append({{
                     "test_case": i,
                     "status": "passed",
