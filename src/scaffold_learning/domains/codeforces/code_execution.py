@@ -10,18 +10,6 @@ import time
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
 
 
-def _normalize_output(text: str) -> str:
-    """Normalize output for comparison by standardizing line endings.
-    
-    Args:
-        text: Text to normalize
-        
-    Returns:
-        Text with normalized line endings (all \\r\\n and \\r converted to \\n)
-    """
-    return text.replace('\\r\\n', '\\n').replace('\\r', '\\n')
-
-
 def _generate_test_runner_script(
     user_code: str,
     test_cases: List[Dict[str, str]],
@@ -51,6 +39,11 @@ import signal
 import resource
 import traceback
 from contextlib import redirect_stdout, redirect_stderr
+
+
+def _normalize_output(text: str) -> str:
+    return text.replace('\\r\\n', '\\n').replace('\\r', '\\n')
+
 
 # Set resource limits
 try:
@@ -110,8 +103,8 @@ try:
             stderr_output = error_buffer.getvalue().strip()
             
             # Normalize line endings for comparison
-            normalized_actual = actual_output.replace('\\r\\n', '\\n').replace('\\r', '\\n')
-            normalized_expected = expected_output.replace('\\r\\n', '\\n').replace('\\r', '\\n')
+            normalized_actual = _normalize_output(actual_output)
+            normalized_expected = _normalize_output(expected_output)
             
             if stderr_output:
                 results.append({{
@@ -264,14 +257,18 @@ def execute_code_against_tests(
         logging.info(f"\n\n=== EXECUTION TIME ===\n{execution_time:.3f} seconds\n")
 
         # Handle different exit codes
+        error_message = None
         if process.returncode == 124:  # timeout command exit code
-            logging.error(f"Code execution timed out after {docker_timeout} seconds")
+            error_message = f"Code execution timed out after {docker_timeout} seconds"
         elif process.returncode != 0:
-            logging.error(
-                f"Code execution failed (exit code {process.returncode}): {process.stderr}"
-            )
+            error_message = f"Code execution failed (exit code {process.returncode}): {process.stderr}"
 
-        return process.stdout
+        return ScaffoldExecutionResult(
+            output=process.stdout,
+            stderr=process.stderr,
+            error_message=error_message,
+            execution_time=execution_time,
+        )
 
     except subprocess.TimeoutExpired:
         return ScaffoldExecutionResult(
@@ -290,18 +287,27 @@ def execute_code_against_tests(
         )
 
 
-def parse_test_results(execution_output: str) -> Dict[str, Any]:
+def parse_test_results(execution_result: ScaffoldExecutionResult) -> Dict[str, Any]:
     """Parse the JSON output from code execution to extract test results.
 
     Args:
-        execution_output: Output from execute_code_against_tests
+        execution_result: Result from execute_code_against_tests
 
     Returns:
         Dictionary with parsed test results
     """
+    if execution_result.error_message:
+        return {
+            "status": "execution_failed",
+            "error": execution_result.error_message,
+            "passed": False,
+            "total_tests": 0,
+            "passed_tests": 0,
+        }
+
     try:
         # Parse JSON output from the test runner
-        output_json = json.loads(execution_output.strip())
+        output_json = json.loads(execution_result.output.strip())
 
         if output_json["status"] == "syntax_error":
             return {
@@ -349,7 +355,7 @@ def parse_test_results(execution_output: str) -> Dict[str, Any]:
         return {
             "status": "parse_error",
             "error": f"Failed to parse execution output as JSON: {e}",
-            "raw_output": execution_output,
+            "raw_output": execution_result.output,
             "passed": False,
             "total_tests": 0,
             "passed_tests": 0,
