@@ -630,6 +630,30 @@ class ExperimentRunner:
             tasks.append(task)
         return tasks
 
+    @contextlib.contextmanager
+    def _capture_logging(self, output_stream):
+        """Temporarily capture all logging to the given stream."""
+        log_handler = logging.StreamHandler(output_stream)
+        log_handler.setLevel(logging.INFO)
+        root_logger = logging.getLogger()
+        original_handlers = root_logger.handlers[:]
+        original_level = root_logger.level
+
+        # Remove all existing handlers and add only our capture handler
+        for handler in original_handlers:
+            root_logger.removeHandler(handler)
+        root_logger.addHandler(log_handler)
+        root_logger.setLevel(logging.INFO)
+
+        try:
+            yield
+        finally:
+            # Restore original handlers and level
+            root_logger.removeHandler(log_handler)
+            for handler in original_handlers:
+                root_logger.addHandler(handler)
+            root_logger.setLevel(original_level)
+
     def _write_score_to_log(
         self, log_file_path: str, score_output: str, score: float
     ) -> None:
@@ -674,9 +698,7 @@ class ExperimentRunner:
 
             # Calculate score with output capture
             if result.error_message is None:
-                with contextlib.redirect_stdout(
-                    score_output
-                ), contextlib.redirect_stderr(score_output):
+                with self._capture_logging(score_output):
                     score = self.scoring_fn(result.output, example.scoring_data)
             else:
                 logging.warning(
