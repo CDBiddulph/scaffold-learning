@@ -38,7 +38,6 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
     # Generate response
     result = executor_llm.generate_response(prompt, system_prompt)
 
-    if result.thinking:
-        logging.info(f"Executor thinking:\n{result.thinking}")
+    # TODO: log result.thinking in a way that doesn't spam the console
 
     return result.content

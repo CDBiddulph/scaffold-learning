@@ -69,6 +69,7 @@ _COMMON_TIPS = """- Your script must implement a function called `process_input(
 - Make sure your error messages include all information that would help debug the error.
 - Use Python's logging module for logging important events, errors, and debug information. If you feel confused about why your code is failing, you should consider adding more logging so that you'll understand better next time.
 - Enclose your code in ```python tags.
+- Your response must contain EXACTLY one ```python code block containing the scaffold code. Do not include "example usage".
 - The best solutions often involve calling the LLM several times.
 - Combine the flexibility and knowledge of an LLM with the determinism and predictability of code
 - Keep in mind that LLMs are good at understanding the meaning of text but bad at counting characters or reading unusual formats. You may have to reformat things in a way they can understand.
