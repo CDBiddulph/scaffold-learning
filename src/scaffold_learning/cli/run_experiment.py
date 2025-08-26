@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import hydra
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
 from scaffold_learning.core.hydra_config import create_experiment_config
@@ -55,8 +56,9 @@ def main(cfg: DictConfig) -> None:
             )
 
     # Build Docker image
-    print("Building Docker image...")
-    build_docker_image()
+    if config.build_docker:
+        print("Building Docker image...")
+        build_docker_image()
 
     # Load datasets
     print("Loading datasets...")
@@ -89,10 +91,19 @@ def main(cfg: DictConfig) -> None:
             config.strategy, thinking_budget_tokens=strategy_thinking_budget
         )
 
+    # Get Hydra's output directory for this job
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
+
     # Create experiment runner
     print("Initializing experiment runner...")
     runner = ExperimentRunner(
-        config, data, scoring_fn, scaffolder_llm, strategy_llm, scoring_fn_code
+        config,
+        data,
+        scoring_fn,
+        scaffolder_llm,
+        output_dir,
+        strategy_llm,
+        scoring_fn_code,
     )
 
     # Run experiment

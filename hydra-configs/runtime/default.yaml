@@ -3,7 +3,13 @@ run:
   dir: hydra-experiments/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
 sweep:
   dir: hydra-experiments/${experiment_name}_sweep/${now:%Y-%m-%d_%H-%M-%S}
-  subdir: ${scaffolder}_${executor}_${strategy}
+  subdir: ${hydra:job.override_dirname}
 
 job:
   name: ${experiment_name}
+  config:
+    override_dirname:
+      exclude_keys:
+        - build_docker
+        - experiment
+        - experiment_name

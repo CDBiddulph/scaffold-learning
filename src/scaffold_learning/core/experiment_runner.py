@@ -37,6 +37,7 @@ class ExperimentRunner:
         data: Dict[str, List[DatasetExample]],
         scoring_fn: Callable[[str, Dict], float],
         scaffolder_llm: LLMInterface,
+        output_dir: Path,
         strategy_llm: Optional[LLMInterface] = None,
         scoring_fn_code: Optional[str] = None,
     ):
@@ -47,6 +48,7 @@ class ExperimentRunner:
             data: Dictionary with 'train' and 'valid' dataset splits
             scoring_fn: Function that takes (expected, scoring_data) and returns score 0-1
             scaffolder_llm: LLM to use for generating/improving scaffolds
+            output_dir: Directory for experiment outputs
             strategy_llm: Optional LLM interface for strategy generation
             scoring_fn_code: Optional scoring function code to include in prompts
         """
@@ -69,11 +71,8 @@ class ExperimentRunner:
             allow_resample=False,
         )
 
-        # Set up experiment directory
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_dir = Path(config.base_dir)
-        experiment_dir = base_dir / f"{config.experiment_name}_{timestamp}"
-        self.file_manager = ExperimentFileManager(experiment_dir)
+        # Set up experiment directory - use Hydra's output directory
+        self.file_manager = ExperimentFileManager(output_dir)
 
         # Initialize scaffold ID tracking
         self.scaffold_counters = {}  # parent_id -> next_counter
@@ -83,6 +82,7 @@ class ExperimentRunner:
         self.logger = logging.getLogger(__name__)
 
         # Save experiment metadata
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         metadata = {
             "experiment_name": config.experiment_name,
             "created_at": timestamp,
@@ -113,7 +113,9 @@ class ExperimentRunner:
         self.logger.info("Starting experiment run")
 
         # Sample validation examples once for the entire experiment
-        validation_sample = self.valid_sampler.sample(self.config.num_validation_examples)
+        validation_sample = self.valid_sampler.sample(
+            self.config.num_validation_examples
+        )
         self.logger.info(
             f"Using {len(validation_sample)} validation examples for all iterations"
         )

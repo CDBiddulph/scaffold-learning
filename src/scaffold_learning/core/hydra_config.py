@@ -36,6 +36,7 @@ class ExperimentConfig:
     max_execute_workers: int
     thinking_budget: Optional[int]
     base_dir: str
+    build_docker: bool
     
     # Model specifications (from model config)
     model_specs: Dict[str, Dict[str, Any]]
@@ -72,5 +73,6 @@ def create_experiment_config(cfg: DictConfig) -> ExperimentConfig:
         max_execute_workers=cfg.max_execute_workers,
         thinking_budget=cfg.get("thinking_budget"),
         base_dir=cfg.base_dir,
+        build_docker=cfg.build_docker,
         model_specs=dict(cfg.model_specs),
     )
