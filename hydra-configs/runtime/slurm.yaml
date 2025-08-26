@@ -1,0 +1,16 @@
+# @package hydra
+defaults:
+  - default
+
+launcher:
+  _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
+  partition: gpu  # Your SLURM partition
+  nodes: 1
+  ntasks_per_node: 1
+  cpus_per_task: 4
+  mem_gb: 16
+  timeout_min: 360  # 6 hours
+  gpus_per_node: 1  # If you need GPUs
+  array_parallelism: 10  # Max parallel jobs
+
+# All other settings (run, sweep, job) inherited from default
