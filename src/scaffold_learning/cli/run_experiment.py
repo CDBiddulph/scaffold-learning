@@ -22,10 +22,11 @@ from scaffold_learning.core.docker_utils import build_docker_image
 # Get absolute path to config directory
 _config_path = Path(__file__).parent.parent.parent.parent / "hydra-configs"
 
+
 @hydra.main(version_base=None, config_path=str(_config_path), config_name="config")
 def main(cfg: DictConfig) -> None:
     """Run scaffold learning experiment with Hydra configuration."""
-    
+
     # Configure logging first before anything else
     logging.basicConfig(
         level=logging.INFO,
@@ -40,9 +41,12 @@ def main(cfg: DictConfig) -> None:
     if not data_dir.exists() or not data_dir.is_dir():
         raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
-    if config.scaffolds_per_iter > config.initial_scaffolds:
+    if (
+        config.scaffolds_per_iter > config.initial_scaffolds
+        and config.num_iterations > 1
+    ):
         raise ValueError("scaffolds_per_iter cannot be greater than initial_scaffolds")
-    
+
     if config.strategy_batch_size and config.strategy:
         if config.initial_scaffolds % config.strategy_batch_size != 0:
             raise ValueError(
@@ -60,7 +64,9 @@ def main(cfg: DictConfig) -> None:
 
     # Create scoring function and get a code representation of it
     print(f"Setting up {config.domain} domain...")
-    scoring_fn = create_scoring_function(config.domain, domain_params=config.domain_params)
+    scoring_fn = create_scoring_function(
+        config.domain, domain_params=config.domain_params
+    )
     scoring_fn_code = (
         get_scoring_function_code(config.domain, domain_params=config.domain_params)
         if config.show_scoring_function
@@ -73,7 +79,7 @@ def main(cfg: DictConfig) -> None:
     scaffolder_llm = LLMFactory.create_llm(
         config.scaffolder, thinking_budget_tokens=scaffolder_thinking_budget
     )
-    
+
     # Create strategy LLM if specified
     strategy_llm = None
     if config.strategy:
@@ -85,7 +91,9 @@ def main(cfg: DictConfig) -> None:
 
     # Create experiment runner
     print("Initializing experiment runner...")
-    runner = ExperimentRunner(config, data, scoring_fn, scaffolder_llm, strategy_llm, scoring_fn_code)
+    runner = ExperimentRunner(
+        config, data, scoring_fn, scaffolder_llm, strategy_llm, scoring_fn_code
+    )
 
     # Run experiment
     print("Starting experiment...")
