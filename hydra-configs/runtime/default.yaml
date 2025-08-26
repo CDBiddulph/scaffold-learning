@@ -1,0 +1,9 @@
+# @package hydra
+run:
+  dir: hydra-experiments/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+sweep:
+  dir: hydra-experiments/${experiment_name}_sweep/${now:%Y-%m-%d_%H-%M-%S}
+  subdir: ${scaffolder}_${executor}_${strategy}
+
+job:
+  name: ${experiment_name}

@@ -25,6 +25,7 @@ from scaffold_learning.core.scaffold_execution import (
     ScaffoldExecutionResult,
 )
 from scaffold_learning.core.dataset_utils import ExampleSampler
+from scaffold_learning.core.hydra_config import ExperimentConfig
 
 
 class ExperimentRunner:
@@ -32,95 +33,46 @@ class ExperimentRunner:
 
     def __init__(
         self,
-        experiment_name: str,
-        training_data: List[DatasetExample],
-        validation_data: List[DatasetExample],
+        config: ExperimentConfig,
+        data: Dict[str, List[DatasetExample]],
         scoring_fn: Callable[[str, Dict], float],
         scaffolder_llm: LLMInterface,
-        num_iterations: int,
-        scaffolds_per_iter: int,
-        initial_scaffolds: int,
-        num_training_examples: int,
-        num_validation_examples: int,
-        base_dir: Path = Path("experiments"),
-        executor_model: str = "gpt-4",
-        scoring_fn_code: Optional[str] = None,
-        suggest_hack: str = "no",
-        train_seed: Optional[int] = None,
-        valid_seed: Optional[int] = None,
-        scaffold_timeout: int = 120,
-        max_generate_workers: int = 1,
-        max_execute_workers: int = 1,
-        domain: Optional[str] = None,
         strategy_llm: Optional[LLMInterface] = None,
-        strategy_batch_size: Optional[int] = None,
+        scoring_fn_code: Optional[str] = None,
     ):
-        """Initialize an experiment runner.
+        """Initialize an experiment runner with structured configuration.
 
         Args:
-            experiment_name: Name for this experiment run
-            training_data: List of training examples
-            validation_data: List of validation examples
+            config: Experiment configuration
+            data: Dictionary with 'train' and 'valid' dataset splits
             scoring_fn: Function that takes (expected, scoring_data) and returns score 0-1
             scaffolder_llm: LLM to use for generating/improving scaffolds
-            num_iterations: Number of evolution iterations to run
-            scaffolds_per_iter: Number of top scaffolds to evolve each iteration
-            initial_scaffolds: Number of scaffolds to create initially
-            num_training_examples: Number of training examples to use for demonstration
-            num_validation_examples: Number of validation examples to use for scoring
-            base_dir: Base directory for all experiments
-            executor_model: Model name to use for executing scaffolds
-            scoring_fn_code: Scoring function code to include in prompts
-            suggest_hack: Type of hack suggestion: "no", "hidden", or "explicit"
-            train_seed: Seed for training examples
-            valid_seed: Seed for validation examples
-            scaffold_timeout: Timeout in seconds for scaffold execution
-            max_generate_workers: Maximum concurrent scaffold generation workers (default 1 for sequential)
-            max_execute_workers: Maximum concurrent scaffold execution workers (default 1 for sequential)
-            domain: Domain name for domain-specific instructions
-            strategy_llm: LLM interface for strategy generation (optional)
-            strategy_batch_size: Number of strategies to generate per batch (optional)
+            strategy_llm: Optional LLM interface for strategy generation
+            scoring_fn_code: Optional scoring function code to include in prompts
         """
-        # Validate parameters
-        if scaffolds_per_iter > initial_scaffolds:
-            raise ValueError(
-                "scaffolds_per_iter cannot be greater than initial_scaffolds"
-            )
-
-        self.experiment_name = experiment_name
-        self.training_data = training_data
-        self.validation_data = validation_data
+        self.config = config
+        self.training_data = data["train"]
+        self.validation_data = data["valid"]
         self.scoring_fn = scoring_fn
         self.scaffolder_llm = scaffolder_llm
-        self.num_iterations = num_iterations
-        self.scaffolds_per_iter = scaffolds_per_iter
-        self.initial_scaffolds = initial_scaffolds
-        self.num_training_examples = num_training_examples
-        self.num_validation_examples = num_validation_examples
-        self.executor_model = executor_model
-        self.scoring_fn_code = scoring_fn_code
-        self.suggest_hack = suggest_hack
-        self.scaffold_timeout = scaffold_timeout
-        self.max_generate_workers = max_generate_workers
-        self.max_execute_workers = max_execute_workers
-        self.domain = domain
         self.strategy_llm = strategy_llm
-        self.strategy_batch_size = strategy_batch_size
+        self.scoring_fn_code = scoring_fn_code
 
         self.train_sampler = ExampleSampler(
-            train_seed,
+            config.train_seed,
             self.training_data,
             allow_resample=True,
         )
         self.valid_sampler = ExampleSampler(
-            valid_seed,
+            config.valid_seed,
             self.validation_data,
             allow_resample=False,
         )
 
         # Set up experiment directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        experiment_dir = base_dir / f"{experiment_name}_{timestamp}"
+        base_dir = Path(config.base_dir)
+        experiment_dir = base_dir / f"{config.experiment_name}_{timestamp}"
         self.file_manager = ExperimentFileManager(experiment_dir)
 
         # Initialize scaffold ID tracking
@@ -132,22 +84,22 @@ class ExperimentRunner:
 
         # Save experiment metadata
         metadata = {
-            "experiment_name": experiment_name,
+            "experiment_name": config.experiment_name,
             "created_at": timestamp,
-            "num_iterations": num_iterations,
-            "scaffolds_per_iter": scaffolds_per_iter,
-            "initial_scaffolds": initial_scaffolds,
-            "num_training_examples": num_training_examples,
-            "num_validation_examples": num_validation_examples,
-            "train_seed": train_seed,
-            "valid_seed": valid_seed,
-            "scaffold_timeout": scaffold_timeout,
+            "num_iterations": config.num_iterations,
+            "scaffolds_per_iter": config.scaffolds_per_iter,
+            "initial_scaffolds": config.initial_scaffolds,
+            "num_training_examples": config.num_training_examples,
+            "num_validation_examples": config.num_validation_examples,
+            "train_seed": config.train_seed,
+            "valid_seed": config.valid_seed,
+            "scaffold_timeout": config.scaffold_timeout,
         }
         self.file_manager.save_experiment_metadata(metadata)
 
-        self.logger.info(f"Initialized experiment: {experiment_name}")
-        self.logger.info(f"Random training seed: {metadata['train_seed']}")
-        self.logger.info(f"Random validation seed: {metadata['valid_seed']}")
+        self.logger.info(f"Initialized experiment: {config.experiment_name}")
+        self.logger.info(f"Random training seed: {config.train_seed}")
+        self.logger.info(f"Random validation seed: {config.valid_seed}")
 
     def run(self) -> Tuple[Optional[str], float]:
         """Run the complete experiment.
@@ -161,7 +113,7 @@ class ExperimentRunner:
         self.logger.info("Starting experiment run")
 
         # Sample validation examples once for the entire experiment
-        validation_sample = self.valid_sampler.sample(self.num_validation_examples)
+        validation_sample = self.valid_sampler.sample(self.config.num_validation_examples)
         self.logger.info(
             f"Using {len(validation_sample)} validation examples for all iterations"
         )
@@ -170,7 +122,7 @@ class ExperimentRunner:
         best_score = -float("inf")
 
         # Run iterations
-        for iteration in range(self.num_iterations):
+        for iteration in range(self.config.num_iterations):
             self.logger.info(f"Starting iteration {iteration}")
 
             if iteration == 0:
@@ -269,7 +221,7 @@ class ExperimentRunner:
             Dictionary mapping scaffold_id to list of validation scores
         """
         if max_workers is None:
-            max_workers = self.max_execute_workers
+            max_workers = self.config.max_execute_workers
 
         validation_scores = {}
         for scaffold_id in scaffold_ids:
@@ -305,7 +257,7 @@ class ExperimentRunner:
         )
         top_k_ids = [
             scaffold_id
-            for scaffold_id, _ in sorted_scaffolds[: self.scaffolds_per_iter]
+            for scaffold_id, _ in sorted_scaffolds[: self.config.scaffolds_per_iter]
         ]
 
         # Log results for top K scaffolds
@@ -343,8 +295,8 @@ class ExperimentRunner:
                 config = ScaffolderPromptConfig(
                     evolve_examples=run_data_list,
                     scoring_fn_code=self.scoring_fn_code,
-                    suggest_hack=self.suggest_hack,
-                    domain=self.domain,
+                    suggest_hack=self.config.suggest_hack,
+                    domain=self.config.domain,
                 )
                 return evolve_scaffold(
                     config=config,
@@ -357,7 +309,7 @@ class ExperimentRunner:
 
         # Execute the evolution tasks
         self._execute_scaffold_generation_batch(
-            generation_tasks, "evolved", self.max_generate_workers
+            generation_tasks, "evolved", self.config.max_generate_workers
         )
 
         return current_scaffold_ids
@@ -493,10 +445,10 @@ class ExperimentRunner:
             List of strategies, or list of None if no strategy model is specified
         """
         if not self.strategy_llm:
-            return [None] * self.initial_scaffolds
+            return [None] * self.config.initial_scaffolds
 
         self.logger.info(
-            f"Generating {self.initial_scaffolds} strategies using {self.strategy_llm.get_model_info()}"
+            f"Generating {self.config.initial_scaffolds} strategies using {self.strategy_llm.get_model_info()}"
         )
 
         # Get a single list of training examples for the strategy generation prompt
@@ -509,8 +461,8 @@ class ExperimentRunner:
 
         # Generate strategies in batches
         all_strategies = []
-        batch_size = self.strategy_batch_size or self.initial_scaffolds
-        num_batches = self.initial_scaffolds // batch_size
+        batch_size = self.config.strategy_batch_size or self.config.initial_scaffolds
+        num_batches = self.config.initial_scaffolds // batch_size
 
         for batch_idx in range(num_batches):
             if num_batches > 1:
@@ -535,7 +487,7 @@ class ExperimentRunner:
         """
         # This will end up just being ["0", "1", "2", ...]
         scaffold_ids = [
-            self._get_next_scaffold_id() for _ in range(self.initial_scaffolds)
+            self._get_next_scaffold_id() for _ in range(self.config.initial_scaffolds)
         ]
 
         # Get all training examples upfront
@@ -543,8 +495,8 @@ class ExperimentRunner:
 
         base_prompt_kwargs = {
             "scoring_fn_code": self.scoring_fn_code,
-            "suggest_hack": self.suggest_hack,
-            "domain": self.domain,
+            "suggest_hack": self.config.suggest_hack,
+            "domain": self.config.domain,
         }
 
         # Generate strategies (possibly None)
@@ -575,7 +527,7 @@ class ExperimentRunner:
 
         # Execute the generation tasks
         self._execute_scaffold_generation_batch(
-            generation_tasks, "initial", self.max_generate_workers
+            generation_tasks, "initial", self.config.max_generate_workers
         )
 
         return scaffold_ids
@@ -622,8 +574,8 @@ class ExperimentRunner:
                     )
                 ),
                 input_string=example.input,
-                model_spec=self.executor_model,
-                timeout=self.scaffold_timeout,
+                model_spec=self.config.executor,
+                timeout=self.config.scaffold_timeout,
                 console_output=False,
                 thinking_budget_tokens=0,
             )
@@ -784,7 +736,7 @@ class ExperimentRunner:
         examples_by_scaffold = {}
         for scaffold_id in scaffold_ids:
             examples_by_scaffold[scaffold_id] = self.train_sampler.sample(
-                self.num_training_examples
+                self.config.num_training_examples
             )
         return examples_by_scaffold
 
@@ -814,7 +766,7 @@ class ExperimentRunner:
                 "train",
                 scaffold_code=scaffold_result.code,
                 run_data_list=training_runs[scaffold_id],
-                max_workers=self.max_execute_workers,
+                max_workers=self.config.max_execute_workers,
             )
 
         return training_runs

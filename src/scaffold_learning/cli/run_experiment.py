@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""CLI for running scaffold learning experiments."""
+"""CLI for running scaffold learning experiments with Hydra configuration."""
 
-import argparse
 import logging
+import os
 from pathlib import Path
 
-from scaffold_learning.core.domain_params import parse_domain_params
+import hydra
+from omegaconf import DictConfig
+
+from scaffold_learning.core.hydra_config import create_experiment_config
 from scaffold_learning.core.experiment_runner import ExperimentRunner
 from scaffold_learning.core.llm_interfaces import LLMFactory
 from scaffold_learning.core.dataset_utils import load_datasets
@@ -16,224 +19,73 @@ from scaffold_learning.core.scoring_utils import (
 from scaffold_learning.core.docker_utils import build_docker_image
 
 
-def main():
+# Get absolute path to config directory
+_config_path = Path(__file__).parent.parent.parent.parent / "hydra-configs"
+
+@hydra.main(version_base=None, config_path=str(_config_path), config_name="config")
+def main(cfg: DictConfig) -> None:
+    """Run scaffold learning experiment with Hydra configuration."""
+    
     # Configure logging first before anything else
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    parser = argparse.ArgumentParser(
-        description="Run scaffold learning experiments",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-
-    # Required arguments
-    parser.add_argument("experiment_name", help="Name for this experiment run")
-    parser.add_argument(
-        "data_dir",
-        type=Path,
-        help="Directory containing train.jsonl and valid.jsonl files",
-    )
-
-    # Domain and model
-    parser.add_argument(
-        "--domain", default="crosswords", help="Problem domain for scoring function"
-    )
-    parser.add_argument(
-        "--domain-param",
-        action="append",
-        default=[],
-        help="Domain-specific parameter in format key=value (can be used multiple times)",
-    )
-    parser.add_argument(
-        "--scaffolder-model",
-        default="haiku",
-        help="Model to use for scaffold generation/evolution",
-    )
-    parser.add_argument(
-        "--executor-model",
-        default="haiku",
-        help="Model to use for executing scaffolds",
-    )
-    parser.add_argument(
-        "--strategy-model",
-        help="Model to use for strategy generation for initial scaffolds. If not specified, no strategies will be generated.",
-    )
-    parser.add_argument(
-        "--strategy-batch-size",
-        type=int,
-        help="Generate strategies in batches of this size. Must evenly divide initial-scaffolds.",
-    )
-
-    # Experiment parameters
-    parser.add_argument(
-        "--num-iterations",
-        type=int,
-        default=3,
-        help="Number of evolution iterations to run",
-    )
-    parser.add_argument(
-        "--scaffolds-per-iter",
-        type=int,
-        default=2,
-        help="Number of top scaffolds to evolve each iteration",
-    )
-    parser.add_argument(
-        "--initial-scaffolds",
-        type=int,
-        default=5,
-        help="Number of initial scaffolds to create",
-    )
-    parser.add_argument(
-        "--num-validation-examples",
-        type=int,
-        default=10,
-        help="Number of validation examples to use for scoring",
-    )
-    parser.add_argument(
-        "--num-training-examples",
-        type=int,
-        default=1,
-        help="Number of training examples to show when evolving scaffolds",
-    )
-    parser.add_argument(
-        "--show-scoring-function",
-        action="store_true",
-        help="Show a Python file with the scoring function in the prompt",
-    )
-    parser.add_argument(
-        "--suggest-hack",
-        choices=["no", "hidden", "explicit"],
-        default="no",
-        help="Include text encouraging the model to find exploits/hacks: 'no' (default), 'hidden' (hidden exploits that look legitimate), 'explicit' (obvious exploits)",
-    )
-    parser.add_argument(
-        "--train-seed",
-        type=int,
-        default=42,
-        help="Random seed for reproducible experiments",
-    )
-    parser.add_argument(
-        "--valid-seed",
-        type=int,
-        default=42,
-        help="Random seed for reproducible experiments",
-    )
-    parser.add_argument(
-        "--scaffold-timeout",
-        type=int,
-        default=120,
-        help="Timeout in seconds for scaffold execution",
-    )
-    parser.add_argument(
-        "--max-generate-workers",
-        type=int,
-        default=1,
-        help="Maximum concurrent scaffold generation workers (default: 1 for sequential execution)",
-    )
-    parser.add_argument(
-        "--max-execute-workers",
-        type=int,
-        default=1,
-        help="Maximum concurrent scaffold execution workers (default: 1 for sequential execution)",
-    )
-    parser.add_argument(
-        "--thinking-budget",
-        type=int,
-        default=10000,
-        help="Thinking budget tokens for scaffolder and strategy models (default: 10000)",
-    )
-
-    # Output
-    parser.add_argument(
-        "--base-dir",
-        type=Path,
-        default=Path("experiments"),
-        help="Base directory for experiment outputs",
-    )
-    parser.add_argument(
-        "--no-build",
-        action="store_true",
-        help="Skip building Docker image (assume it already exists)",
-    )
-
-    args = parser.parse_args()
-
-    # Parse domain parameters
-    domain_params = parse_domain_params(args.domain_param)
+    # Convert Hydra config to structured config
+    config = create_experiment_config(cfg)
 
     # Validate arguments
-    if not args.data_dir.exists() or not args.data_dir.is_dir():
-        raise FileNotFoundError(f"Data directory not found: {args.data_dir}")
+    data_dir = Path(config.data_dir)
+    if not data_dir.exists() or not data_dir.is_dir():
+        raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
-    if args.scaffolds_per_iter > args.initial_scaffolds:
-        raise ValueError("scaffolds-per-iter cannot be greater than initial-scaffolds")
+    if config.scaffolds_per_iter > config.initial_scaffolds:
+        raise ValueError("scaffolds_per_iter cannot be greater than initial_scaffolds")
     
-    if args.strategy_batch_size and args.strategy_model:
-        if args.initial_scaffolds % args.strategy_batch_size != 0:
+    if config.strategy_batch_size and config.strategy:
+        if config.initial_scaffolds % config.strategy_batch_size != 0:
             raise ValueError(
-                f"initial-scaffolds ({args.initial_scaffolds}) must be divisible by "
-                f"strategy-batch-size ({args.strategy_batch_size})"
+                f"initial_scaffolds ({config.initial_scaffolds}) must be divisible by "
+                f"strategy_batch_size ({config.strategy_batch_size})"
             )
 
-    if not args.no_build:
-        print("Building Docker image...")
-        build_docker_image()
+    # Build Docker image
+    print("Building Docker image...")
+    build_docker_image()
 
     # Load datasets
     print("Loading datasets...")
-    data = load_datasets(args.data_dir, splits=["train", "valid"])
+    data = load_datasets(data_dir, splits=["train", "valid"])
 
     # Create scoring function and get a code representation of it
-    print(f"Setting up {args.domain} domain...")
-    scoring_fn = create_scoring_function(args.domain, domain_params=domain_params)
+    print(f"Setting up {config.domain} domain...")
+    scoring_fn = create_scoring_function(config.domain, domain_params=config.domain_params)
     scoring_fn_code = (
-        get_scoring_function_code(args.domain, domain_params=domain_params)
-        if args.show_scoring_function
+        get_scoring_function_code(config.domain, domain_params=config.domain_params)
+        if config.show_scoring_function
         else None
     )
 
     # Create scaffolder LLM
-    print(f"Initializing scaffolder model: {args.scaffolder_model}")
+    scaffolder_thinking_budget = config.get_thinking_budget_for_model(config.scaffolder)
+    print(f"Initializing scaffolder model: {config.scaffolder}")
     scaffolder_llm = LLMFactory.create_llm(
-        args.scaffolder_model, thinking_budget_tokens=args.thinking_budget
+        config.scaffolder, thinking_budget_tokens=scaffolder_thinking_budget
     )
     
     # Create strategy LLM if specified
     strategy_llm = None
-    if args.strategy_model:
-        print(f"Initializing strategy model: {args.strategy_model}")
+    if config.strategy:
+        strategy_thinking_budget = config.get_thinking_budget_for_model(config.strategy)
+        print(f"Initializing strategy model: {config.strategy}")
         strategy_llm = LLMFactory.create_llm(
-            args.strategy_model, thinking_budget_tokens=args.thinking_budget
+            config.strategy, thinking_budget_tokens=strategy_thinking_budget
         )
 
     # Create experiment runner
     print("Initializing experiment runner...")
-    runner = ExperimentRunner(
-        experiment_name=args.experiment_name,
-        training_data=data["train"],
-        validation_data=data["valid"],
-        scoring_fn=scoring_fn,
-        scaffolder_llm=scaffolder_llm,
-        num_iterations=args.num_iterations,
-        scaffolds_per_iter=args.scaffolds_per_iter,
-        initial_scaffolds=args.initial_scaffolds,
-        num_validation_examples=args.num_validation_examples,
-        num_training_examples=args.num_training_examples,
-        base_dir=args.base_dir,
-        executor_model=args.executor_model,
-        scoring_fn_code=scoring_fn_code,
-        suggest_hack=args.suggest_hack,
-        train_seed=args.train_seed,
-        valid_seed=args.valid_seed,
-        scaffold_timeout=args.scaffold_timeout,
-        max_generate_workers=args.max_generate_workers,
-        max_execute_workers=args.max_execute_workers,
-        domain=args.domain,
-        strategy_llm=strategy_llm,
-        strategy_batch_size=args.strategy_batch_size,
-    )
+    runner = ExperimentRunner(config, data, scoring_fn, scaffolder_llm, strategy_llm, scoring_fn_code)
 
     # Run experiment
     print("Starting experiment...")
