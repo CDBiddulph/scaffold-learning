@@ -62,27 +62,42 @@ def process_input(input_string: str) -> str:
     return "Valid cinquain" if is_cinquain(input_string) else "Invalid cinquain"
 ```"""
 
-_COMMON_TIPS = """- Your script must implement a function called `process_input(input_string: str) -> str`
-- You have access to an executor LLM through a library called `llm_executor`
-- The llm_executor has a function: execute_llm(prompt: str, system_prompt: Optional[str] = None) -> str
+_COMMON_TIPS = """- Your script must implement a function called `process_input(input_string: str) -> str`.
+- You have access to an executor LLM through a library called `llm_executor`.
+- The llm_executor has a function: execute_llm(prompt: str, system_prompt: Optional[str] = None) -> str.
 - Include proper error handling.
 - Make sure your error messages include all information that would help debug the error.
 - Use Python's logging module for logging important events, errors, and debug information. If you feel confused about why your code is failing, you should consider adding more logging so that you'll understand better next time.
 - Enclose your code in ```python tags.
 - Your response must contain EXACTLY one ```python code block containing the scaffold code. Do not include "example usage".
 - The best solutions often involve calling the LLM several times.
-- Combine the flexibility and knowledge of an LLM with the determinism and predictability of code
+- Combine the flexibility and knowledge of an LLM with the determinism and predictability of code.
 - Keep in mind that LLMs are good at understanding the meaning of text but bad at counting characters or reading unusual formats. You may have to reformat things in a way they can understand.
-- LLMs are also bad at keeping track of many things in their heads. However, code is great at this. You should offload memory and problems with lots of moving parts to code whenever possible
-- Only use the LLM when it makes sense, when you need the intuition and knowledge that only an LLM would have. If it's at all possible to do something with code, strongly consider doing so, because code is much faster and more reliable
-- When prompting the LLM, break things down into the smallest possible pieces. Give it only the smallest amount of information it needs to complete that subtask. Otherwise it will tend to get confused and overwhelmed. Less is more
+- LLMs are also bad at keeping track of many things in their heads. However, code is great at this. You should offload memory and problems with lots of moving parts to code whenever possible.
+- Only use the LLM when it makes sense, when you need the intuition and knowledge that only an LLM would have. If it's at all possible to do something with code, strongly consider doing so, because code is much faster and more reliable.
+- When prompting the LLM, break things down into the smallest possible pieces. Give it only the smallest amount of information it needs to complete that subtask. Otherwise it will tend to get confused and overwhelmed. Less is more.
+- For open-ended tasks, it is often best to let the LLM drive the problem-solving process rather than predefining the control flow. For example, rather than hard-coding specific approaches to solve the problem, you could show the LLM the problem and ask for approaches. The tricky part is giving the LLM just enough guidance that it knows what to do while still taking advantage of its creativity.
+- Examples of things you could ask the LLM to do:
+  - Try to solve a problem or subproblem multiple times and use majority voting to pick the best solution.
+  - Break the problem down into subproblems.
+  - Come up with multiple approaches to the problem or a subproblem.
+  - Come up with possible next steps in the reasoning trajectory.
+  - Evaluate the quality of a proposed approach, partial trajectory, or complete solution, and whether we should try something else.
+  - Compare multiple approaches, trajectories, or solutions, and combine them or pick the best one.
+  - Create a reasoning tree with many different reasoning traces and traverse the tree according to some heuristics.
+  - Combine the solutions to various subproblems, or notice when some subproblem solutions are not sufficient to solve the problem.
+  - Take a step back and course-correct when things appear to be going off the rails.
+  - Make time management decisions, given how much time has elapsed, how much time various past steps took, and how much time is left. This could look like allocating a certain amount of time to a subproblem, or evaluating whether to abandon a line of inquiry that is taking too long.
+- You must figure out how to translate the LLM's outputs into a form that your code understands. The most basic case is when you want a single answer, which you can have the LLM write in a parseable format like "ANSWER: <answer>". A more complex case is when you want your LLM to produce multiple outputs in a structured format, in which case you could ask for a JSON string. To make it even more complex, you could ask for arbitrary Python code, which you can run using exec(). (We're running the scaffold in a sandbox, so this is safe.)
+- Keep in mind that each LLM call adds some overhead. It might be smart to batch multiple related questions in a single call.
+- Know that the LLM is highly biased when evaluating its own work within a single call - it will tend to believe that whatever it just said is correct. It's better at being objective when you ask it to evaluate an output from a past call.
 - Keep in mind that the LLM has ALL of the general knowledge you do, so giving it commonsense tips is probably going to do nothing. You should only tell it information that is truly surprising, which you learned from your own analysis during this session. Examples of useless information: listing the capital of each state in the U.S., listing well-known strategies for solving a problem that aren't informed by your own observations. Example of useful information: a recurring pitfall that you have seen the LLM falling into across multiple examples, which your tip can plausibly help it avoid.
-- Don't overfit to the examples. The same question will never appear again in the held-out set, so writing custom code to handle very specific cases is probably not a good idea.
-- BE CREATIVE! The best solutions will have a spark of creative genius. Do something brave and daring that's never been done before"""
+- Don't overfit to the examples. The same example will never appear again in the held-out set, so writing custom code to handle very specific cases won't work. For instance, if one example mentions a whale, don't write `if "whale" in input_string: ...`.
+- BE CREATIVE! The best solutions will have a spark of creative genius. Do something brave and daring that's never been done before."""
 
-_EVOLUTION_TIPS = """- Identify strategies that AREN'T working rather than always adding more. Consider what you can delete - for any piece of code, you should be able to look at the logs and see it enabling critically-important progress on the task that would have otherwise been impossible. If not, either you need more logs or the code isn't worth keeping. You should generally add about as much code as you remove
-- Changing the high-level structure of the code in a big way is generally much more effective than changing small details. Ask yourself, "what's the one sentence summary of my code?" If it's about the same as the old one-sentence summary, you're probably not making progress
-- If you've already tried something that doesn't work, try something else"""
+_EVOLUTION_TIPS = """- Identify strategies that AREN'T working rather than always adding more. Consider what you can delete - for any piece of code, you should be able to look at the logs and see it enabling critically-important progress on the task that would have otherwise been impossible. If not, either you need more logs or the code isn't worth keeping. You should generally add about as much code as you remove.
+- Changing the high-level structure of the code in a big way is generally much more effective than changing small details. Ask yourself, "what's the one sentence summary of my code?" If it's about the same as the old one-sentence summary, you're probably not making progress.
+- If you've already tried something that doesn't work, try something else."""
 
 _TASK_DESCRIPTION_INSTRUCTIONS = "The scaffold should do the following task:"
 
