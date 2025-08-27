@@ -13,11 +13,11 @@ class TestPromptUtils:
         example = DatasetExample(
             id="test1",
             input="What is 2+2?",
-            scoring_data={"input": "What is 2+2?", "solution": "4"}
+            scoring_data={"input": "What is 2+2?", "solution": "4"},
         )
-        
+
         result = format_examples_as_xml([example])
-        
+
         expected = (
             "<example-1>\n"
             "    <input>What is 2+2?</input>\n"
@@ -32,17 +32,17 @@ class TestPromptUtils:
             DatasetExample(
                 id="test1",
                 input="What is 2+2?",
-                scoring_data={"input": "What is 2+2?", "solution": "4"}
+                scoring_data={"input": "What is 2+2?", "solution": "4"},
             ),
             DatasetExample(
                 id="test2",
                 input="What is 3+3?",
-                scoring_data={"input": "What is 3+3?", "solution": "6"}
-            )
+                scoring_data={"input": "What is 3+3?", "solution": "6"},
+            ),
         ]
-        
+
         result = format_examples_as_xml(examples)
-        
+
         expected = (
             "<example-1>\n"
             "    <input>What is 2+2?</input>\n"
@@ -60,19 +60,19 @@ class TestPromptUtils:
         example = DatasetExample(
             id="test1",
             input="What is 2+2?",
-            scoring_data={"input": "What is 2+2?", "solution": "4"}
+            scoring_data={"input": "What is 2+2?", "solution": "4"},
         )
-        
+
         run_data = ScaffoldRunData(
             code="def process_input(x): return '4'",
             execution_log="Processing...",
             example=example,
             actual_output="4",
-            score=1.0
+            score=1.0,
         )
-        
+
         result = format_examples_as_xml([run_data])
-        
+
         expected = (
             "<example-1>\n"
             "    <input>What is 2+2?</input>\n"
@@ -89,11 +89,14 @@ class TestPromptUtils:
         example = DatasetExample(
             id="test1",
             input="What is the capital of France?",
-            scoring_data={"input": "What is the capital of France?", "correct_answer": "Paris"}
+            scoring_data={
+                "input": "What is the capital of France?",
+                "correct_answer": "Paris",
+            },
         )
-        
+
         result = format_examples_as_xml([example])
-        
+
         expected = (
             "<example-1>\n"
             "    <input>What is the capital of France?</input>\n"
@@ -105,18 +108,12 @@ class TestPromptUtils:
     def test_format_examples_with_input_only(self):
         """Test formatting examples with only 'input' in scoring_data."""
         example = DatasetExample(
-            id="test1",
-            input="Tell me a joke",
-            scoring_data={"input": "Tell me a joke"}
+            id="test1", input="Tell me a joke", scoring_data={"input": "Tell me a joke"}
         )
-        
+
         result = format_examples_as_xml([example])
-        
-        expected = (
-            "<example-1>\n"
-            "    <input>Tell me a joke</input>\n"
-            "</example-1>"
-        )
+
+        expected = "<example-1>\n" "    <input>Tell me a joke</input>\n" "</example-1>"
         assert result == expected
 
     def test_format_mixed_example_types(self):
@@ -124,23 +121,23 @@ class TestPromptUtils:
         dataset_example = DatasetExample(
             id="test1",
             input="What is 2+2?",
-            scoring_data={"input": "What is 2+2?", "solution": "4"}
+            scoring_data={"input": "What is 2+2?", "solution": "4"},
         )
-        
+
         scaffold_run = ScaffoldRunData(
             code="def process_input(x): return '6'",
             execution_log="Processing...",
             example=DatasetExample(
                 id="test2",
                 input="What is 3+3?",
-                scoring_data={"input": "What is 3+3?", "solution": "6"}
+                scoring_data={"input": "What is 3+3?", "solution": "6"},
             ),
             actual_output="6",
-            score=1.0
+            score=1.0,
         )
-        
+
         result = format_examples_as_xml([dataset_example, scaffold_run])
-        
+
         expected = (
             "<example-1>\n"
             "    <input>What is 2+2?</input>\n"
@@ -164,11 +161,9 @@ class TestPromptUtils:
     def test_format_unknown_scoring_data_keys_raises_error(self):
         """Test that unknown scoring data keys raise ValueError."""
         example = DatasetExample(
-            id="test1",
-            input="Test input",
-            scoring_data={"unknown_key": "value"}
+            id="test1", input="Test input", scoring_data={"unknown_key": "value"}
         )
-        
+
         with pytest.raises(ValueError, match="Unknown scoring data keys"):
             format_examples_as_xml([example])
 
@@ -177,11 +172,11 @@ class TestPromptUtils:
         example = DatasetExample(
             id="test1",
             input="What is 2 < 3 & 4 > 1?",
-            scoring_data={"input": "What is 2 < 3 & 4 > 1?", "solution": "True & True"}
+            scoring_data={"input": "What is 2 < 3 & 4 > 1?", "solution": "True & True"},
         )
-        
+
         result = format_examples_as_xml([example])
-        
+
         expected = (
             "<example-1>\n"
             "    <input>What is 2 &lt; 3 &amp; 4 &gt; 1?</input>\n"

@@ -8,24 +8,25 @@ from omegaconf import DictConfig
 @dataclass
 class ExperimentConfig:
     """Configuration for experiment parameters."""
+
     experiment_name: str
     data_dir: str
     domain: str
     domain_params: Dict[str, str]
-    
+
     # Experiment flow
     num_iterations: int
     scaffolds_per_iter: int
     initial_scaffolds: int
     num_validation_examples: int
     num_training_examples: int
-    
-    # Model configuration  
+
+    # Model configuration
     scaffolder: str
     executor: str
     strategy: Optional[str]
     strategy_batch_size: Optional[int]
-    
+
     # Execution settings
     show_scoring_function: bool
     suggest_hack: str
@@ -39,10 +40,10 @@ class ExperimentConfig:
     thinking_budget: Optional[int]
     base_dir: str
     build_docker: bool
-    
+
     # Model specifications (from model config)
     model_specs: Dict[str, Dict[str, Any]]
-    
+
     def get_thinking_budget_for_model(self, model_name: str) -> int:
         """Get thinking budget for a specific model."""
         if self.thinking_budget is not None:

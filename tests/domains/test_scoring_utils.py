@@ -1,7 +1,10 @@
 """Tests for shared scoring utilities."""
 
 import pytest
-from src.scaffold_learning.domains.scoring_utils import extract_answer_letter, score_letter_choice
+from src.scaffold_learning.domains.scoring_utils import (
+    extract_answer_letter,
+    score_letter_choice,
+)
 
 
 class TestExtractAnswerLetter:
@@ -78,7 +81,9 @@ class TestExtractAnswerLetter:
         """Test that first valid answer is returned when multiple present."""
         assert extract_answer_letter("First I thought B, but answer: A", "AB") == "A"
         assert extract_answer_letter("A or B? I choose A", "AB") == "A"
-        assert extract_answer_letter("Not B. Answer: A", "AB") == "A"  # "Answer: A" pattern takes priority
+        assert (
+            extract_answer_letter("Not B. Answer: A", "AB") == "A"
+        )  # "Answer: A" pattern takes priority
 
     def test_case_insensitive(self):
         """Test case insensitive matching."""
@@ -138,24 +143,32 @@ class TestScoreLetterChoice:
 
     def test_invalid_expected_answer(self):
         """Test validation of expected answer."""
-        with pytest.raises(ValueError, match="Expected answer must be a non-empty string"):
+        with pytest.raises(
+            ValueError, match="Expected answer must be a non-empty string"
+        ):
             score_letter_choice("", "Answer: A", "AB")
-        
-        with pytest.raises(ValueError, match="Expected answer must be a non-empty string"):
+
+        with pytest.raises(
+            ValueError, match="Expected answer must be a non-empty string"
+        ):
             score_letter_choice(None, "Answer: A", "AB")
-        
+
         with pytest.raises(ValueError, match="Expected answer must be a single letter"):
             score_letter_choice("AB", "Answer: A", "AB")
-        
+
         with pytest.raises(ValueError, match="Expected answer must be a single letter"):
             score_letter_choice("123", "Answer: A", "AB")
 
     def test_invalid_expected_answer_not_in_valid(self):
         """Test when expected answer is not in valid letters."""
-        with pytest.raises(ValueError, match="Expected answer must be a single letter from AB"):
+        with pytest.raises(
+            ValueError, match="Expected answer must be a single letter from AB"
+        ):
             score_letter_choice("C", "Answer: C", "AB")
-        
-        with pytest.raises(ValueError, match="Expected answer must be a single letter from ABCDE"):  
+
+        with pytest.raises(
+            ValueError, match="Expected answer must be a single letter from ABCDE"
+        ):
             score_letter_choice("Z", "Answer: Z", "ABCDE")
 
     def test_custom_valid_letters(self):
@@ -163,6 +176,8 @@ class TestScoreLetterChoice:
         assert score_letter_choice("X", "Answer: X", "XYZ") == 1.0
         assert score_letter_choice("Y", "I choose Y", "XYZ") == 1.0
         assert score_letter_choice("X", "Answer: Y", "XYZ") == 0.0
-        
-        with pytest.raises(ValueError, match="Expected answer must be a single letter from XYZ"):
+
+        with pytest.raises(
+            ValueError, match="Expected answer must be a single letter from XYZ"
+        ):
             score_letter_choice("A", "Answer: A", "XYZ")

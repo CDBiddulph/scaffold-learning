@@ -3,7 +3,10 @@ import json
 from unittest.mock import Mock, patch
 from pathlib import Path
 import tempfile
-from scaffold_learning.core.scaffold_execution import execute_scaffolds, _execute_scaffold
+from scaffold_learning.core.scaffold_execution import (
+    execute_scaffolds,
+    _execute_scaffold,
+)
 from scaffold_learning.core.data_structures import ScaffoldExecutionTask
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult
 from scaffold_learning.core.experiment_files import ExperimentFileManager
@@ -28,13 +31,15 @@ class TestScaffoldExecution:
 
         return file_manager
 
-    def execute_single_scaffold(self, file_manager, scaffold_id="test-scaffold", **kwargs):
+    def execute_single_scaffold(
+        self, file_manager, scaffold_id="test-scaffold", **kwargs
+    ):
         """Helper to execute a single scaffold using the new API."""
         task = ScaffoldExecutionTask(
             scaffold_dir=str(file_manager.get_scaffold_dir(scaffold_id)),
-            log_file_path=str(file_manager.get_new_execution_log_path(
-                0, scaffold_id, "train"
-            )),
+            log_file_path=str(
+                file_manager.get_new_execution_log_path(0, scaffold_id, "train")
+            ),
             input_string=kwargs.get("input_string", "test input"),
             model_spec=kwargs.get("model_spec", "mock"),
             timeout=kwargs.get("timeout", 120),
@@ -63,10 +68,11 @@ class TestScaffoldExecution:
             poll_sequence = [None] * (max(len(stdout_lines), len(stderr_lines)) - 1) + [
                 returncode
             ]
-        
+
         # Make poll() handle unlimited calls using a custom function
         # The streaming loop may call poll() many times due to timeout checks
         poll_count = [0]  # Use list so inner function can modify
+
         def mock_poll():
             if poll_count[0] < len(poll_sequence):
                 result = poll_sequence[poll_count[0]]
@@ -75,7 +81,7 @@ class TestScaffoldExecution:
             else:
                 # Return final value indefinitely
                 return poll_sequence[-1]
-        
+
         mock_process.poll.side_effect = mock_poll
 
         # Add empty string to end lines if not present (EOF marker)
@@ -111,6 +117,7 @@ class TestScaffoldExecution:
 
             # Create a time mock that handles unlimited calls
             time_counter = [0]  # Use list so inner function can modify it
+
             def mock_time():
                 current_time = time_counter[0] * 0.1
                 time_counter[0] += 1
@@ -126,13 +133,15 @@ class TestScaffoldExecution:
                     output = "".join(stdout_lines).strip()
                     results_data = {
                         "output": output,
-                        "execution_time": 1.5  # Mock execution time
+                        "execution_time": 1.5,  # Mock execution time
                     }
-                    with open(results_file, 'w') as f:
+                    with open(results_file, "w") as f:
                         json.dump(results_data, f)
                 return str(results_dir)
 
-            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+            with patch(
+                "subprocess.run", return_value=self.create_mock_hostname_result()
+            ):
                 with patch("subprocess.Popen", return_value=mock_process):
                     with patch("time.time", side_effect=mock_time):
                         with patch("tempfile.mkdtemp", side_effect=mock_mkdtemp):
@@ -196,7 +205,9 @@ class TestScaffoldExecution:
 
             mock_process = self.create_mock_process(["output"], [])
 
-            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+            with patch(
+                "subprocess.run", return_value=self.create_mock_hostname_result()
+            ):
                 with patch("subprocess.Popen") as mock_popen:
                     mock_popen.return_value = mock_process
 
@@ -227,7 +238,9 @@ class TestScaffoldExecution:
 
             mock_process = self.create_mock_process(["test output"], ["test stderr"])
 
-            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+            with patch(
+                "subprocess.run", return_value=self.create_mock_hostname_result()
+            ):
                 with patch("subprocess.Popen", return_value=mock_process):
                     with patch(
                         "time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 2.0]
@@ -251,11 +264,15 @@ class TestScaffoldExecution:
             file_manager = self.create_test_scaffold(temp_dir)
             mock_process = self.create_mock_process(["output"], [])
 
-            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+            with patch(
+                "subprocess.run", return_value=self.create_mock_hostname_result()
+            ):
                 with patch("subprocess.Popen") as mock_popen:
                     mock_popen.return_value = mock_process
                     with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
-                        with patch("time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 1.0]):
+                        with patch(
+                            "time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 1.0]
+                        ):
                             self.execute_single_scaffold(
                                 file_manager,
                                 input_string="test input",
@@ -280,10 +297,13 @@ class TestScaffoldExecution:
                 ["Line 1\n", "Line 2\n"], ["Error 1\n"]
             )
 
-            with patch("subprocess.run", return_value=self.create_mock_hostname_result()):
+            with patch(
+                "subprocess.run", return_value=self.create_mock_hostname_result()
+            ):
                 with patch("subprocess.Popen", return_value=mock_process):
                     with patch(
-                        "time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0]
+                        "time.time",
+                        side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0],
                     ):
                         result = self.execute_single_scaffold(
                             file_manager,
@@ -327,9 +347,12 @@ Error 1
                 # Mock the hostname detection call first, then the Docker execution call
                 docker_result = Mock()
                 docker_result.returncode = 0
-                
-                mock_run.side_effect = [self.create_mock_hostname_result(), docker_result]
-                
+
+                mock_run.side_effect = [
+                    self.create_mock_hostname_result(),
+                    docker_result,
+                ]
+
                 with patch("time.time", side_effect=[0.0, 0.0, 0.1, 0.2, 0.3, 1.0]):
                     result = self.execute_single_scaffold(
                         file_manager,
@@ -379,43 +402,45 @@ User interaction occurred directly in terminal\."""
 class TestParallelScaffoldExecution:
     def test_execute_scaffolds_sequential(self):
         """Test execute_scaffolds with max_workers=1 (sequential)"""
-        
+
         # Mock _execute_scaffold to return predictable results
-        with patch('scaffold_learning.core.scaffold_execution._execute_scaffold') as mock_execute:
+        with patch(
+            "scaffold_learning.core.scaffold_execution._execute_scaffold"
+        ) as mock_execute:
             # Set up mock results
             mock_results = [
                 ScaffoldExecutionResult(
                     output=f"output{i}",
                     stderr="",
                     error_message=None,
-                    execution_time=0.1 * i
+                    execution_time=0.1 * i,
                 )
                 for i in range(3)
             ]
             mock_execute.side_effect = mock_results
-            
+
             # Create execution tasks
             tasks = [
                 ScaffoldExecutionTask(
-                    scaffold_dir=f'/path/to/scaffold{i}',
-                    log_file_path=f'/path/to/log{i}.log',
-                    input_string=f'input{i}',
-                    model_spec='mock',
+                    scaffold_dir=f"/path/to/scaffold{i}",
+                    log_file_path=f"/path/to/log{i}.log",
+                    input_string=f"input{i}",
+                    model_spec="mock",
                     timeout=120,
                     console_output=False,
                     thinking_budget_tokens=0,
                 )
                 for i in range(3)
             ]
-            
+
             # Execute
             results = execute_scaffolds(tasks, max_workers=1)
-            
+
             # Verify results
             assert len(results) == 3
             for i, result in enumerate(results):
                 assert result.output == f"output{i}"
                 assert result.execution_time == 0.1 * i
-            
+
             # Verify calls were made sequentially
             assert mock_execute.call_count == 3

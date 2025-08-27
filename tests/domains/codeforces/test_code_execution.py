@@ -13,7 +13,7 @@ class TestExecuteAndScoreTests(unittest.TestCase):
         """Test handling of empty test cases."""
         with self.assertRaises(ValueError) as cm:
             execute_and_score_tests("print('test')", [], 2.0, 256.0)
-        
+
         self.assertIn("No test cases", str(cm.exception))
 
     @patch("subprocess.run")
@@ -21,9 +21,7 @@ class TestExecuteAndScoreTests(unittest.TestCase):
         """Test successful code execution."""
         mock_process = MagicMock()
         mock_process.returncode = 0
-        mock_process.stdout = (
-            '{"results": [{"test_case": 0, "passed": true, "input": "5", "expected": "5", "actual": "5"}]}'
-        )
+        mock_process.stdout = '{"results": [{"test_case": 0, "passed": true, "input": "5", "expected": "5", "actual": "5"}]}'
         mock_process.stderr = ""
         mock_run.return_value = mock_process
 
@@ -43,10 +41,10 @@ class TestExecuteAndScoreTests(unittest.TestCase):
         mock_run.return_value = mock_process
 
         test_cases = [{"input": "1", "output": "1"}] * 5  # 5 test cases
-        
+
         with self.assertRaises(RuntimeError) as cm:
             execute_and_score_tests("print(input())", test_cases, 2.0, 256.0)
-        
+
         self.assertIn("timed out", str(cm.exception))
         mock_run.assert_called_once()
 
@@ -61,7 +59,7 @@ class TestExecuteAndScoreTests(unittest.TestCase):
 
         test_cases = [{"input": "1", "output": "1"}]
         result = execute_and_score_tests("print(input())", test_cases, 2.0, 128.0)
-        
+
         self.assertEqual(result, 0.0)  # No tests in results, so 0/0 = 0.0
 
         # Verify Docker command includes doubled memory limit: 128 * 2 = 256m
@@ -80,10 +78,10 @@ class TestExecuteAndScoreTests(unittest.TestCase):
         mock_run.side_effect = Exception("Docker failed")
 
         test_cases = [{"input": "1", "output": "1"}]
-        
+
         with self.assertRaises(Exception) as cm:
             execute_and_score_tests("print(input())", test_cases, 2.0, 256.0)
-        
+
         self.assertIn("Docker failed", str(cm.exception))
 
 
@@ -104,7 +102,7 @@ class TestCodeExecutionIntegration(unittest.TestCase):
 
         with self.assertRaises(SyntaxError) as cm:
             execute_and_score_tests(code, test_cases, 2.0, 256.0)
-        
+
         self.assertIn("syntax", str(cm.exception))
 
     @patch("subprocess.run")

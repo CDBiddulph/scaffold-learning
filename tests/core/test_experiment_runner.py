@@ -232,10 +232,12 @@ Execution completed successfully
             scaffolder_llm=mock_llm,
             output_dir=Path(self.temp_dir),
         )
-        
+
         # Verify the runner was created successfully
         assert runner.config.scaffolds_per_iter == 5
-        assert runner.initial_scaffolds == 3  # This one is a direct attribute, not from config
+        assert (
+            runner.initial_scaffolds == 3
+        )  # This one is a direct attribute, not from config
 
     def test_log_structure(self):
         """Test that validation and training logs are created correctly."""

@@ -30,7 +30,7 @@ class ExperimentFileManager:
             int
         )  # key: (iteration, scaffold_id, run_type)
         self._counter_lock = threading.Lock()
-        
+
         # Thread-safe locks for scoring file updates
         self._scores_lock = threading.Lock()
         self._all_valid_lock = threading.Lock()
@@ -120,7 +120,9 @@ class ExperimentFileManager:
         logs_dir = self._get_docker_logs_dir(iteration, scaffold_id)
         return logs_dir / f"{run_id}.log"
 
-    def _get_docker_logs_dir(self, iteration: Union[int, str], scaffold_id: str) -> Path:
+    def _get_docker_logs_dir(
+        self, iteration: Union[int, str], scaffold_id: str
+    ) -> Path:
         """Get logs directory path for Docker mounting.
 
         Args:
@@ -134,7 +136,9 @@ class ExperimentFileManager:
         logs_dir.mkdir(parents=True, exist_ok=True)
         return logs_dir.absolute()
 
-    def _get_next_run_id(self, iteration: Union[int, str], scaffold_id: str, run_type: str) -> str:
+    def _get_next_run_id(
+        self, iteration: Union[int, str], scaffold_id: str, run_type: str
+    ) -> str:
         """Determine the next available run ID for a given run type.
 
         Args:
@@ -163,14 +167,10 @@ class ExperimentFileManager:
         return f"{run_type}_{next_index}"
 
     def save_scores(
-        self, 
-        iteration: int, 
-        scaffold_id: str, 
-        scores: List[float], 
-        score_type: str
+        self, iteration: int, scaffold_id: str, scores: List[float], score_type: str
     ) -> None:
         """Save individual scaffold scores incrementally to scoring files.
-        
+
         Args:
             iteration: Current iteration number
             scaffold_id: Scaffold identifier
@@ -178,18 +178,19 @@ class ExperimentFileManager:
             score_type: Either "train" or "valid"
         """
         if score_type not in ["train", "valid"]:
-            raise ValueError(f"Invalid score_type: {score_type}. Must be 'train' or 'valid'.")
-        
+            raise ValueError(
+                f"Invalid score_type: {score_type}. Must be 'train' or 'valid'."
+            )
+
         scoring_dir = self.experiment_dir / "scoring"
         scoring_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Update scores_{iteration}.json
         self._update_iteration_scores_file(iteration, scaffold_id, scores, score_type)
-        
+
         # Update all_valid_scores.json if this is a validation score
         if score_type == "valid":
             self._update_all_valid_scores_file(scaffold_id, scores)
-
 
     def _update_json_file_with_scores(
         self,
@@ -198,10 +199,10 @@ class ExperimentFileManager:
         scores: List[float],
         lock: threading.Lock,
         section_key: Optional[str] = None,
-        default_structure: Optional[Dict] = None
+        default_structure: Optional[Dict] = None,
     ) -> None:
         """Helper method to update a JSON file with scaffold scores.
-        
+
         Args:
             file_path: Path to the JSON file
             scaffold_id: Scaffold identifier
@@ -213,17 +214,14 @@ class ExperimentFileManager:
         with lock:
             # Load existing data or create default structure
             if file_path.exists():
-                with open(file_path, 'r') as f:
+                with open(file_path, "r") as f:
                     data = json.load(f)
             else:
                 data = default_structure or {}
-            
+
             # Add/update scaffold scores
-            score_entry = {
-                "mean_score": np.mean(scores),
-                "scores": scores
-            }
-            
+            score_entry = {"mean_score": np.mean(scores), "scores": scores}
+
             if section_key:
                 # Nested structure (e.g., scores_{iteration}.json)
                 data[section_key][scaffold_id] = score_entry
@@ -234,17 +232,13 @@ class ExperimentFileManager:
                 data[scaffold_id] = score_entry
                 # Sort the entire data
                 data = self._sort_scores_dict(data)
-            
+
             # Write back to file
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 json.dump(data, f, indent=2)
 
     def _update_iteration_scores_file(
-        self, 
-        iteration: int, 
-        scaffold_id: str, 
-        scores: List[float], 
-        score_type: str
+        self, iteration: int, scaffold_id: str, scores: List[float], score_type: str
     ) -> None:
         """Update the scores_{iteration}.json file with new scaffold scores."""
         scoring_file = self.experiment_dir / "scoring" / f"scores_{iteration}.json"
@@ -254,10 +248,12 @@ class ExperimentFileManager:
             scores=scores,
             lock=self._scores_lock,
             section_key=score_type,
-            default_structure={"train": {}, "valid": {}}
+            default_structure={"train": {}, "valid": {}},
         )
 
-    def _update_all_valid_scores_file(self, scaffold_id: str, scores: List[float]) -> None:
+    def _update_all_valid_scores_file(
+        self, scaffold_id: str, scores: List[float]
+    ) -> None:
         """Update the all_valid_scores.json file with new validation scores."""
         all_valid_file = self.experiment_dir / "scoring" / "all_valid_scores.json"
         self._update_json_file_with_scores(
@@ -266,15 +262,15 @@ class ExperimentFileManager:
             scores=scores,
             lock=self._all_valid_lock,
             section_key=None,  # Flat structure
-            default_structure={}
+            default_structure={},
         )
 
-    def _sort_scores_dict(self, scores_dict: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    def _sort_scores_dict(
+        self, scores_dict: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
         """Sort a scores dictionary by mean_score in descending order (highest to lowest)."""
         sorted_items = sorted(
-            scores_dict.items(), 
-            key=lambda x: x[1]["mean_score"], 
-            reverse=True
+            scores_dict.items(), key=lambda x: x[1]["mean_score"], reverse=True
         )
         return dict(sorted_items)
 

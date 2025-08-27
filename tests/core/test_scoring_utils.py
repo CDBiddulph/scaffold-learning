@@ -193,41 +193,38 @@ class TestRewardModelScoringIntegration:
 class TestMetaOptimizeScoringIntegration:
     """Test meta-optimize domain integration with scoring_utils."""
 
-    @patch('scaffold_learning.core.scoring_utils.start_server')
+    @patch("scaffold_learning.core.scoring_utils.start_server")
     def test_create_scoring_function_basic(self, mock_start_server):
         """Test creating meta-optimize scoring function with mcq mesa-domain."""
         # Setup
         mock_start_server.return_value = Mock()
-        domain_params = {
-            "mesa-domain": "gpqa",
-            "mesa-params": "{}"
-        }
-        
+        domain_params = {"mesa-domain": "gpqa", "mesa-params": "{}"}
+
         # Execute
         scoring_fn = create_scoring_function("meta-optimize", domain_params)
-        
+
         # Verify function is callable
         assert callable(scoring_fn)
-        
+
         # Verify server was started
         mock_start_server.assert_called_once()
 
-    @patch('scaffold_learning.core.scoring_utils.start_server')
+    @patch("scaffold_learning.core.scoring_utils.start_server")
     def test_create_scoring_function_with_mesa_params(self, mock_start_server):
         """Test creating meta-optimize scoring function with mesa-domain params."""
         # Setup
         mock_start_server.return_value = Mock()
         domain_params = {
-            "mesa-domain": "crosswords", 
-            "mesa-params": '{"mode": "strict"}'
+            "mesa-domain": "crosswords",
+            "mesa-params": '{"mode": "strict"}',
         }
-        
+
         # Execute
         scoring_fn = create_scoring_function("meta-optimize", domain_params)
-        
+
         # Verify function is callable
         assert callable(scoring_fn)
-        
+
         # Verify server was started
         mock_start_server.assert_called_once()
 
@@ -235,82 +232,79 @@ class TestMetaOptimizeScoringIntegration:
         """Test error when mesa-domain is missing."""
         # Setup
         domain_params = {}
-        
+
         # Execute & Verify
-        with pytest.raises(ValueError, match="meta-optimize domain requires 'mesa-domain' parameter"):
+        with pytest.raises(
+            ValueError, match="meta-optimize domain requires 'mesa-domain' parameter"
+        ):
             create_scoring_function("meta-optimize", domain_params)
 
     def test_create_scoring_function_invalid_mesa_params_json(self):
         """Test error when mesa-params is invalid JSON."""
         # Setup
-        domain_params = {
-            "mesa-domain": "gpqa",
-            "mesa-params": "invalid json"
-        }
-        
+        domain_params = {"mesa-domain": "gpqa", "mesa-params": "invalid json"}
+
         # Execute & Verify
         with pytest.raises(json.JSONDecodeError):
             create_scoring_function("meta-optimize", domain_params)
 
-    @patch('scaffold_learning.core.scoring_utils.start_server')
+    @patch("scaffold_learning.core.scoring_utils.start_server")
     def test_create_scoring_function_end_to_end(self, mock_start_server):
         """Test end-to-end scoring with actual meta-optimize data."""
         # Setup
         mock_start_server.return_value = Mock()
-        domain_params = {
-            "mesa-domain": "gpqa",
-            "mesa-params": "{}"
-        }
+        domain_params = {"mesa-domain": "gpqa", "mesa-params": "{}"}
         scoring_fn = create_scoring_function("meta-optimize", domain_params)
-        
+
         # Create test data
         scoring_data = {
-            "input": json.dumps({
-                "scoring_data": [
-                    {"input": "Question 1", "correct_answer": "A"},
-                    {"input": "Question 2", "correct_answer": "B"}
-                ]
-            })
+            "input": json.dumps(
+                {
+                    "scoring_data": [
+                        {"input": "Question 1", "correct_answer": "A"},
+                        {"input": "Question 2", "correct_answer": "B"},
+                    ]
+                }
+            )
         }
         attempt = json.dumps(["A", "B"])  # Both correct
-        
+
         # Execute
         result = scoring_fn(attempt, scoring_data)
-        
+
         # Verify
         assert result == 1.0
-        
+
         # Verify server was started
         mock_start_server.assert_called_once()
 
-    @patch('scaffold_learning.core.scoring_utils.start_server')
+    @patch("scaffold_learning.core.scoring_utils.start_server")
     def test_create_scoring_function_mixed_scores(self, mock_start_server):
         """Test end-to-end scoring with mixed correct/incorrect answers."""
         # Setup
         mock_start_server.return_value = Mock()
-        domain_params = {
-            "mesa-domain": "gpqa",
-            "mesa-params": "{}"
-        }
+        domain_params = {"mesa-domain": "gpqa", "mesa-params": "{}"}
         scoring_fn = create_scoring_function("meta-optimize", domain_params)
-        
+
         # Create test data
         scoring_data = {
-            "input": json.dumps({
-                "scoring_data": [
-                    {"input": "Question 1", "correct_answer": "A"},
-                    {"input": "Question 2", "correct_answer": "B"}
-                ]
-            })
+            "input": json.dumps(
+                {
+                    "scoring_data": [
+                        {"input": "Question 1", "correct_answer": "A"},
+                        {"input": "Question 2", "correct_answer": "B"},
+                    ]
+                }
+            )
         }
         attempt = json.dumps(["A", "X"])  # One correct, one wrong
-        
+
         # Execute
         result = scoring_fn(attempt, scoring_data)
-        
+
         # Verify
         assert result == 0.5  # Average of 1.0 and 0.0
-        
+
         # Verify server was started
         mock_start_server.assert_called_once()
 
@@ -318,13 +312,13 @@ class TestMetaOptimizeScoringIntegration:
         """Test getting scoring function code for meta-optimize."""
         # Execute
         code = get_scoring_function_code("meta-optimize")
-        
+
         # Verify
         assert "def score(" in code
         assert "inner_score" in code
         assert "meta-optimize" in code
 
-    @patch('scaffold_learning.core.scoring_utils.start_server')
+    @patch("scaffold_learning.core.scoring_utils.start_server")
     def test_meta_optimize_server_startup_integration(self, mock_start_server):
         """Test that meta-optimize domain starts the scaffold tools server."""
         # Mock server startup (start_server now includes health check)
@@ -344,7 +338,7 @@ class TestMetaOptimizeScoringIntegration:
         # Verify scoring function is callable
         assert callable(scoring_fn)
 
-    @patch('scaffold_learning.core.scoring_utils.start_server')
+    @patch("scaffold_learning.core.scoring_utils.start_server")
     def test_meta_optimize_server_startup_failure_integration(self, mock_start_server):
         """Test error handling when scaffold tools server fails to start."""
         # Mock server startup failure (start_server now raises the error)

@@ -59,7 +59,7 @@ class TestScaffoldGeneration:
                         "No code block here!",
                         "Still no code block!",
                         "Third time, still no code!",
-                        "Fourth time, still no code!"
+                        "Fourth time, still no code!",
                     ],
                     "should_raise": ValueError,
                     "error_message": "LLM response doesn't contain a valid Python code block",
@@ -79,7 +79,7 @@ class TestScaffoldGeneration:
                     ],
                     "llm_responses": [
                         "No code block here!",
-                        "```python\ndef process_input(s): return 'success'\n```"
+                        "```python\ndef process_input(s): return 'success'\n```",
                     ],
                     "expected_code": "def process_input(s): return 'success'",
                 },
@@ -330,14 +330,18 @@ This should work well.""",
         mock_llm = None
         if method in ["generate_scaffold", "evolve_scaffold"]:
             mock_llm = Mock(spec=LLMInterface)
-            
+
             # Handle multiple responses for retry tests
             if "llm_responses" in test_case:
-                responses = [LLMResponse(content=content) for content in test_case["llm_responses"]]
+                responses = [
+                    LLMResponse(content=content)
+                    for content in test_case["llm_responses"]
+                ]
                 mock_llm.generate_response.side_effect = responses
             else:
                 llm_response_content = test_case.get(
-                    "llm_response", "```python\ndef process_input(s): return 'test'\n```"
+                    "llm_response",
+                    "```python\ndef process_input(s): return 'test'\n```",
                 )
                 mock_response = LLMResponse(content=llm_response_content)
                 mock_llm.generate_response.return_value = mock_response
@@ -417,11 +421,13 @@ This should work well.""",
                 # Should be called as many times as there are successful responses needed
                 # (may be less than total responses if success happens early)
                 assert mock_llm.generate_response.call_count >= 1
-                assert mock_llm.generate_response.call_count <= len(test_case["llm_responses"])
+                assert mock_llm.generate_response.call_count <= len(
+                    test_case["llm_responses"]
+                )
             else:
                 # Verify LLM was called exactly once for non-retry tests
                 assert mock_llm.generate_response.call_count == 1
-            
+
             # Verify a prompt was passed to the LLM
             called_args = mock_llm.generate_response.call_args_list[0][0]
             assert len(called_args) == 1
