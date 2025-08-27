@@ -295,7 +295,7 @@ Execution completed successfully
             "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=self._mock_execute,
         ):
-            runner.run()
+            _, _, _ = runner.run()
 
         # Assert on generate_scaffold calls
         assert mock_generate.call_count == 3  # 3 initial scaffolds
@@ -451,7 +451,7 @@ Execution completed successfully
             "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=mock_execute_custom,
         ):
-            runner.run()
+            _, _, _ = runner.run()
 
         # Check that scoring data contains correct average scores
         # Initial scaffolds are validated in iteration 0
@@ -646,7 +646,7 @@ Execution completed successfully
             "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=self._mock_execute,
         ):
-            runner.run()
+            _, _, _ = runner.run()
 
         # Check generate_scaffold inputs using Mock's built-in tracking
         assert mock_generate.call_count == 2
@@ -795,7 +795,7 @@ Execution completed successfully
             "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=mock_execute_func,
         ):
-            runner.run()
+            _, _, _ = runner.run()
 
         # Now verify behavior by checking the actual output files
         expected_new_scaffolds = test_case["expected_new_scaffolds"]
@@ -973,7 +973,7 @@ Execution completed successfully
             "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=mock_execute_func,
         ):
-            best_scaffold_id, best_score = runner.run()
+            best_scaffold_id, best_score, test_score = runner.run()
 
         # Verify the best scaffold is the one with the highest score
         assert best_scaffold_id == "2-0"  # Should be the evolved version of scaffold 2
@@ -1352,7 +1352,7 @@ Execution completed successfully
             "scaffold_learning.core.scaffold_execution._execute_scaffold",
             side_effect=self._mock_execute,
         ):
-            best_scaffold_id, best_score = runner.run()
+            best_scaffold_id, best_score, test_score = runner.run()
 
         # Should return a valid scaffold ID and score
         assert best_scaffold_id is not None

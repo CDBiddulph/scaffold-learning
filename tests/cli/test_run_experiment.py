@@ -28,7 +28,7 @@ def test_domain_params_passed_to_scoring_function(
     mock_scoring.return_value = lambda x, y: 0.0
     mock_llm_factory.create_llm.return_value = Mock()
     mock_runner_instance = mock_runner.return_value
-    mock_runner_instance.run.return_value = ("scaffold-0", 0.5)
+    mock_runner_instance.run.return_value = ("scaffold-0", 0.5, None)
 
     # Mock HydraConfig output directory
     mock_hydra_instance = Mock()
@@ -114,7 +114,7 @@ def test_crosswords_domain_param_mode(
     mock_scoring.return_value = lambda x, y: 0.0
     mock_llm_factory.create_llm.return_value = Mock()
     mock_runner_instance = mock_runner.return_value
-    mock_runner_instance.run.return_value = ("scaffold-0", 0.8)
+    mock_runner_instance.run.return_value = ("scaffold-0", 0.8, None)
 
     # Mock HydraConfig output directory
     mock_hydra_instance = Mock()
@@ -162,9 +162,6 @@ def test_crosswords_domain_param_mode(
             }
         )
 
-        # Call the main function with the config
-        from scaffold_learning.cli.run_experiment import main
-
         main(cfg)
 
         # Verify create_scoring_function was called with mode=lenient
@@ -204,7 +201,7 @@ def test_strategy_model_passed_to_experiment_runner(
     mock_llm_factory.create_llm.side_effect = [mock_scaffolder_llm, mock_strategy_llm]
 
     mock_runner_instance = mock_runner.return_value
-    mock_runner_instance.run.return_value = ("scaffold-0", 0.9)
+    mock_runner_instance.run.return_value = ("scaffold-0", 0.9, None)
 
     # Mock HydraConfig output directory
     mock_hydra_instance = Mock()
@@ -252,9 +249,6 @@ def test_strategy_model_passed_to_experiment_runner(
                 },
             }
         )
-
-        # Call the main function with the config
-        from scaffold_learning.cli.run_experiment import main
 
         main(cfg)
 

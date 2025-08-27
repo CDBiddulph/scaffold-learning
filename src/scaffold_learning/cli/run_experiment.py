@@ -109,14 +109,16 @@ def main(cfg: DictConfig) -> None:
 
     # Run experiment
     print("Starting experiment...")
-    best_scaffold_path, best_score = runner.run()
+    best_scaffold_path, best_validation_score, test_score = runner.run()
 
     # Print results
     print("\n" + "=" * 50)
     print("EXPERIMENT COMPLETE")
     print("=" * 50)
     print(f"Best scaffold path: {best_scaffold_path}")
-    print(f"Best score: {best_score:.3f}")
+    print(f"Best scaffold validation score: {best_validation_score:.3f}")
+    if test_score is not None:
+        print(f"Best scaffold test score: {test_score:.3f}")
     print("=" * 50)
 
 

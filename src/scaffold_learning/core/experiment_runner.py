@@ -119,14 +119,15 @@ class ExperimentRunner:
         self.logger.info(f"Random validation seed: {config.valid_seed}")
         self.logger.info(f"Random test seed: {config.test_seed}")
 
-    def run(self) -> Tuple[Optional[str], float]:
+    def run(self) -> Tuple[Optional[str], float, Optional[float]]:
         """Run the complete experiment.
 
         Creates initial scaffolds, runs iterations of evaluation and evolution,
         and returns the best performing scaffold.
 
         Returns:
-            Tuple of (best_scaffold_id, best_score)
+            Tuple of (best_scaffold_id, best_validation_score, test_score)
+            test_score is None if no test evaluation was run
         """
         self.logger.info("Starting experiment run")
 
@@ -174,11 +175,12 @@ class ExperimentRunner:
             )
 
         # Run test evaluation if configured
+        test_score = None
         if self.config.num_test_examples > 0 and best_scaffold_id is not None:
             self.logger.info("Starting test evaluation...")
-            self._run_test_evaluation(best_scaffold_id)
+            test_score = self._run_test_evaluation(best_scaffold_id)
 
-        return best_scaffold_id, best_score
+        return best_scaffold_id, best_score, test_score
 
     def _run_evolution_iteration(
         self,
@@ -898,11 +900,14 @@ class ExperimentRunner:
         with open(test_file, "w") as f:
             json.dump(test_summary, f, indent=2)
 
-    def _run_test_evaluation(self, best_scaffold_id: str) -> None:
+    def _run_test_evaluation(self, best_scaffold_id: str) -> float:
         """Run test evaluation on the best scaffold.
 
         Args:
             best_scaffold_id: ID of the best scaffold to evaluate
+            
+        Returns:
+            Mean test score
         """
 
         # Load test data
@@ -933,3 +938,5 @@ class ExperimentRunner:
         self.logger.info(
             f"Test evaluation complete: {mean_score:.3f} ± {std_score:.3f}"
         )
+        
+        return mean_score
