@@ -832,7 +832,7 @@ class ExperimentRunner:
         """
         # Create results directory
         logs_dir = self.file_manager._get_docker_logs_dir(iteration, scaffold_id)
-        results_dir = logs_dir / log_type
+        results_dir = logs_dir
         results_dir.mkdir(exist_ok=True)
 
         # Build results structure similar to make_and_run.py

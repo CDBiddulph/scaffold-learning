@@ -737,10 +737,10 @@ Execution completed successfully
             # Extract scaffold_id from the scaffold_dir path
             scaffold_id = Path(scaffold_dir).name
             # Extract iteration from the log_file_path
-            iteration = int(Path(log_file_path).parent.parent.name)
-            # Extract run_type (train/valid) from log file name
-            log_filename = Path(log_file_path).stem  # e.g., "1_train" or "2_valid"
-            run_type = "valid" if "valid" in log_filename else "train"
+            iteration = int(Path(log_file_path).parent.parent.parent.name)
+            # Extract run_type (train/valid) from log file directory
+            # With new structure: logs/iteration/scaffold/run_type/index.log
+            run_type = Path(log_file_path).parent.name
             return ScaffoldExecutionResult(
                 output=f"{scaffold_id}:{iteration}:{run_type}",  # Include run_type for scoring
                 stderr="",
@@ -921,7 +921,7 @@ Execution completed successfully
             thinking_budget_tokens=0,
         ):
             scaffold_id = Path(scaffold_dir).name
-            iteration = int(Path(log_file_path).parent.parent.name)
+            iteration = int(Path(log_file_path).parent.parent.parent.name)
             return ScaffoldExecutionResult(
                 output=f"{scaffold_id}:{iteration}",
                 stderr="",

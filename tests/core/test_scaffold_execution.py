@@ -251,7 +251,9 @@ class TestScaffoldExecution:
                             model_spec="mock",
                         )
 
-            logs_dir = Path(temp_dir) / "experiment" / "logs" / "0" / "test-scaffold"
+            logs_dir = (
+                Path(temp_dir) / "experiment" / "logs" / "0" / "test-scaffold" / "train"
+            )
             log_files = list(logs_dir.glob("*.log"))
             assert len(log_files) == 1
 
@@ -318,7 +320,9 @@ class TestScaffoldExecution:
 
             # Should create streaming log file (not through file_manager)
             logs_dir = Path(temp_dir) / "experiment" / "logs" / "0" / "test-scaffold"
-            log_files = list(logs_dir.glob("*.log"))
+            # Log files are now in run_type subdirectory
+            train_logs_dir = logs_dir / "train"
+            log_files = list(train_logs_dir.glob("*.log"))
             assert len(log_files) == 1
 
             log_content = log_files[0].read_text()
@@ -383,7 +387,9 @@ Error 1
 
             # Check that log file contains the stdout section
             logs_dir = Path(temp_dir) / "experiment" / "logs" / "0" / "test-scaffold"
-            log_files = list(logs_dir.glob("*.log"))
+            # Log files are now in run_type subdirectory
+            train_logs_dir = logs_dir / "train"
+            log_files = list(train_logs_dir.glob("*.log"))
             assert len(log_files) == 1
 
             expected_pattern = r"""=== Scaffold Execution Log ===

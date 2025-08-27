@@ -453,7 +453,7 @@ class TestExperimentFileManager:
             log_path = manager.get_new_execution_log_path(
                 iteration=0, scaffold_id="0", run_type=run_type
             )
-            expected_path = experiment_dir / "logs" / "0" / "0" / f"{run_type}_0.log"
+            expected_path = experiment_dir / "logs" / "0" / "0" / run_type / "0.log"
             assert log_path == expected_path
 
     @pytest.mark.parametrize(

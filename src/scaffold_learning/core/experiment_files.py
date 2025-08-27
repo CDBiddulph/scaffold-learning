@@ -116,9 +116,12 @@ class ExperimentFileManager:
         Returns:
             The path to the execution log
         """
-        run_id = self._get_next_run_id(iteration, scaffold_id, run_type)
+        run_index = self._get_next_run_id(iteration, scaffold_id, run_type)
         logs_dir = self._get_docker_logs_dir(iteration, scaffold_id)
-        return logs_dir / f"{run_id}.log"
+        # Create subdirectory for the run type
+        run_type_dir = logs_dir / run_type
+        run_type_dir.mkdir(parents=True, exist_ok=True)
+        return run_type_dir / f"{run_index}.log"
 
     def _get_docker_logs_dir(
         self, iteration: Union[int, str], scaffold_id: str
@@ -139,7 +142,7 @@ class ExperimentFileManager:
     def _get_next_run_id(
         self, iteration: Union[int, str], scaffold_id: str, run_type: str
     ) -> str:
-        """Determine the next available run ID for a given run type.
+        """Determine the next available run index for a given run type.
 
         Args:
             iteration: Iteration number or "test" for test runs
@@ -147,7 +150,7 @@ class ExperimentFileManager:
             run_type: Type of run (e.g., 'train', 'valid', 'test')
 
         Returns:
-            Next available run ID (e.g., 'train_0', 'train_1', 'valid_0', 'test_0')
+            Next available run index (e.g., '0', '1', '2')
 
         Raises:
             ValueError: If the run type is not 'train', 'valid', or 'test'
@@ -164,7 +167,7 @@ class ExperimentFileManager:
             next_index = self._run_id_counters[counter_key]
             self._run_id_counters[counter_key] += 1
 
-        return f"{run_type}_{next_index}"
+        return str(next_index)
 
     def save_scores(
         self, iteration: int, scaffold_id: str, scores: List[float], score_type: str
