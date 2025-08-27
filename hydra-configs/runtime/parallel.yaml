@@ -1,12 +1,13 @@
-# @package hydra
+# @package _global_
 defaults:
   - default
+  - override /hydra/launcher: joblib
 
-launcher:
-  _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
-  n_jobs: 4  # Number of parallel workers
-  batch: auto  # or 'auto' for automatic batching
-  pre_dispatch: 2*n_jobs  # Controls memory usage
-  timeout: null  # Timeout per job in seconds
+hydra:
+  launcher:
+    n_jobs: 4  # Number of parallel workers
+    batch_size: auto  # Corrected field name
+    pre_dispatch: 2*n_jobs  # Controls memory usage
+    timeout: null  # Timeout per job in seconds
 
 # All other settings (run, sweep, job) inherited from default
