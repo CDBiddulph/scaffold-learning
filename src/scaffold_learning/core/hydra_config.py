@@ -31,6 +31,8 @@ class ExperimentConfig:
     suggest_hack: str
     train_seed: int
     valid_seed: int
+    test_seed: int
+    num_test_examples: int
     scaffold_timeout: int
     max_generate_workers: int
     max_execute_workers: int
@@ -68,6 +70,8 @@ def create_experiment_config(cfg: DictConfig) -> ExperimentConfig:
         suggest_hack=cfg.suggest_hack,
         train_seed=cfg.train_seed,
         valid_seed=cfg.valid_seed,
+        test_seed=cfg.test_seed,
+        num_test_examples=cfg.num_test_examples,
         scaffold_timeout=cfg.scaffold_timeout,
         max_generate_workers=cfg.max_generate_workers,
         max_execute_workers=cfg.max_execute_workers,

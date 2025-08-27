@@ -2,8 +2,9 @@ import json
 import numpy as np
 import threading
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from collections import defaultdict
+from datetime import datetime
 from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata
 from scaffold_learning.core.xml_utils import write_xml_file, read_xml_file
 from scaffold_learning.core.scaffold_files import save_scaffold as save_scaffold_files
@@ -103,14 +104,14 @@ class ExperimentFileManager:
         return scaffold_path.absolute()
 
     def get_new_execution_log_path(
-        self, iteration: int, scaffold_id: str, run_type: str
+        self, iteration: Union[int, str], scaffold_id: str, run_type: str
     ) -> Path:
         """Get a new path to an execution log to write to.
 
         Args:
-            iteration: Iteration number
+            iteration: Iteration number or "test" for test runs
             scaffold_id: Scaffold identifier
-            run_type: Type of run (e.g., 'train', 'valid')
+            run_type: Type of run (e.g., 'train', 'valid', 'test')
 
         Returns:
             The path to the execution log
@@ -119,11 +120,11 @@ class ExperimentFileManager:
         logs_dir = self._get_docker_logs_dir(iteration, scaffold_id)
         return logs_dir / f"{run_id}.log"
 
-    def _get_docker_logs_dir(self, iteration: int, scaffold_id: str) -> Path:
+    def _get_docker_logs_dir(self, iteration: Union[int, str], scaffold_id: str) -> Path:
         """Get logs directory path for Docker mounting.
 
         Args:
-            iteration: Iteration number
+            iteration: Iteration number or "test" for test runs
             scaffold_id: Scaffold identifier
 
         Returns:
@@ -133,23 +134,23 @@ class ExperimentFileManager:
         logs_dir.mkdir(parents=True, exist_ok=True)
         return logs_dir.absolute()
 
-    def _get_next_run_id(self, iteration: int, scaffold_id: str, run_type: str) -> str:
+    def _get_next_run_id(self, iteration: Union[int, str], scaffold_id: str, run_type: str) -> str:
         """Determine the next available run ID for a given run type.
 
         Args:
-            iteration: Iteration number
+            iteration: Iteration number or "test" for test runs
             scaffold_id: Scaffold identifier
-            run_type: Type of run (e.g., 'train', 'valid')
+            run_type: Type of run (e.g., 'train', 'valid', 'test')
 
         Returns:
-            Next available run ID (e.g., 'train_0', 'train_1', 'valid_0')
+            Next available run ID (e.g., 'train_0', 'train_1', 'valid_0', 'test_0')
 
         Raises:
-            ValueError: If the run type is not 'train' or 'valid'
+            ValueError: If the run type is not 'train', 'valid', or 'test'
         """
-        if run_type not in ["train", "valid"]:
+        if run_type not in ["train", "valid", "test"]:
             raise ValueError(
-                f"Invalid run type: {run_type}. Must be 'train' or 'valid'."
+                f"Invalid run type: {run_type}. Must be 'train', 'valid', or 'test'."
             )
 
         counter_key = (iteration, scaffold_id, run_type)
@@ -188,6 +189,7 @@ class ExperimentFileManager:
         # Update all_valid_scores.json if this is a validation score
         if score_type == "valid":
             self._update_all_valid_scores_file(scaffold_id, scores)
+
 
     def _update_json_file_with_scores(
         self,

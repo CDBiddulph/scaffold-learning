@@ -12,6 +12,7 @@ from scaffold_learning.core.data_structures import (
     LLMResponse,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
+from scaffold_learning.core.hydra_config import ExperimentConfig
 
 
 class TestExperimentRunner:
@@ -79,18 +80,49 @@ class TestExperimentRunner:
         scoring_fn = self.create_mock_scoring_function()
         mock_llm = Mock(spec=LLMInterface)
 
-        return ExperimentRunner(
+        # Create ExperimentConfig
+        config = ExperimentConfig(
             experiment_name=experiment_name,
-            training_data=training_data,
-            validation_data=validation_data,
-            scoring_fn=scoring_fn,
-            scaffolder_llm=mock_llm,
+            data_dir=str(Path(self.temp_dir) / "data"),
+            domain="test_domain",
+            domain_params={},
             num_iterations=num_iterations,
             scaffolds_per_iter=scaffolds_per_iter,
             initial_scaffolds=initial_scaffolds,
-            num_training_examples=num_training_examples,
             num_validation_examples=num_validation_examples,
-            base_dir=Path(self.temp_dir),
+            num_training_examples=num_training_examples,
+            scaffolder="test_scaffolder",
+            executor="gpt-4",
+            strategy=None,
+            strategy_batch_size=None,
+            show_scoring_function=False,
+            suggest_hack="none",
+            train_seed=42,
+            valid_seed=42,
+            test_seed=42,
+            num_test_examples=0,  # Set to 0 to avoid test evaluation in unit tests
+            scaffold_timeout=120,
+            max_generate_workers=1,
+            max_execute_workers=1,
+            thinking_budget=None,
+            base_dir=str(Path(self.temp_dir)),
+            build_docker=False,
+            model_specs={},
+        )
+
+        # Create data dictionary
+        data = {
+            "train": training_data,
+            "valid": validation_data,
+            "test": [],
+        }
+
+        return ExperimentRunner(
+            config=config,
+            data=data,
+            scoring_fn=scoring_fn,
+            scaffolder_llm=mock_llm,
+            output_dir=Path(self.temp_dir),
         )
 
     def create_mock_scaffold_result(
@@ -146,37 +178,64 @@ Execution completed successfully
     def test_experiment_runner_init(self):
         runner = self.create_experiment_runner(num_iterations=2)
 
-        assert runner.experiment_name == "test_experiment"
+        assert runner.config.experiment_name == "test_experiment"
         assert len(runner.training_data) == 2
         assert len(runner.validation_data) == 3
         assert runner.num_iterations == 2
-        assert runner.scaffolds_per_iter == 2
+        assert runner.config.scaffolds_per_iter == 2
         assert runner.initial_scaffolds == 3
-        assert runner.executor_model == "gpt-4"  # Default value
+        assert runner.config.executor == "gpt-4"  # Default value
 
     def test_validation_parameter_check(self):
         training_data, validation_data = self.create_test_data()
         scoring_fn = self.create_mock_scoring_function()
         mock_llm = Mock(spec=LLMInterface)
 
-        # Should raise error when scaffolds_per_iter > initial_scaffolds
-        with pytest.raises(
-            ValueError,
-            match="scaffolds_per_iter.*cannot be greater than initial_scaffolds",
-        ):
-            ExperimentRunner(
-                experiment_name="test_experiment",
-                training_data=training_data,
-                validation_data=validation_data,
-                scoring_fn=scoring_fn,
-                scaffolder_llm=mock_llm,
-                num_iterations=1,
-                scaffolds_per_iter=5,  # Too many
-                initial_scaffolds=3,
-                num_training_examples=1,
-                num_validation_examples=2,
-                base_dir=Path(self.temp_dir),
-            )
+        # Should NOT raise error when scaffolds_per_iter > initial_scaffolds in ExperimentRunner
+        # (validation moved to run_experiment.py with condition num_iterations > 1)
+        config = ExperimentConfig(
+            experiment_name="test_experiment",
+            data_dir=str(Path(self.temp_dir) / "data"),
+            domain="test_domain",
+            domain_params={},
+            num_iterations=1,
+            scaffolds_per_iter=5,  # This is now allowed in ExperimentRunner
+            initial_scaffolds=3,
+            num_validation_examples=2,
+            num_training_examples=1,
+            scaffolder="test_scaffolder",
+            executor="test_executor",
+            strategy=None,
+            strategy_batch_size=None,
+            show_scoring_function=False,
+            suggest_hack="none",
+            train_seed=42,
+            valid_seed=42,
+            test_seed=42,
+            num_test_examples=0,  # Set to 0 to avoid test evaluation in unit tests
+            scaffold_timeout=120,
+            max_generate_workers=1,
+            max_execute_workers=1,
+            thinking_budget=None,
+            base_dir=str(Path(self.temp_dir)),
+            build_docker=False,
+            model_specs={},
+        )
+
+        data = {"train": training_data, "valid": validation_data, "test": []}
+
+        # This should succeed now
+        runner = ExperimentRunner(
+            config=config,
+            data=data,
+            scoring_fn=scoring_fn,
+            scaffolder_llm=mock_llm,
+            output_dir=Path(self.temp_dir),
+        )
+        
+        # Verify the runner was created successfully
+        assert runner.config.scaffolds_per_iter == 5
+        assert runner.initial_scaffolds == 3  # This one is a direct attribute, not from config
 
     def test_log_structure(self):
         """Test that validation and training logs are created correctly."""
@@ -488,18 +547,44 @@ Execution completed successfully
         )
         mock_llm = Mock(spec=LLMInterface)
 
-        runner = ExperimentRunner(
+        # Create ExperimentConfig
+        config = ExperimentConfig(
             experiment_name="test_inputs",
-            training_data=training_data,
-            validation_data=validation_data,
-            scoring_fn=scoring_fn,
-            scaffolder_llm=mock_llm,
+            data_dir=str(Path(self.temp_dir) / "data"),
+            domain="test_domain",
+            domain_params={},
             num_iterations=2,
             scaffolds_per_iter=1,
             initial_scaffolds=2,
-            num_training_examples=1,
             num_validation_examples=1,
-            base_dir=Path(self.temp_dir),
+            num_training_examples=1,
+            scaffolder="test_scaffolder",
+            executor="test_executor",
+            strategy=None,
+            strategy_batch_size=None,
+            show_scoring_function=False,
+            suggest_hack="none",
+            train_seed=42,
+            valid_seed=42,
+            test_seed=42,
+            num_test_examples=0,  # Set to 0 to avoid test evaluation in unit tests
+            scaffold_timeout=120,
+            max_generate_workers=1,
+            max_execute_workers=1,
+            thinking_budget=None,
+            base_dir=str(Path(self.temp_dir)),
+            build_docker=False,
+            model_specs={},
+        )
+
+        data = {"train": training_data, "valid": validation_data, "test": []}
+
+        runner = ExperimentRunner(
+            config=config,
+            data=data,
+            scoring_fn=scoring_fn,
+            scaffolder_llm=mock_llm,
+            output_dir=Path(self.temp_dir),
         )
 
         # Create mocks that track calls automatically
@@ -1072,20 +1157,44 @@ Execution completed successfully
 
         mock_generate_scaffold.side_effect = track_examples
 
-        runner = ExperimentRunner(
+        # Create ExperimentConfig
+        config = ExperimentConfig(
             experiment_name="test_different_examples_per_scaffold",
-            training_data=training_data,
-            validation_data=validation_data,
-            scoring_fn=scoring_fn,
-            scaffolder_llm=scaffolder_llm,
+            data_dir=str(Path(self.temp_dir) / "data"),
+            domain="test_domain",
+            domain_params={},
             num_iterations=1,
             scaffolds_per_iter=2,
             initial_scaffolds=3,
-            num_training_examples=5,
             num_validation_examples=1,
-            base_dir=Path(self.temp_dir),
+            num_training_examples=5,
+            scaffolder="test_scaffolder",
+            executor="test_executor",
+            strategy=None,
+            strategy_batch_size=None,
+            show_scoring_function=False,
+            suggest_hack="none",
             train_seed=42,
             valid_seed=42,
+            test_seed=42,
+            num_test_examples=0,  # Set to 0 to avoid test evaluation in unit tests
+            scaffold_timeout=120,
+            max_generate_workers=1,
+            max_execute_workers=1,
+            thinking_budget=None,
+            base_dir=str(Path(self.temp_dir)),
+            build_docker=False,
+            model_specs={},
+        )
+
+        data = {"train": training_data, "valid": validation_data, "test": []}
+
+        runner = ExperimentRunner(
+            config=config,
+            data=data,
+            scoring_fn=scoring_fn,
+            scaffolder_llm=scaffolder_llm,
+            output_dir=Path(self.temp_dir),
         )
 
         # Trigger scaffold creation
@@ -1127,20 +1236,44 @@ Execution completed successfully
 
         scaffolder_llm.call_llm = mock_generate
 
-        runner = ExperimentRunner(
+        # Create ExperimentConfig
+        config = ExperimentConfig(
             experiment_name="test_cycling",
-            training_data=training_data,
-            validation_data=validation_data,
-            scoring_fn=scoring_fn,
-            scaffolder_llm=scaffolder_llm,
+            data_dir=str(Path(self.temp_dir) / "data"),
+            domain="test_domain",
+            domain_params={},
             num_iterations=1,
             scaffolds_per_iter=2,
             initial_scaffolds=3,  # Create 3 scaffolds
-            num_training_examples=4,  # Each uses 4 examples
             num_validation_examples=1,
-            base_dir=Path(self.temp_dir),
+            num_training_examples=4,  # Each uses 4 examples
+            scaffolder="test_scaffolder",
+            executor="test_executor",
+            strategy=None,
+            strategy_batch_size=None,
+            show_scoring_function=False,
+            suggest_hack="none",
             train_seed=42,
             valid_seed=42,
+            test_seed=42,
+            num_test_examples=0,  # Set to 0 to avoid test evaluation in unit tests
+            scaffold_timeout=120,
+            max_generate_workers=1,
+            max_execute_workers=1,
+            thinking_budget=None,
+            base_dir=str(Path(self.temp_dir)),
+            build_docker=False,
+            model_specs={},
+        )
+
+        data = {"train": training_data, "valid": validation_data, "test": []}
+
+        runner = ExperimentRunner(
+            config=config,
+            data=data,
+            scoring_fn=scoring_fn,
+            scaffolder_llm=scaffolder_llm,
+            output_dir=Path(self.temp_dir),
         )
 
         # Get training examples for multiple scaffolds

@@ -1,8 +1,9 @@
 import numpy as np
 import logging
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional, Callable, Tuple, Any
+from typing import List, Dict, Optional, Callable, Tuple, Any, Union
 from collections import defaultdict
 import concurrent.futures
 import io
@@ -19,12 +20,13 @@ from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.scaffold_generation import (
     generate_scaffold,
     evolve_scaffold,
+    make_prompt_only_scaffold,
 )
 from scaffold_learning.core.scaffold_execution import (
     execute_scaffolds,
     ScaffoldExecutionResult,
 )
-from scaffold_learning.core.dataset_utils import ExampleSampler
+from scaffold_learning.core.dataset_utils import load_datasets, ExampleSampler
 from scaffold_learning.core.hydra_config import ExperimentConfig
 
 
@@ -55,6 +57,7 @@ class ExperimentRunner:
         self.config = config
         self.training_data = data["train"]
         self.validation_data = data["valid"]
+        self.test_data = data["test"]
         self.scoring_fn = scoring_fn
         self.scaffolder_llm = scaffolder_llm
         self.strategy_llm = strategy_llm
@@ -70,6 +73,11 @@ class ExperimentRunner:
             self.validation_data,
             allow_resample=False,
         )
+        self.test_sampler = ExampleSampler(
+            config.test_seed,
+            self.test_data,
+            allow_resample=False,
+        )
 
         # Set up experiment directory - use Hydra's output directory
         self.file_manager = ExperimentFileManager(output_dir)
@@ -81,18 +89,27 @@ class ExperimentRunner:
         # Set up logging
         self.logger = logging.getLogger(__name__)
 
+        # Detect baseline mode
+        self.is_baseline = config.scaffolder == "baseline"
+        if self.is_baseline:
+            self.logger.info("Running in baseline mode (prompt-only scaffold)")
+        # Set values that special-case in baseline mode
+        self.initial_scaffolds = 1 if self.is_baseline else config.initial_scaffolds
+        self.num_iterations = 1 if self.is_baseline else config.num_iterations
+
         # Save experiment metadata
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         metadata = {
             "experiment_name": config.experiment_name,
             "created_at": timestamp,
-            "num_iterations": config.num_iterations,
+            "num_iterations": self.num_iterations,
             "scaffolds_per_iter": config.scaffolds_per_iter,
-            "initial_scaffolds": config.initial_scaffolds,
+            "initial_scaffolds": self.initial_scaffolds,
             "num_training_examples": config.num_training_examples,
             "num_validation_examples": config.num_validation_examples,
             "train_seed": config.train_seed,
             "valid_seed": config.valid_seed,
+            "test_seed": config.test_seed,
             "scaffold_timeout": config.scaffold_timeout,
         }
         self.file_manager.save_experiment_metadata(metadata)
@@ -100,6 +117,7 @@ class ExperimentRunner:
         self.logger.info(f"Initialized experiment: {config.experiment_name}")
         self.logger.info(f"Random training seed: {config.train_seed}")
         self.logger.info(f"Random validation seed: {config.valid_seed}")
+        self.logger.info(f"Random test seed: {config.test_seed}")
 
     def run(self) -> Tuple[Optional[str], float]:
         """Run the complete experiment.
@@ -123,15 +141,15 @@ class ExperimentRunner:
         best_scaffold_id = None
         best_score = -float("inf")
 
-        # Run iterations
-        for iteration in range(self.config.num_iterations):
+        # Run iterations (only one iteration for baselines)
+        for iteration in range(self.num_iterations):
             self.logger.info(f"Starting iteration {iteration}")
 
             if iteration == 0:
                 # Create and validate initial scaffolds
                 validation_scores = self._run_initial_iteration(validation_sample)
             else:
-                # Run normal evolution iteration
+                # Run normal evolution iteration (baseline runs never reach this)
                 validation_scores = self._run_evolution_iteration(
                     iteration, validation_sample
                 )
@@ -154,6 +172,12 @@ class ExperimentRunner:
             self.logger.info(
                 f"Experiment complete. Best scaffold: {best_scaffold_id} (score: {best_score:.3f})"
             )
+
+        # Run test evaluation if configured
+        if self.config.num_test_examples > 0 and best_scaffold_id is not None:
+            self.logger.info("Starting test evaluation...")
+            self._run_test_evaluation(best_scaffold_id)
+
         return best_scaffold_id, best_score
 
     def _run_evolution_iteration(
@@ -446,11 +470,11 @@ class ExperimentRunner:
         Returns:
             List of strategies, or list of None if no strategy model is specified
         """
-        if not self.strategy_llm:
-            return [None] * self.config.initial_scaffolds
+        if self.is_baseline or not self.strategy_llm:
+            return [None] * self.initial_scaffolds
 
         self.logger.info(
-            f"Generating {self.config.initial_scaffolds} strategies using {self.strategy_llm.get_model_info()}"
+            f"Generating {self.initial_scaffolds} strategies using {self.strategy_llm.get_model_info()}"
         )
 
         # Get a single list of training examples for the strategy generation prompt
@@ -463,8 +487,8 @@ class ExperimentRunner:
 
         # Generate strategies in batches
         all_strategies = []
-        batch_size = self.config.strategy_batch_size or self.config.initial_scaffolds
-        num_batches = self.config.initial_scaffolds // batch_size
+        batch_size = self.config.strategy_batch_size or self.initial_scaffolds
+        num_batches = self.initial_scaffolds // batch_size
 
         for batch_idx in range(num_batches):
             if num_batches > 1:
@@ -489,7 +513,7 @@ class ExperimentRunner:
         """
         # This will end up just being ["0", "1", "2", ...]
         scaffold_ids = [
-            self._get_next_scaffold_id() for _ in range(self.config.initial_scaffolds)
+            self._get_next_scaffold_id() for _ in range(self.initial_scaffolds)
         ]
 
         # Get all training examples upfront
@@ -513,17 +537,21 @@ class ExperimentRunner:
             def generate_func(
                 examples=examples,
                 strategy=strategy,
-            ):  # Capture examples and strategy by value using default parameter
+                is_baseline=self.is_baseline,
+            ):  # Capture examples, strategy, and baseline flag by value
                 config = ScaffolderPromptConfig(
                     **base_prompt_kwargs,
                     generate_examples=examples,
                     strategy=strategy,
                 )
-                return generate_scaffold(
-                    config=config,
-                    scaffolder_llm=self.scaffolder_llm,
-                    iteration=0,
-                )
+                if is_baseline:
+                    return make_prompt_only_scaffold(config=config)
+                else:
+                    return generate_scaffold(
+                        config=config,
+                        scaffolder_llm=self.scaffolder_llm,
+                        iteration=0,
+                    )
 
             generation_tasks.append((scaffold_id, generate_func))
 
@@ -550,7 +578,7 @@ class ExperimentRunner:
 
     def _prepare_execution_tasks(
         self,
-        iteration: int,
+        iteration: Union[int, str],
         scaffold_id: str,
         examples: List[DatasetExample],
         log_type: str,
@@ -558,10 +586,10 @@ class ExperimentRunner:
         """Create ScaffoldExecutionTask objects for a list of examples.
 
         Args:
-            iteration: Current iteration number (where to save logs)
+            iteration: Current iteration number or "test" for test runs
             scaffold_id: ID of scaffold to run
             examples: Examples to test the scaffold on
-            log_type: Type of log ("train" or "valid")
+            log_type: Type of log ("train", "valid", or "test")
 
         Returns:
             List of ScaffoldExecutionTask objects
@@ -682,7 +710,7 @@ class ExperimentRunner:
 
     def _run_scaffold_on_examples(
         self,
-        iteration: int,
+        iteration: Union[int, str],
         scaffold_id: str,
         examples: List[DatasetExample],
         log_type: str,
@@ -693,10 +721,10 @@ class ExperimentRunner:
         """Run a scaffold on examples and return scores and run data.
 
         Args:
-            iteration: Current iteration number (where to save logs)
+            iteration: Current iteration number or "test" for test runs
             scaffold_id: ID of scaffold to run
             examples: Examples to test the scaffold on
-            log_type: Type of log ("train" or "valid")
+            log_type: Type of log ("train", "valid", or "test")
             run_data_list: List of ScaffoldRunData to append to. Requires scaffold_code.
             scaffold_code: Scaffold code to use for ScaffoldRunData.
             max_workers: Maximum workers for parallel execution of examples
@@ -727,7 +755,15 @@ class ExperimentRunner:
 
         # Log scores
         self._log_scaffold_scores(scaffold_id, scores, log_type)
-        self.file_manager.save_scores(iteration, scaffold_id, scores, log_type)
+
+        # Save scores to scoring files (test scores are handled by _save_detailed_results)
+        if log_type != "test":
+            self.file_manager.save_scores(iteration, scaffold_id, scores, log_type)
+
+        # Create and save detailed results.json
+        self._save_detailed_results(
+            iteration, scaffold_id, log_type, examples, execution_results, scores, tasks
+        )
 
         return scores
 
@@ -772,3 +808,128 @@ class ExperimentRunner:
             )
 
         return training_runs
+
+    def _save_detailed_results(
+        self,
+        iteration: Union[int, str],
+        scaffold_id: str,
+        log_type: str,
+        examples: List[DatasetExample],
+        execution_results: List[ScaffoldExecutionResult],
+        scores: List[float],
+        tasks: List[ScaffoldExecutionTask],
+    ) -> None:
+        """Save detailed results.json file for a scaffold run.
+
+        Args:
+            iteration: Current iteration number or "test" for test runs
+            scaffold_id: Scaffold identifier
+            log_type: Type of run ("train", "valid", or "test")
+            examples: Examples that were tested
+            execution_results: Results from scaffold execution
+            scores: Calculated scores
+            tasks: Original execution tasks
+        """
+        # Create results directory
+        logs_dir = self.file_manager._get_docker_logs_dir(iteration, scaffold_id)
+        results_dir = logs_dir / log_type
+        results_dir.mkdir(exist_ok=True)
+
+        # Build results structure similar to make_and_run.py
+        results = {
+            "scaffold_id": scaffold_id,
+            "iteration": iteration,
+            "log_type": log_type,
+            "executor_model": self.config.executor,
+            "timestamp": datetime.now().isoformat(),
+            "mode": "evaluation",
+            "num_examples": len(examples),
+            "scores": scores,
+            "mean_score": float(np.mean(scores)),
+            "std_score": float(np.std(scores)),
+            "execution_times": [r.execution_time for r in execution_results],
+            "mean_execution_time": float(
+                np.mean([r.execution_time for r in execution_results])
+            ),
+            "outputs": [],
+        }
+
+        # Add individual outputs
+        for example, result, score in zip(examples, execution_results, scores):
+            output_info = {
+                "example_id": example.id,
+                "score": score,
+                "output": result.output,
+                "error": result.error_message,
+                "execution_time": result.execution_time,
+            }
+            results["outputs"].append(output_info)
+
+        # Save results.json
+        results_path = results_dir / "results.json"
+        with open(results_path, "w") as f:
+            json.dump(results, f, indent=2)
+
+        # For test runs, also save a summary to scoring/test.json
+        if log_type == "test":
+            self._save_test_summary_to_scoring(results)
+
+    def _save_test_summary_to_scoring(self, detailed_results: Dict[str, Any]) -> None:
+        """Save a test summary to scoring/test.json from detailed results.
+
+        Args:
+            detailed_results: The full results dict from _save_detailed_results
+        """
+        # Create test summary by extracting subset of fields
+        test_summary = {
+            "scaffold_id": detailed_results["scaffold_id"],
+            "mode": "test_evaluation",
+            "num_examples": detailed_results["num_examples"],
+            "scores": detailed_results["scores"],
+            "mean_score": detailed_results["mean_score"],
+            "std_score": detailed_results["std_score"],
+            "timestamp": detailed_results["timestamp"],
+        }
+
+        # Save to scoring/test.json
+        scoring_dir = self.file_manager.experiment_dir / "scoring"
+        scoring_dir.mkdir(parents=True, exist_ok=True)
+        test_file = scoring_dir / "test.json"
+        with open(test_file, "w") as f:
+            json.dump(test_summary, f, indent=2)
+
+    def _run_test_evaluation(self, best_scaffold_id: str) -> None:
+        """Run test evaluation on the best scaffold.
+
+        Args:
+            best_scaffold_id: ID of the best scaffold to evaluate
+        """
+
+        # Load test data
+        try:
+            data_dir = Path(self.config.data_dir)
+            datasets = load_datasets(data_dir, ["test"])
+            test_examples = datasets["test"]
+        except Exception as e:
+            raise FileNotFoundError(f"Could not load test data from {data_dir}: {e}")
+
+        # Sample test examples
+        test_sample = self.test_sampler.sample(self.config.num_test_examples)
+
+        self.logger.info(f"Evaluating {len(test_sample)} test examples...")
+
+        # Run scaffold on test examples - use regular method with test iteration marker
+        scores = self._run_scaffold_on_examples(
+            iteration="test",  # Special marker for test runs
+            scaffold_id=best_scaffold_id,
+            examples=test_sample,
+            log_type="test",
+            max_workers=self.config.max_execute_workers,
+        )
+
+        # Log results
+        mean_score = float(np.mean(scores))
+        std_score = float(np.std(scores))
+        self.logger.info(
+            f"Test evaluation complete: {mean_score:.3f} ± {std_score:.3f}"
+        )

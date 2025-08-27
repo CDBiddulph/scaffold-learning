@@ -443,7 +443,7 @@ class TestExperimentFileManager:
             assert logs_dir_2.exists()
             assert logs_dir_3.exists()
 
-    @pytest.mark.parametrize("run_type", ["train", "valid"])
+    @pytest.mark.parametrize("run_type", ["train", "valid", "test"])
     def test_save_execution_log_valid_run_types(self, run_type):
         with tempfile.TemporaryDirectory() as temp_dir:
             experiment_dir = Path(temp_dir) / "test_experiment"
@@ -457,7 +457,7 @@ class TestExperimentFileManager:
             assert log_path == expected_path
 
     @pytest.mark.parametrize(
-        "invalid_run_type", ["train_0", "valid_1", "test", "training", "validation", ""]
+        "invalid_run_type", ["train_0", "valid_1", "training", "validation", ""]
     )
     def test_save_execution_log_invalid_run_types(self, invalid_run_type):
         with tempfile.TemporaryDirectory() as temp_dir:

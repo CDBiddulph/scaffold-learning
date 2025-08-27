@@ -62,7 +62,8 @@ def main(cfg: DictConfig) -> None:
 
     # Load datasets
     print("Loading datasets...")
-    data = load_datasets(data_dir, splits=["train", "valid"])
+    splits = ["train", "valid", "test"]
+    data = load_datasets(data_dir, splits=splits)
 
     # Create scoring function and get a code representation of it
     print(f"Setting up {config.domain} domain...")
