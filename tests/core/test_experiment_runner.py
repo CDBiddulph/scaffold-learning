@@ -11,6 +11,10 @@ from scaffold_learning.core.data_structures import (
     ScaffoldExecutionResult,
     LLMResponse,
 )
+from scaffold_learning.core.scaffold_execution import (
+    ScaffoldExecutionResult,
+    ScaffoldExecutionTask,
+)
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.hydra_config import ExperimentConfig
 
@@ -1364,3 +1368,88 @@ Execution completed successfully
         scaffold_ids = list(scores.keys())
         scaffold_result = runner.file_manager.load_scaffold(scaffold_ids[0])
         assert scaffold_result.code is not None
+
+    def test_results_files_have_correct_names(self):
+        """Test that results files are named with run type prefix (e.g., train_results.json, valid_results.json)."""
+        runner = self.create_experiment_runner(
+            num_iterations=1,
+            scaffolds_per_iter=1,
+            initial_scaffolds=1,
+            num_training_examples=1,
+            num_validation_examples=1,
+        )
+
+        # Create a test scaffold first
+        scaffold_result = self.create_mock_scaffold_result(
+            code="def process_input(s): return 'test'"
+        )
+        runner.file_manager.save_scaffold("test-scaffold", scaffold_result)
+
+        examples = [
+            DatasetExample(id="test_example", input="test input", scoring_data={})
+        ]
+        execution_results = [
+            ScaffoldExecutionResult(output="test output", stderr="", execution_time=1.0)
+        ]
+        scores = [0.8]
+        tasks = [
+            ScaffoldExecutionTask(
+                scaffold_dir=str(runner.file_manager.get_scaffold_dir("test-scaffold")),
+                log_file_path=str(
+                    runner.file_manager.get_new_execution_log_path(
+                        0, "test-scaffold", "train"
+                    )
+                ),
+                input_string="test input",
+                model_spec="mock",
+            )
+        ]
+
+        # Test train results file
+        runner._save_detailed_results(
+            0, "test-scaffold", "train", examples, execution_results, scores, tasks
+        )
+        train_results_path = (
+            runner.file_manager._get_docker_logs_dir(0, "test-scaffold")
+            / "train_results.json"
+        )
+        assert train_results_path.exists(), "train_results.json should be created"
+
+        # Test valid results file
+        runner._save_detailed_results(
+            0, "test-scaffold", "valid", examples, execution_results, scores, tasks
+        )
+        valid_results_path = (
+            runner.file_manager._get_docker_logs_dir(0, "test-scaffold")
+            / "valid_results.json"
+        )
+        assert valid_results_path.exists(), "valid_results.json should be created"
+
+        # Test test results file
+        runner._save_detailed_results(
+            "test", "test-scaffold", "test", examples, execution_results, scores, tasks
+        )
+        test_results_path = (
+            runner.file_manager._get_docker_logs_dir("test", "test-scaffold")
+            / "test_results.json"
+        )
+        assert test_results_path.exists(), "test_results.json should be created"
+
+        # Verify the generic results.json is NOT created
+        generic_results_path = (
+            runner.file_manager._get_docker_logs_dir(0, "test-scaffold")
+            / "results.json"
+        )
+        assert (
+            not generic_results_path.exists()
+        ), "Generic results.json should not be created"
+
+        # Verify the content of one of the results files
+        with open(train_results_path, "r") as f:
+            results_data = json.load(f)
+            assert "scaffold_id" in results_data
+            assert results_data["scaffold_id"] == "test-scaffold"
+            assert "log_type" in results_data
+            assert results_data["log_type"] == "train"
+            assert "outputs" in results_data
+            assert len(results_data["outputs"]) == 1

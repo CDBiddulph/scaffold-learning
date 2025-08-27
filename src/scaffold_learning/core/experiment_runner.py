@@ -865,8 +865,8 @@ class ExperimentRunner:
             }
             results["outputs"].append(output_info)
 
-        # Save results.json
-        results_path = results_dir / "results.json"
+        # Save results.json with run type prefix
+        results_path = results_dir / f"{log_type}_results.json"
         with open(results_path, "w") as f:
             json.dump(results, f, indent=2)
 
