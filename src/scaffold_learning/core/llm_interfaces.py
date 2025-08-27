@@ -186,6 +186,8 @@ class DeepInfraInterface(LLMInterface):
                 model=self.model,
                 messages=messages,
                 max_tokens=32_768,
+                temperature=0.6,
+                top_p=0.95,
             )
 
         content = response.choices[0].message.content
