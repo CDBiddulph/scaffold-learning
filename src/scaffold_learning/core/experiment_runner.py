@@ -38,7 +38,7 @@ class ExperimentRunner:
         config: ExperimentConfig,
         data: Dict[str, List[DatasetExample]],
         scoring_fn: Callable[[str, Dict], float],
-        scaffolder_llm: LLMInterface,
+        scaffolder_llm: Optional[LLMInterface],
         output_dir: Path,
         strategy_llm: Optional[LLMInterface] = None,
         scoring_fn_code: Optional[str] = None,
@@ -49,7 +49,7 @@ class ExperimentRunner:
             config: Experiment configuration
             data: Dictionary with 'train' and 'valid' dataset splits
             scoring_fn: Function that takes (expected, scoring_data) and returns score 0-1
-            scaffolder_llm: LLM to use for generating/improving scaffolds
+            scaffolder_llm: LLM to use for generating/improving scaffolds (None for baseline mode)
             output_dir: Directory for experiment outputs
             strategy_llm: Optional LLM interface for strategy generation
             scoring_fn_code: Optional scoring function code to include in prompts
@@ -326,6 +326,7 @@ class ExperimentRunner:
                     suggest_hack=self.config.suggest_hack,
                     domain=self.config.domain,
                 )
+                assert self.scaffolder_llm is not None, "scaffolder_llm required for evolution"
                 return evolve_scaffold(
                     config=config,
                     scaffolder_llm=self.scaffolder_llm,
@@ -549,6 +550,7 @@ class ExperimentRunner:
                 if is_baseline:
                     return make_prompt_only_scaffold(config=config)
                 else:
+                    assert self.scaffolder_llm is not None, "scaffolder_llm required for non-baseline mode"
                     return generate_scaffold(
                         config=config,
                         scaffolder_llm=self.scaffolder_llm,

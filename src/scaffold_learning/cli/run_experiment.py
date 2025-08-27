@@ -4,6 +4,7 @@
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -11,7 +12,7 @@ from omegaconf import DictConfig
 
 from scaffold_learning.core.hydra_config import create_experiment_config
 from scaffold_learning.core.experiment_runner import ExperimentRunner
-from scaffold_learning.core.llm_interfaces import LLMFactory
+from scaffold_learning.core.llm_interfaces import LLMFactory, LLMInterface
 from scaffold_learning.core.dataset_utils import load_datasets
 from scaffold_learning.core.scoring_utils import (
     create_scoring_function,
@@ -22,6 +23,29 @@ from scaffold_learning.core.docker_utils import build_docker_image
 
 # Get absolute path to config directory
 _config_path = Path(__file__).parent.parent.parent.parent / "hydra-configs"
+
+
+def _get_scaffolder_llm(config: DictConfig) -> Optional[LLMInterface]:
+    # Create scaffolder LLM (None for baseline mode)
+    if config.scaffolder == "baseline":
+        print("Running in baseline mode (no scaffolder LLM needed)")
+        return None
+
+    scaffolder_thinking_budget = config.get_thinking_budget_for_model(config.scaffolder)
+    print(f"Initializing scaffolder model: {config.scaffolder}")
+    return LLMFactory.create_llm(
+        config.scaffolder, thinking_budget_tokens=scaffolder_thinking_budget
+    )
+
+
+def _get_strategy_llm(config: DictConfig) -> Optional[LLMInterface]:
+    if not config.strategy or config.strategy == "baseline":
+        return None
+    strategy_thinking_budget = config.get_thinking_budget_for_model(config.strategy)
+    print(f"Initializing strategy model: {config.strategy}")
+    return LLMFactory.create_llm(
+        config.strategy, thinking_budget_tokens=strategy_thinking_budget
+    )
 
 
 @hydra.main(version_base=None, config_path=str(_config_path), config_name="config")
@@ -76,21 +100,8 @@ def main(cfg: DictConfig) -> None:
         else None
     )
 
-    # Create scaffolder LLM
-    scaffolder_thinking_budget = config.get_thinking_budget_for_model(config.scaffolder)
-    print(f"Initializing scaffolder model: {config.scaffolder}")
-    scaffolder_llm = LLMFactory.create_llm(
-        config.scaffolder, thinking_budget_tokens=scaffolder_thinking_budget
-    )
-
-    # Create strategy LLM if specified
-    strategy_llm = None
-    if config.strategy:
-        strategy_thinking_budget = config.get_thinking_budget_for_model(config.strategy)
-        print(f"Initializing strategy model: {config.strategy}")
-        strategy_llm = LLMFactory.create_llm(
-            config.strategy, thinking_budget_tokens=strategy_thinking_budget
-        )
+    scaffolder_llm = _get_scaffolder_llm(config)
+    strategy_llm = _get_strategy_llm(config)
 
     # Get Hydra's output directory for this job
     output_dir = Path(HydraConfig.get().runtime.output_dir)
