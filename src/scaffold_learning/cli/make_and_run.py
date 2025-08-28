@@ -57,7 +57,7 @@ class MakeAndRunConfig:
     train_seed: Optional[int] = None
     show_scoring_function: bool = False
     suggest_hack: str = "no"
-    thinking_budget: Optional[int] = None
+    reasoning_effort: str = "medium"
     strategy_model: Optional[str] = None
     human_strategy: Optional[str] = None
 
@@ -72,7 +72,7 @@ class MakeAndRunConfig:
     domain_param: Optional[List[str]] = None
     timeout: Optional[int] = None
     no_build: bool = False
-    executor_thinking_budget: Optional[int] = None
+    executor_reasoning_effort: str = "minimal"
     console_output: bool = False
     max_execute_workers: int = 1
 
@@ -152,10 +152,11 @@ Examples:
         help="Include text encouraging exploits/hacks: 'no' (default), 'hidden' (hidden exploits), 'explicit' (obvious exploits)",
     )
     parser.add_argument(
-        "--scaffolder-thinking-budget",
-        type=int,
-        default=10000,
-        help="Thinking budget tokens for scaffolder (default: 10000)",
+        "--scaffolder-reasoning-effort",
+        type=str,
+        default="medium",
+        choices=["minimal", "medium"],
+        help="Reasoning effort for scaffolder (default: medium)",
     )
     parser.add_argument(
         "--strategy-model",
@@ -187,10 +188,11 @@ Examples:
         "--no-build", action="store_true", help="Skip Docker image build"
     )
     parser.add_argument(
-        "--executor-thinking-budget",
-        type=int,
-        default=0,
-        help="Thinking budget tokens for executor (default: 0, no thinking)",
+        "--executor-reasoning-effort",
+        type=str,
+        default="minimal",
+        choices=["minimal", "medium"],
+        help="Reasoning effort for executor (default: minimal)",
     )
     parser.add_argument(
         "--console-output",
@@ -219,7 +221,7 @@ Examples:
         "data_dir",
         "task",
         "scaffolder_model",
-        "thinking_budget",
+        "reasoning_effort",
         "num_train_examples",
         "train_seed",
         "show_scoring_function",
@@ -227,7 +229,7 @@ Examples:
         "strategy_model",
         "human_strategy",
         "executor_model",
-        "executor_thinking_budget",
+        "executor_reasoning_effort",
         "input_string",
         "input_file",
         "num_test_examples",
@@ -407,7 +409,7 @@ def _create_llm(config: MakeAndRunConfig, model_type: str) -> LLMInterface:
     assert model_name is not None
     return LLMFactory.create_llm(
         model_name,
-        thinking_budget_tokens=config.thinking_budget,
+        reasoning_effort=config.reasoning_effort,
     )
 
 
@@ -548,7 +550,7 @@ def _run_scaffold(
         log_path = run_dir / "0.log"
         assert config.executor_model is not None
         assert config.timeout is not None
-        assert config.executor_thinking_budget is not None
+        assert config.executor_reasoning_effort is not None
 
         task = ScaffoldExecutionTask(
             scaffold_dir=str(scaffold_dir),
@@ -557,7 +559,7 @@ def _run_scaffold(
             model_spec=config.executor_model,
             timeout=config.timeout,
             console_output=True,
-            thinking_budget_tokens=config.executor_thinking_budget,
+            reasoning_effort=config.executor_reasoning_effort,
         )
 
         execution_results = execute_scaffolds([task], max_workers=1)
@@ -603,7 +605,7 @@ def _run_scaffold(
                     model_spec=config.executor_model,
                     timeout=config.timeout,
                     console_output=config.console_output,
-                    thinking_budget_tokens=config.executor_thinking_budget,
+                    reasoning_effort=config.executor_reasoning_effort,
                 )
             )
 
@@ -614,7 +616,7 @@ def _run_scaffold(
         # Execute all tasks
         assert config.executor_model is not None
         assert config.timeout is not None
-        assert config.executor_thinking_budget is not None
+        assert config.executor_reasoning_effort is not None
         results_list = execute_scaffolds(
             tasks=execution_tasks,
             max_workers=config.max_execute_workers,

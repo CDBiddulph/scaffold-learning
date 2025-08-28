@@ -163,7 +163,7 @@ class ScaffoldExecutionTask:
         model_spec: Model specification for the executor
         timeout: Maximum execution time in seconds
         console_output: If True, print output to console
-        thinking_budget_tokens: Budget for thinking tokens
+        reasoning_effort: Reasoning effort level (minimal, medium)
     """
 
     scaffold_dir: str
@@ -172,7 +172,7 @@ class ScaffoldExecutionTask:
     model_spec: str
     timeout: int = 120
     console_output: bool = False
-    thinking_budget_tokens: int = 0
+    reasoning_effort: str = "minimal"
 
 
 @dataclass

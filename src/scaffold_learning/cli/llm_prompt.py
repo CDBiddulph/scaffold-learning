@@ -42,11 +42,12 @@ Examples:
     )
 
     parser.add_argument(
-        "--thinking-budget",
-        "-t",
-        type=int,
-        default=None,
-        help="Thinking budget tokens for reasoning models (optional)",
+        "--reasoning-effort",
+        "-r",
+        type=str,
+        default="minimal",
+        choices=["minimal", "medium"],
+        help="Reasoning effort for LLM models (default: minimal)",
     )
 
     parser.add_argument(
@@ -68,8 +69,8 @@ Examples:
     # Create LLM instance
     try:
         kwargs = {}
-        if args.thinking_budget is not None:
-            kwargs["thinking_budget_tokens"] = args.thinking_budget
+        if args.reasoning_effort is not None:
+            kwargs["reasoning_effort"] = args.reasoning_effort
         if args.max_tokens is not None:
             kwargs["max_output_tokens"] = args.max_tokens
         if args.temperature is not None:

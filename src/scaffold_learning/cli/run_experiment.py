@@ -31,20 +31,18 @@ def _get_scaffolder_llm(config: DictConfig) -> Optional[LLMInterface]:
         print("Running in baseline mode (no scaffolder LLM needed)")
         return None
 
-    scaffolder_thinking_budget = config.get_thinking_budget_for_model(config.scaffolder)
     print(f"Initializing scaffolder model: {config.scaffolder}")
     return LLMFactory.create_llm(
-        config.scaffolder, thinking_budget_tokens=scaffolder_thinking_budget
+        config.scaffolder, reasoning_effort=config.scaffolder_reasoning_effort
     )
 
 
 def _get_strategy_llm(config: DictConfig) -> Optional[LLMInterface]:
     if not config.strategy or config.strategy == "baseline":
         return None
-    strategy_thinking_budget = config.get_thinking_budget_for_model(config.strategy)
     print(f"Initializing strategy model: {config.strategy}")
     return LLMFactory.create_llm(
-        config.strategy, thinking_budget_tokens=strategy_thinking_budget
+        config.strategy, reasoning_effort=config.scaffolder_reasoning_effort
     )
 
 

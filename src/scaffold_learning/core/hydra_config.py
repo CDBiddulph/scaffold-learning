@@ -37,18 +37,13 @@ class ExperimentConfig:
     scaffold_timeout: int
     max_generate_workers: int
     max_execute_workers: int
-    thinking_budget: Optional[int]
     base_dir: str
     build_docker: bool
 
-    # Model specifications (from model config)
-    model_specs: Dict[str, Dict[str, Any]]
+    # Reasoning effort configuration
+    executor_reasoning_effort: str
+    scaffolder_reasoning_effort: str
 
-    def get_thinking_budget_for_model(self, model_name: str) -> int:
-        """Get thinking budget for a specific model."""
-        if self.thinking_budget is not None:
-            return self.thinking_budget
-        return self.model_specs.get(model_name, {}).get("thinking_budget", 0)
 
 
 def create_experiment_config(cfg: DictConfig) -> ExperimentConfig:
@@ -76,8 +71,8 @@ def create_experiment_config(cfg: DictConfig) -> ExperimentConfig:
         scaffold_timeout=cfg.scaffold_timeout,
         max_generate_workers=cfg.max_generate_workers,
         max_execute_workers=cfg.max_execute_workers,
-        thinking_budget=cfg.get("thinking_budget"),
         base_dir=cfg.base_dir,
         build_docker=cfg.build_docker,
-        model_specs=dict(cfg.model_specs),
+        executor_reasoning_effort=cfg.executor_reasoning_effort,
+        scaffolder_reasoning_effort=cfg.scaffolder_reasoning_effort,
     )

@@ -44,7 +44,7 @@ class TestScaffoldExecution:
             model_spec=kwargs.get("model_spec", "mock"),
             timeout=kwargs.get("timeout", 120),
             console_output=kwargs.get("console_output", False),
-            thinking_budget_tokens=kwargs.get("thinking_budget_tokens", 0),
+            reasoning_effort=kwargs.get("reasoning_effort", "minimal"),
         )
         results = execute_scaffolds([task], max_workers=1)
         return results[0]
@@ -434,7 +434,7 @@ class TestParallelScaffoldExecution:
                     model_spec="mock",
                     timeout=120,
                     console_output=False,
-                    thinking_budget_tokens=0,
+                    reasoning_effort="minimal",
                 )
                 for i in range(3)
             ]

@@ -108,10 +108,10 @@ class TestExperimentRunner:
             scaffold_timeout=120,
             max_generate_workers=1,
             max_execute_workers=1,
-            thinking_budget=None,
             base_dir=str(Path(self.temp_dir)),
             build_docker=False,
-            model_specs={},
+            executor_reasoning_effort="minimal",
+            scaffolder_reasoning_effort="minimal",
         )
 
         # Create data dictionary
@@ -150,7 +150,7 @@ class TestExperimentRunner:
         model_spec,
         timeout=120,
         console_output=False,
-        thinking_budget_tokens=0,
+        reasoning_effort="minimal",
     ):
         # Create a mock execution log that mimics what would be saved
         execution_log = f"""=== Scaffold Execution Log ===
@@ -220,10 +220,10 @@ Execution completed successfully
             scaffold_timeout=120,
             max_generate_workers=1,
             max_execute_workers=1,
-            thinking_budget=None,
             base_dir=str(Path(self.temp_dir)),
             build_docker=False,
-            model_specs={},
+            executor_reasoning_effort="minimal",
+            scaffolder_reasoning_effort="minimal",
         )
 
         data = {"train": training_data, "valid": validation_data, "test": []}
@@ -397,7 +397,7 @@ Execution completed successfully
             model_spec,
             timeout=120,
             console_output=False,
-            thinking_budget_tokens=0,
+            reasoning_effort="minimal",
         ):
             # Extract scaffold_id from the scaffold_dir path
             scaffold_id = Path(scaffold_dir).name
@@ -577,10 +577,10 @@ Execution completed successfully
             scaffold_timeout=120,
             max_generate_workers=1,
             max_execute_workers=1,
-            thinking_budget=None,
             base_dir=str(Path(self.temp_dir)),
             build_docker=False,
-            model_specs={},
+            executor_reasoning_effort="minimal",
+            scaffolder_reasoning_effort="minimal",
         )
 
         data = {"train": training_data, "valid": validation_data, "test": []}
@@ -736,7 +736,7 @@ Execution completed successfully
             model_spec,
             timeout=120,
             console_output=False,
-            thinking_budget_tokens=0,
+            reasoning_effort="minimal",
         ):
             # Extract scaffold_id from the scaffold_dir path
             scaffold_id = Path(scaffold_dir).name
@@ -922,7 +922,7 @@ Execution completed successfully
             model_spec,
             timeout=120,
             console_output=False,
-            thinking_budget_tokens=0,
+            reasoning_effort="minimal",
         ):
             scaffold_id = Path(scaffold_dir).name
             iteration = int(Path(log_file_path).parent.parent.parent.name)
@@ -1187,10 +1187,10 @@ Execution completed successfully
             scaffold_timeout=120,
             max_generate_workers=1,
             max_execute_workers=1,
-            thinking_budget=None,
             base_dir=str(Path(self.temp_dir)),
             build_docker=False,
-            model_specs={},
+            executor_reasoning_effort="minimal",
+            scaffolder_reasoning_effort="minimal",
         )
 
         data = {"train": training_data, "valid": validation_data, "test": []}
@@ -1266,10 +1266,10 @@ Execution completed successfully
             scaffold_timeout=120,
             max_generate_workers=1,
             max_execute_workers=1,
-            thinking_budget=None,
             base_dir=str(Path(self.temp_dir)),
             build_docker=False,
-            model_specs={},
+            executor_reasoning_effort="minimal",
+            scaffolder_reasoning_effort="minimal",
         )
 
         data = {"train": training_data, "valid": validation_data, "test": []}

@@ -243,10 +243,11 @@ def main():
     )
 
     parser.add_argument(
-        "--thinking-budget",
-        type=int,
-        default=10000,
-        help="Thinking budget tokens for auditor model (default: 10000)",
+        "--reasoning-effort",
+        type=str,
+        default="medium",
+        choices=["minimal", "medium"],
+        help="Reasoning effort for auditor model (default: medium)",
     )
 
     parser.add_argument(
@@ -323,8 +324,8 @@ def main():
     # Create LLM interface
     try:
         kwargs = {}
-        if args.thinking_budget:
-            kwargs["thinking_budget_tokens"] = args.thinking_budget
+        if args.reasoning_effort:
+            kwargs["reasoning_effort"] = args.reasoning_effort
         llm = LLMFactory.create_llm(args.model, **kwargs)
         logging.info(f"Using model: {args.model}")
     except Exception as e:

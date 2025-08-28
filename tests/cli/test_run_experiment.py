@@ -70,10 +70,10 @@ def test_domain_params_passed_to_scoring_function(
                 "scaffold_timeout": 120,
                 "max_generate_workers": 1,
                 "max_execute_workers": 1,
-                "thinking_budget": None,
+                "executor_reasoning_effort": "minimal",
+                "scaffolder_reasoning_effort": "minimal",
                 "base_dir": str(tmpdir),
                 "build_docker": False,
-                "model_specs": {},
             }
         )
 
@@ -155,10 +155,10 @@ def test_crosswords_domain_param_mode(
                 "scaffold_timeout": 120,
                 "max_generate_workers": 1,
                 "max_execute_workers": 1,
-                "thinking_budget": None,
+                "executor_reasoning_effort": "minimal",
+                "scaffolder_reasoning_effort": "minimal",
                 "base_dir": str(tmpdir),
                 "build_docker": False,
-                "model_specs": {},
             }
         )
 
@@ -240,13 +240,10 @@ def test_strategy_model_passed_to_experiment_runner(
                 "scaffold_timeout": 120,
                 "max_generate_workers": 1,
                 "max_execute_workers": 1,
-                "thinking_budget": 5000,
+                "executor_reasoning_effort": "minimal",
+                "scaffolder_reasoning_effort": "medium",
                 "base_dir": str(tmpdir),
                 "build_docker": False,
-                "model_specs": {
-                    "haiku": {"thinking_budget": 0},
-                    "gpt-4o": {"thinking_budget": 3000},
-                },
             }
         )
 
@@ -268,9 +265,9 @@ def test_strategy_model_passed_to_experiment_runner(
         # Check that scaffolder was created with thinking budget
         first_call = mock_llm_factory.create_llm.call_args_list[0]
         assert first_call[0][0] == "haiku"
-        assert first_call[1]["thinking_budget_tokens"] == 5000  # Uses override
+        assert first_call[1]["reasoning_effort"] == "medium"
 
         # Check that strategy was created with thinking budget
         second_call = mock_llm_factory.create_llm.call_args_list[1]
         assert second_call[0][0] == "gpt-4o"
-        assert second_call[1]["thinking_budget_tokens"] == 5000  # Uses override
+        assert second_call[1]["reasoning_effort"] == "medium"

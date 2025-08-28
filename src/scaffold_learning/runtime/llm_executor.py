@@ -24,15 +24,15 @@ def execute_llm(prompt: str, system_prompt: str = "") -> str:
     # Get executor specification from environment variable
     executor_model_spec = os.environ.get("EXECUTOR_MODEL_SPEC", "haiku")
 
-    # Get thinking budget from environment variable (default 0)
-    thinking_budget = int(os.environ.get("THINKING_BUDGET_TOKENS", "0"))
+    # Get reasoning effort from environment variable (default "minimal")
+    reasoning_effort = os.environ.get("REASONING_EFFORT", "minimal")
 
     # Create LLM instance
     executor_llm = LLMFactory.create_llm(
         model_spec=executor_model_spec,
         openai_api_key=os.environ.get("OPENAI_API_KEY"),
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
-        thinking_budget_tokens=thinking_budget,
+        reasoning_effort=reasoning_effort,
     )
 
     # Generate response

@@ -46,7 +46,7 @@ scaffold make run [options]                # Generate and run scaffold
 - `--domain` (required with data-dir): Domain for scoring function
 - `--timeout` (default None): Execution timeout in seconds
 - `--no-build` (flag): Skip Docker image build
-- `--thinking-budget` (default 0): Thinking budget tokens
+- `--reasoning-effort` (default "minimal"): Reasoning effort level
 
 ### Argument Validation Rules
 1. **Generation modes**: Exactly one of the three generation modes required for make
@@ -153,7 +153,7 @@ class ScaffoldConfig:
     domain: Optional[str]
     timeout: Optional[int]
     no_build: bool
-    thinking_budget: int
+    reasoning_effort: str
 ```
 
 **Key function signatures:**
@@ -308,6 +308,6 @@ scaffold run --name 1-2-3 --base-dir experiments/crosswords_20250101_120000/scaf
 - [ ] Test data loaded from test.jsonl (not valid.jsonl)
 - [ ] Seeds properly applied to sampling
 - [ ] Docker build integration preserved
-- [ ] Timeout and thinking budget handled correctly
+- [ ] Timeout and reasoning effort handled correctly
 - [ ] Error messages are clear and actionable
 - [ ] Existing scaffolds and experiments remain functional

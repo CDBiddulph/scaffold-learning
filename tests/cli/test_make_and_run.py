@@ -134,14 +134,14 @@ class TestArgumentParsing:
                 "haiku",
                 "--file",
                 "input.txt",
-                "--executor-thinking-budget",
-                "1000",
+                "--executor-reasoning-effort",
+                "medium",
             ]
         )
 
         assert args.do_run is True
         assert args.input_file == Path("input.txt")
-        assert args.executor_thinking_budget == 1000
+        assert args.executor_reasoning_effort == "medium"
         assert args.input_string is None
 
     def test_parse_args_run_only_dataset_eval(self):

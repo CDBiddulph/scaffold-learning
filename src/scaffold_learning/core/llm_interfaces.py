@@ -51,8 +51,7 @@ class OpenAIInterface(LLMInterface):
         self,
         model: str = LLMConfig.DEFAULT_OPENAI_MODEL,
         api_key: Optional[str] = None,
-        thinking_budget_tokens: Optional[int] = None,
-        reasoning_effort: Optional[str] = None,
+        reasoning_effort: str = "minimal",
         max_retries: int = 5,
         base_delay: float = 1.0,
     ):
@@ -60,10 +59,7 @@ class OpenAIInterface(LLMInterface):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key not provided")
-        self.thinking_budget_tokens = thinking_budget_tokens
-        self.reasoning_effort = (
-            reasoning_effort  # "minimal", "low", "medium", or "high"
-        )
+        self.reasoning_effort = reasoning_effort
         self.max_retries = max_retries
         self.base_delay = base_delay
 
@@ -105,8 +101,7 @@ class OpenAIInterface(LLMInterface):
             "gpt-3.5-turbo",
         ]:
             return None
-        # Use reasoning_effort parameter (set by LLMFactory based on thinking_budget_tokens)
-        effort = self.reasoning_effort or "medium"
+        effort = self.reasoning_effort
         return {"summary": "detailed", "effort": effort}
 
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
@@ -225,7 +220,7 @@ class AnthropicInterface(LLMInterface):
         self,
         model: str = LLMConfig.DEFAULT_ANTHROPIC_MODEL,
         api_key: Optional[str] = None,
-        thinking_budget_tokens: Optional[int] = None,
+        reasoning_effort: str = "minimal",
         max_retries: int = 5,
         base_delay: float = 1.0,
     ):
@@ -233,7 +228,7 @@ class AnthropicInterface(LLMInterface):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key not provided")
-        self.thinking_budget_tokens = thinking_budget_tokens
+        self.reasoning_effort = reasoning_effort
         self.max_retries = max_retries
         self.base_delay = base_delay
 
@@ -252,12 +247,17 @@ class AnthropicInterface(LLMInterface):
             )
 
     def _get_thinking_params(self) -> dict:
-        if self.thinking_budget_tokens == 0 or self.model not in [
+        if self.reasoning_effort == "minimal" or self.model not in [
             *self._OPUS_NAMES,
             self._SONNET_NAME,
         ]:
             return {"type": "disabled"}
-        budget_tokens = self.thinking_budget_tokens or 10000
+        # Convert reasoning_effort to tokens for Anthropic
+        if self.reasoning_effort != "medium":
+            raise ValueError(
+                f"Reasoning effort {self.reasoning_effort} not supported for model {self.model}"
+            )
+        budget_tokens = 10000
         return {"budget_tokens": budget_tokens, "type": "enabled"}
 
     def _get_retry_after_from_headers(self, e: Exception) -> Optional[float]:
@@ -502,29 +502,22 @@ class LLMFactory:
         openai_api_key: Optional[str] = None,
         anthropic_api_key: Optional[str] = None,
         deepinfra_api_key: Optional[str] = None,
-        thinking_budget_tokens: Optional[int] = None,
+        reasoning_effort: str = "minimal",
     ) -> LLMInterface:
         """Create LLM from consolidated model specification"""
         llm_type, model = LLMFactory._parse_model_spec(model_spec)
 
         if llm_type in ["openai", "chatgpt", "gpt"]:
-            # Calculate reasoning_effort based on thinking_budget_tokens
-            if thinking_budget_tokens == 0:
-                reasoning_effort = "minimal"
-            else:  # thinking_budget_tokens is None or non-zero
-                reasoning_effort = "medium"
-
             return OpenAIInterface(
                 model=model,
                 api_key=openai_api_key,
-                thinking_budget_tokens=thinking_budget_tokens,
                 reasoning_effort=reasoning_effort,
             )
         elif llm_type in ["anthropic", "claude"]:
             return AnthropicInterface(
                 model=model,
                 api_key=anthropic_api_key,
-                thinking_budget_tokens=thinking_budget_tokens,
+                reasoning_effort=reasoning_effort,
             )
         elif llm_type == "deepinfra":
             return DeepInfraInterface(model=model, api_key=deepinfra_api_key)

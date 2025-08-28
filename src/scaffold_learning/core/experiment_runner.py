@@ -326,7 +326,9 @@ class ExperimentRunner:
                     suggest_hack=self.config.suggest_hack,
                     domain=self.config.domain,
                 )
-                assert self.scaffolder_llm is not None, "scaffolder_llm required for evolution"
+                assert (
+                    self.scaffolder_llm is not None
+                ), "scaffolder_llm required for evolution"
                 return evolve_scaffold(
                     config=config,
                     scaffolder_llm=self.scaffolder_llm,
@@ -550,7 +552,9 @@ class ExperimentRunner:
                 if is_baseline:
                     return make_prompt_only_scaffold(config=config)
                 else:
-                    assert self.scaffolder_llm is not None, "scaffolder_llm required for non-baseline mode"
+                    assert (
+                        self.scaffolder_llm is not None
+                    ), "scaffolder_llm required for non-baseline mode"
                     return generate_scaffold(
                         config=config,
                         scaffolder_llm=self.scaffolder_llm,
@@ -611,7 +615,7 @@ class ExperimentRunner:
                 model_spec=self.config.executor,
                 timeout=self.config.scaffold_timeout,
                 console_output=False,
-                thinking_budget_tokens=0,
+                reasoning_effort=self.config.executor_reasoning_effort,
             )
             tasks.append(task)
         return tasks
@@ -907,7 +911,7 @@ class ExperimentRunner:
 
         Args:
             best_scaffold_id: ID of the best scaffold to evaluate
-            
+
         Returns:
             Mean test score
         """
@@ -940,5 +944,5 @@ class ExperimentRunner:
         self.logger.info(
             f"Test evaluation complete: {mean_score:.3f} ± {std_score:.3f}"
         )
-        
+
         return mean_score
