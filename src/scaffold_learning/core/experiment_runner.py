@@ -32,7 +32,7 @@ class ExperimentRunner:
 
         Args:
             config: Experiment configuration
-            data: Dictionary with 'train' and 'valid' dataset splits
+            data: Dictionary with 'train', 'valid', and 'test' dataset splits
             scoring_fn: Function that takes (expected, scoring_data) and returns score 0-1
             scaffolder_llm: LLM to use for generating/improving scaffolds (None for baseline mode)
             output_dir: Directory for experiment outputs
@@ -367,15 +367,6 @@ class ExperimentRunner:
         Returns:
             Mean test score
         """
-
-        # Load test data
-        # TODO: do we need this? It doesn't seem to be used.
-        try:
-            data_dir = Path(self.config.data_dir)
-            datasets = load_datasets(data_dir, ["test"])
-            test_examples = datasets["test"]
-        except Exception as e:
-            raise FileNotFoundError(f"Could not load test data from {data_dir}: {e}")
 
         # Sample test examples
         test_sample = self.test_sampler.sample(self.config.num_test_examples)
