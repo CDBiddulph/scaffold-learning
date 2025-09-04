@@ -45,7 +45,6 @@ class ExperimentConfig:
     scaffolder_reasoning_effort: str
 
 
-
 def create_experiment_config(cfg: DictConfig) -> ExperimentConfig:
     """Create ExperimentConfig from Hydra DictConfig."""
     return ExperimentConfig(
