@@ -101,6 +101,7 @@ class TestScaffoldEvaluator:
             executor_model="gpt-4",
             scaffold_timeout=120,
             max_execute_workers=1,
+            executor_reasoning_effort="minimal",
         )
 
         # Mock execute_scaffolds to return successful results
@@ -166,6 +167,7 @@ class TestScaffoldEvaluator:
             executor_model="gpt-4",
             scaffold_timeout=120,
             max_execute_workers=1,
+            executor_reasoning_effort="minimal",
         )
 
         # Mock execute_scaffolds to return one error
@@ -222,6 +224,7 @@ class TestScaffoldEvaluator:
             executor_model="gpt-4",
             scaffold_timeout=120,
             max_execute_workers=2,
+            executor_reasoning_effort="minimal",
         )
 
         with patch(
@@ -260,6 +263,7 @@ class TestScaffoldEvaluator:
             executor_model="gpt-4",
             scaffold_timeout=120,
             max_execute_workers=1,
+            executor_reasoning_effort="minimal",
         )
 
         with patch(
@@ -296,6 +300,7 @@ class TestScaffoldEvaluator:
             executor_model="gpt-4",
             scaffold_timeout=120,
             max_execute_workers=4,  # Set parallel workers
+            executor_reasoning_effort="minimal",
         )
 
         with patch(
@@ -334,6 +339,7 @@ class TestScaffoldEvaluator:
             executor_model="claude-3",
             scaffold_timeout=60,
             max_execute_workers=1,
+            executor_reasoning_effort="minimal",
         )
 
         with patch(

@@ -26,6 +26,7 @@ class ScaffoldEvaluator:
         executor_model: str,
         scaffold_timeout: int,
         max_execute_workers: int,
+        executor_reasoning_effort: str = "minimal",
     ):
         """Initialize the scaffold evaluator.
 
@@ -35,12 +36,14 @@ class ScaffoldEvaluator:
             executor_model: Model specification for executor LLM
             scaffold_timeout: Timeout in seconds for scaffold execution
             max_execute_workers: Max workers for parallel execution
+            executor_reasoning_effort: Reasoning effort level for executor LLM
         """
         self.scoring_fn = scoring_fn
         self.file_manager = file_manager
         self.executor_model = executor_model
         self.scaffold_timeout = scaffold_timeout
         self.max_execute_workers = max_execute_workers
+        self.executor_reasoning_effort = executor_reasoning_effort
         self.logger = logging.getLogger(__name__)
 
     def evaluate_scaffold(
@@ -131,7 +134,7 @@ class ScaffoldEvaluator:
                 model_spec=self.executor_model,
                 timeout=self.scaffold_timeout,
                 console_output=False,
-                reasoning_effort="minimal",
+                reasoning_effort=self.executor_reasoning_effort,
             )
             tasks.append(task)
         return tasks

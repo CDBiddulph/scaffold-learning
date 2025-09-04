@@ -207,7 +207,7 @@ class TestExperimentRunner:
 
             # Mock generate_scaffold
             with patch(
-                "scaffold_learning.core.experiment_runner.generate_scaffold"
+                "scaffold_learning.core.scaffold_generator.generate_scaffold"
             ) as mock_generate:
                 mock_generate.return_value = self.create_mock_scaffold_result()
                 runner.run()
@@ -238,9 +238,9 @@ class TestExperimentRunner:
             )
 
             with patch(
-                "scaffold_learning.core.experiment_runner.generate_scaffold"
+                "scaffold_learning.core.scaffold_generator.generate_scaffold"
             ) as mock_generate, patch(
-                "scaffold_learning.core.experiment_runner.evolve_scaffold"
+                "scaffold_learning.core.scaffold_generator.evolve_scaffold"
             ) as mock_evolve:
 
                 mock_generate.return_value = self.create_mock_scaffold_result()
@@ -271,7 +271,7 @@ class TestExperimentRunner:
             mock_evaluate.return_value = [Mock(score=0.9)]
 
             with patch(
-                "scaffold_learning.core.experiment_runner.generate_scaffold"
+                "scaffold_learning.core.scaffold_generator.generate_scaffold"
             ) as mock_generate:
                 mock_generate.return_value = self.create_mock_scaffold_result()
 
@@ -304,7 +304,7 @@ class TestExperimentRunner:
             )
 
             with patch(
-                "scaffold_learning.core.experiment_runner.generate_scaffold"
+                "scaffold_learning.core.scaffold_generator.generate_scaffold"
             ) as mock_generate:
                 mock_generate.return_value = self.create_mock_scaffold_result()
                 runner.run()
@@ -327,10 +327,10 @@ class TestExperimentRunner:
         )
 
         with patch(
-            "scaffold_learning.core.experiment_runner.generate_scaffold",
+            "scaffold_learning.core.scaffold_generator.generate_scaffold",
             return_value=mock_scaffold_result,
         ), patch(
-            "scaffold_learning.core.experiment_runner.evolve_scaffold",
+            "scaffold_learning.core.scaffold_generator.evolve_scaffold",
             return_value=mock_scaffold_result,
         ), patch(
             "scaffold_learning.core.scaffold_execution._execute_scaffold"

@@ -2,21 +2,14 @@ import numpy as np
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional, Callable, Tuple, Any
-import concurrent.futures
+from typing import List, Dict, Optional, Callable, Tuple
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldRunData,
 )
-from scaffold_learning.core.data_structures import ScaffolderPromptConfig
-from scaffold_learning.core.strategy_generation import generate_strategies
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.experiment_files import ExperimentFileManager
-from scaffold_learning.core.scaffold_generation import (
-    generate_scaffold,
-    evolve_scaffold,
-    make_prompt_only_scaffold,
-)
+from scaffold_learning.core.scaffold_generator import ScaffoldGenerator
 from scaffold_learning.core.scaffold_evaluator import ScaffoldEvaluator
 from scaffold_learning.core.dataset_utils import load_datasets, ExampleSampler
 from scaffold_learning.core.hydra_config import ExperimentConfig
@@ -74,10 +67,6 @@ class ExperimentRunner:
         # Set up experiment directory - use Hydra's output directory
         self.file_manager = ExperimentFileManager(output_dir)
 
-        # Initialize scaffold ID tracking
-        self.scaffold_counters = {}  # parent_id -> next_counter
-        self.next_initial_id = 0
-
         # Set up logging
         self.logger = logging.getLogger(__name__)
 
@@ -88,6 +77,16 @@ class ExperimentRunner:
         # Set values that special-case in baseline mode
         self.initial_scaffolds = 1 if self.is_baseline else config.initial_scaffolds
         self.num_iterations = 1 if self.is_baseline else config.num_iterations
+
+        # Initialize scaffold generator
+        self.scaffold_generator = ScaffoldGenerator(
+            config=config,
+            scaffolder_llm=scaffolder_llm,
+            strategy_llm=strategy_llm,
+            file_manager=self.file_manager,
+            train_sampler=self.train_sampler,
+            scoring_fn_code=scoring_fn_code,
+        )
 
         # Save experiment metadata
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -113,6 +112,7 @@ class ExperimentRunner:
             executor_model=config.executor,
             scaffold_timeout=config.scaffold_timeout,
             max_execute_workers=config.max_execute_workers,
+            executor_reasoning_effort=config.executor_reasoning_effort,
         )
 
         self.logger.info(f"Initialized experiment: {config.experiment_name}")
@@ -207,7 +207,9 @@ class ExperimentRunner:
         )
 
         # Evolve selected scaffolds and get new scaffold IDs
-        new_scaffold_ids = self._evolve_scaffolds(iteration, top_scaffold_runs)
+        new_scaffold_ids = self.scaffold_generator.evolve_scaffolds(
+            iteration, top_scaffold_runs
+        )
 
         validation_scores = self._validate_scaffolds(
             iteration, new_scaffold_ids, validation_sample
@@ -226,7 +228,7 @@ class ExperimentRunner:
         Returns:
             A dictionary mapping scaffold_id to a list of scores
         """
-        scaffold_ids = self._create_initial_scaffolds()
+        scaffold_ids = self.scaffold_generator.create_initial_scaffolds()
         validation_scores = self._validate_scaffolds(0, scaffold_ids, validation_sample)
         return validation_scores
 
@@ -296,56 +298,6 @@ class ExperimentRunner:
 
         return top_k_ids
 
-    def _evolve_scaffolds(
-        self,
-        iteration: int,
-        top_scaffold_runs: Dict[str, List[ScaffoldRunData]],
-    ) -> List[str]:
-        """Evolve selected scaffolds by running on training data and generating new versions.
-
-        Args:
-            iteration: Current iteration number
-            top_scaffold_runs: Dict of scaffold_id to list of ScaffoldRunData for top scaffolds
-
-        Returns:
-            List of newly created scaffold IDs
-        """
-        current_scaffold_ids = []
-
-        # Create evolution tasks
-        generation_tasks = []
-        for parent_id, run_data_list in top_scaffold_runs.items():
-            new_scaffold_id = self._get_next_scaffold_id(parent_id)
-            current_scaffold_ids.append(new_scaffold_id)
-
-            def evolve_func(
-                run_data_list=run_data_list, parent_id=parent_id
-            ):  # Capture by value
-                config = ScaffolderPromptConfig(
-                    evolve_examples=run_data_list,
-                    scoring_fn_code=self.scoring_fn_code,
-                    suggest_hack=self.config.suggest_hack,
-                    domain=self.config.domain,
-                )
-                assert (
-                    self.scaffolder_llm is not None
-                ), "scaffolder_llm required for evolution"
-                return evolve_scaffold(
-                    config=config,
-                    scaffolder_llm=self.scaffolder_llm,
-                    iteration=iteration,
-                    parent_scaffold_id=parent_id,
-                )
-
-            generation_tasks.append((new_scaffold_id, evolve_func))
-
-        # Execute the evolution tasks
-        self._execute_scaffold_generation_batch(
-            generation_tasks, "evolved", self.config.max_generate_workers
-        )
-
-        return current_scaffold_ids
-
     def _find_best_scaffold_from_scores(
         self,
         iteration: int,
@@ -385,203 +337,6 @@ class ExperimentRunner:
                 f"Iteration {iteration}: avg={avg_score:.3f}, max={max_score:.3f}"
             )
 
-    def _get_next_scaffold_id(self, parent_id: Optional[str] = None) -> str:
-        """Generate the next scaffold ID.
-
-        Args:
-            parent_id: Parent scaffold ID if this is a derived scaffold
-
-        Returns:
-            New scaffold ID following the naming convention
-        """
-        if parent_id is None:
-            # Initial scaffold: use sequential numbers
-            scaffold_id = str(self.next_initial_id)
-            self.next_initial_id += 1
-            return scaffold_id
-        else:
-            # Derived scaffold: append counter to parent ID
-            if parent_id not in self.scaffold_counters:
-                self.scaffold_counters[parent_id] = 0
-
-            counter = self.scaffold_counters[parent_id]
-            self.scaffold_counters[parent_id] += 1
-
-            return f"{parent_id}-{counter}"
-
-    def _execute_scaffold_generation_batch(
-        self,
-        generation_tasks: List[Tuple[str, Callable]],
-        scaffold_type: str,
-        max_workers: int,
-        strategies: Optional[List[Optional[str]]] = None,
-    ) -> None:
-        """Execute a batch of scaffold generation tasks using ThreadPoolExecutor.
-
-        Args:
-            generation_tasks: List of (scaffold_id, generation_function) tuples
-            scaffold_type: Type of scaffold (e.g., "initial", "evolved"), used for logging
-            max_workers: Maximum workers for parallel execution (1 for sequential)
-            strategies: Optional list of strategies corresponding to each task (for initial scaffolds)
-        """
-        total_tasks = len(generation_tasks)
-
-        if max_workers > 1:
-            self.logger.info(
-                f"Creating {total_tasks} {scaffold_type} scaffolds (up to {max_workers} in parallel)"
-            )
-        else:
-            self.logger.info(f"Creating {total_tasks} {scaffold_type} scaffolds")
-
-        completed = 0
-        # Create mapping from scaffold_id to strategy
-        strategy_map = {}
-        if strategies:
-            for i, (scaffold_id, _) in enumerate(generation_tasks):
-                if i < len(strategies):
-                    strategy_map[scaffold_id] = strategies[i]
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_id = {
-                executor.submit(generation_func): scaffold_id
-                for scaffold_id, generation_func in generation_tasks
-            }
-
-            for future in concurrent.futures.as_completed(future_to_id):
-                scaffold_id = future_to_id[future]
-                try:
-                    result = future.result()
-                    self.file_manager.save_scaffold(
-                        scaffold_id=scaffold_id, result=result
-                    )
-                    completed += 1
-                    log_message = f"Created {scaffold_type} scaffold {scaffold_id}"
-                    if max_workers > 1:
-                        log_message += f" ({completed}/{total_tasks})"
-                    self.logger.info(log_message)
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to create {scaffold_type} scaffold {scaffold_id}: {e}"
-                    )
-                    raise
-
-    def _generate_strategies(
-        self, base_prompt_kwargs: Dict[str, Any]
-    ) -> List[Optional[str]]:
-        """Generate strategies if strategy model is specified.
-
-        Args:
-            base_prompt_kwargs: Base prompt kwargs to use for strategy generation
-
-        Returns:
-            List of strategies, or list of None if no strategy model is specified
-        """
-        if self.is_baseline or not self.strategy_llm:
-            return [None] * self.initial_scaffolds
-
-        self.logger.info(
-            f"Generating {self.initial_scaffolds} strategies using {self.strategy_llm.get_model_info()}"
-        )
-
-        # Get a single list of training examples for the strategy generation prompt
-        examples = next(iter(self._get_training_examples([""]).values()))
-
-        strategy_config = ScaffolderPromptConfig(
-            **base_prompt_kwargs,
-            generate_examples=examples,
-        )
-
-        # Generate strategies in batches
-        all_strategies = []
-        batch_size = self.config.strategy_batch_size or self.initial_scaffolds
-        num_batches = self.initial_scaffolds // batch_size
-
-        for batch_idx in range(num_batches):
-            if num_batches > 1:
-                self.logger.info(
-                    f"Generating strategy batch {batch_idx + 1}/{num_batches}"
-                )
-
-            batch_strategies = generate_strategies(
-                llm=self.strategy_llm,
-                scaffolder_prompt_config=strategy_config,
-                num_strategies=batch_size,
-            )
-            all_strategies.extend(batch_strategies)
-
-        return all_strategies
-
-    def _create_initial_scaffolds(self) -> List[str]:
-        """Create initial scaffolds using random training examples.
-
-        Returns:
-            List of scaffold IDs created
-        """
-        # This will end up just being ["0", "1", "2", ...]
-        scaffold_ids = [
-            self._get_next_scaffold_id() for _ in range(self.initial_scaffolds)
-        ]
-
-        # Get all training examples upfront
-        examples_by_scaffold = self._get_training_examples(scaffold_ids)
-
-        base_prompt_kwargs = {
-            "scoring_fn_code": self.scoring_fn_code,
-            "suggest_hack": self.config.suggest_hack,
-            "domain": self.config.domain,
-        }
-
-        # Generate strategies (possibly None)
-        strategies = self._generate_strategies(base_prompt_kwargs)
-
-        # Create generation tasks
-        generation_tasks = []
-        for (scaffold_id, examples), strategy in zip(
-            examples_by_scaffold.items(), strategies
-        ):
-
-            def generate_func(
-                examples=examples,
-                strategy=strategy,
-                is_baseline=self.is_baseline,
-            ):  # Capture examples, strategy, and baseline flag by value
-                config = ScaffolderPromptConfig(
-                    **base_prompt_kwargs,
-                    generate_examples=examples,
-                    strategy=strategy,
-                )
-                if is_baseline:
-                    return make_prompt_only_scaffold(config=config)
-                else:
-                    assert (
-                        self.scaffolder_llm is not None
-                    ), "scaffolder_llm required for non-baseline mode"
-                    return generate_scaffold(
-                        config=config,
-                        scaffolder_llm=self.scaffolder_llm,
-                        iteration=0,
-                    )
-
-            generation_tasks.append((scaffold_id, generate_func))
-
-        # Execute the generation tasks
-        self._execute_scaffold_generation_batch(
-            generation_tasks, "initial", self.config.max_generate_workers
-        )
-
-        return scaffold_ids
-
-    def _get_training_examples(
-        self, scaffold_ids: List[str]
-    ) -> Dict[str, List[DatasetExample]]:
-        """Sample training examples using the stateful train_sampler."""
-        examples_by_scaffold = {}
-        for scaffold_id in scaffold_ids:
-            examples_by_scaffold[scaffold_id] = self.train_sampler.sample(
-                self.config.num_training_examples
-            )
-        return examples_by_scaffold
-
     def _run_training(
         self,
         iteration: int,
@@ -596,9 +351,9 @@ class ExperimentRunner:
         Returns:
             Dictionary mapping scaffold_id to list of ScaffoldRunData
         """
-        examples_by_scaffold = self._get_training_examples(scaffold_ids)
         training_runs = {}
-        for scaffold_id, examples in examples_by_scaffold.items():
+        for scaffold_id in scaffold_ids:
+            examples = self.train_sampler.sample(self.config.num_training_examples)
             run_data = self.scaffold_evaluator.evaluate_scaffold(
                 iteration,
                 scaffold_id,
