@@ -1,12 +1,10 @@
 import pytest
 import tempfile
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from pathlib import Path
 from scaffold_learning.core.scaffold_creation import ScaffoldGenerator
 from scaffold_learning.core.data_structures import (
     DatasetExample,
-    ScaffoldResult,
-    ScaffoldMetadata,
     ScaffoldRunData,
     LLMResponse,
 )

@@ -1,14 +1,11 @@
-from typing import Any, Dict, List, Optional
+from typing import Optional
 from datetime import datetime
 import json
 import logging
 
 from scaffold_learning.core.data_structures import (
-    DatasetExample,
     ScaffoldResult,
-    ScaffoldRunData,
     ScaffoldMetadata,
-    LLMResponse,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.llm_response_utils import extract_python_code

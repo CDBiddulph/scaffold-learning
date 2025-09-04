@@ -5,7 +5,6 @@ from pathlib import Path
 import tempfile
 from scaffold_learning.core.scaffold_execution import (
     execute_scaffolds,
-    _execute_scaffold,
 )
 from scaffold_learning.core.data_structures import ScaffoldExecutionTask
 from scaffold_learning.core.data_structures import ScaffoldExecutionResult

@@ -13,7 +13,6 @@ from scaffold_learning.core.data_structures import (
 )
 from scaffold_learning.core.scaffold_execution import (
     ScaffoldExecutionResult,
-    ScaffoldExecutionTask,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.hydra_config import ExperimentConfig

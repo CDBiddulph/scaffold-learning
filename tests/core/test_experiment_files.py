@@ -1,7 +1,6 @@
 import pytest
 import tempfile
 import json
-import shutil
 from pathlib import Path
 from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.data_structures import ScaffoldResult, ScaffoldMetadata

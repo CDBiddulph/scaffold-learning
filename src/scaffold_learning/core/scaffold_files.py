@@ -1,6 +1,5 @@
 """Utilities for saving scaffold files."""
 
-import shutil
 from pathlib import Path
 from scaffold_learning.core.data_structures import ScaffoldResult
 from scaffold_learning.core.xml_utils import write_xml_file

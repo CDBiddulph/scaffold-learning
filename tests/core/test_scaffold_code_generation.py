@@ -1,15 +1,15 @@
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldResult,
+    ScaffoldRunData,
     ScaffolderPromptConfig,
 )
 from scaffold_learning.core.scaffold_code_generation import (
     generate_scaffold,
     evolve_scaffold,
     make_prompt_only_scaffold,
-    ScaffoldRunData,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.data_structures import LLMResponse

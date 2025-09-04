@@ -1,6 +1,4 @@
-import pytest
 from scaffold_learning.core.data_structures import (
-    DatasetExample,
     LLMResponse,
     ScaffoldMetadata,
 )

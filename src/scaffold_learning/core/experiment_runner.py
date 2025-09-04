@@ -11,7 +11,7 @@ from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.scaffold_creation import ScaffoldGenerator
 from scaffold_learning.core.scaffold_evaluator import ScaffoldEvaluator
-from scaffold_learning.core.dataset_utils import load_datasets, ExampleSampler
+from scaffold_learning.core.dataset_utils import ExampleSampler
 from scaffold_learning.core.hydra_config import ExperimentConfig
 
 

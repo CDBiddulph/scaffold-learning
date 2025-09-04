@@ -4,11 +4,10 @@ import os
 import sys
 import importlib.util
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from scaffold_learning.core.scaffold_tools_server import (
     ScaffoldToolsServer,
-    start_server,
 )
 
 

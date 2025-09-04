@@ -1,7 +1,6 @@
 import pytest
 import tempfile
-import json
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from pathlib import Path
 from scaffold_learning.core.scaffold_evaluator import ScaffoldEvaluator
 from scaffold_learning.core.data_structures import (

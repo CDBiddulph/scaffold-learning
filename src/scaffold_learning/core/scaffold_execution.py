@@ -11,7 +11,7 @@ import os
 import tempfile
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, TextIO, List, Dict, Any, Callable, Union, Tuple
+from typing import Optional, TextIO, List, Callable, Tuple
 from concurrent.futures import Future
 from scaffold_learning.core.data_structures import (
     ScaffoldExecutionResult,

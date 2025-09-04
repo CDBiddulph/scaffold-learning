@@ -1,7 +1,7 @@
 """Tests for strategy_generation module."""
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     LLMResponse,
