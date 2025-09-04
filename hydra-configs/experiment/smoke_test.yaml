@@ -1,0 +1,27 @@
+# @package _global_
+# Crosswords smoke test experiment - minimal settings for quick verification
+
+defaults:
+  - /domain: crosswords
+
+# Minimal iteration settings for fast execution
+num_iterations: 2
+scaffolds_per_iter: 2
+initial_scaffolds: 2
+num_training_examples: 2
+num_validation_examples: 2
+num_test_examples: 2
+
+# Test configuration
+show_scoring_function: false
+suggest_hack: "no"
+train_seed: 42
+valid_seed: 42
+test_seed: 42
+
+# Reduced timeouts and parallelism for smoke test
+scaffold_timeout: 120  # 2 minutes instead of 10
+max_generate_workers: 2
+max_execute_workers: 2
+strategy_batch_size: 2
+base_dir: "hydra-experiments"
