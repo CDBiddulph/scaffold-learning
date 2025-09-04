@@ -12,7 +12,7 @@ from scaffold_learning.core.experiment_files import ExperimentFileManager
 from scaffold_learning.core.dataset_utils import ExampleSampler
 from scaffold_learning.core.hydra_config import ExperimentConfig
 from scaffold_learning.core.strategy_generation import generate_strategies
-from scaffold_learning.core.scaffold_generation import (
+from scaffold_learning.core.scaffold_code_generation import (
     generate_scaffold,
     evolve_scaffold,
     make_prompt_only_scaffold,

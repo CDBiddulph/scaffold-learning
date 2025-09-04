@@ -5,7 +5,7 @@ from scaffold_learning.core.data_structures import (
     ScaffoldResult,
     ScaffolderPromptConfig,
 )
-from scaffold_learning.core.scaffold_generation import (
+from scaffold_learning.core.scaffold_code_generation import (
     generate_scaffold,
     evolve_scaffold,
     make_prompt_only_scaffold,

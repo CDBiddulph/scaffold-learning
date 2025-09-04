@@ -21,7 +21,7 @@ from scaffold_learning.core.scoring_utils import (
     create_scoring_function,
     get_scoring_function_code,
 )
-from scaffold_learning.core.scaffold_generation import (
+from scaffold_learning.core.scaffold_code_generation import (
     make_prompt_only_scaffold,
     generate_scaffold,
 )

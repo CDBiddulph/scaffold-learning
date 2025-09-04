@@ -2,12 +2,13 @@ import pytest
 import tempfile
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
-from scaffold_learning.core.scaffold_generator import ScaffoldGenerator
+from scaffold_learning.core.scaffold_creation import ScaffoldGenerator
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldResult,
     ScaffoldMetadata,
     ScaffoldRunData,
+    LLMResponse,
 )
 from scaffold_learning.core.llm_interfaces import LLMInterface
 from scaffold_learning.core.experiment_files import ExperimentFileManager
@@ -60,6 +61,11 @@ class TestScaffoldGenerator:
         """Create a mock LLM interface."""
         llm = Mock(spec=LLMInterface)
         llm.get_model_info.return_value = "mock_model"
+        # Mock generate_response to return a proper LLMResponse with code
+        mock_response = LLMResponse(
+            content="```python\ndef process_input(s): return 'test'\n```"
+        )
+        llm.generate_response.return_value = mock_response
         return llm
 
     @pytest.fixture
@@ -77,13 +83,15 @@ class TestScaffoldGenerator:
             DatasetExample(
                 id="train_1",
                 input="Test input",
-                scoring_data={"solution": "test"}
+                scoring_data={"input": "Test input", "solution": "test"},
             )
         ]
         return sampler
 
     @pytest.fixture
-    def scaffold_generator(self, mock_config, mock_llm, mock_file_manager, mock_train_sampler):
+    def scaffold_generator(
+        self, mock_config, mock_llm, mock_file_manager, mock_train_sampler
+    ):
         """Create a ScaffoldGenerator instance for testing."""
         return ScaffoldGenerator(
             config=mock_config,
@@ -107,53 +115,65 @@ class TestScaffoldGenerator:
     def test_create_initial_scaffolds(self, scaffold_generator):
         """Test that create_initial_scaffolds returns scaffold IDs."""
         # Mock the scaffold generation calls
-        with patch("scaffold_learning.core.scaffold_generator.generate_scaffold") as mock_generate:
-            mock_generate.return_value = Mock()  # Mock scaffold result
-            
+        with patch(
+            "scaffold_learning.core.scaffold_code_generation.generate_scaffold"
+        ) as mock_generate:
+            # Create a proper mock scaffold result
+            mock_result = Mock()
+            mock_result.code = "def process_input(s): return 'test'"
+            mock_result.metadata = Mock()
+            mock_generate.return_value = mock_result
+
             scaffold_ids = scaffold_generator.create_initial_scaffolds()
-            
+
             assert isinstance(scaffold_ids, list)
             assert len(scaffold_ids) == scaffold_generator.initial_scaffolds
             assert all(isinstance(id, str) for id in scaffold_ids)
 
     def test_evolve_scaffolds(self, scaffold_generator):
         """Test that evolve_scaffolds returns new scaffold IDs."""
-        # Create a proper ScaffoldRunData object 
+        # Create a proper ScaffoldRunData object
         example = DatasetExample(
             id="train_1",
             input="Test input",
-            scoring_data={"solution": "test"}
+            scoring_data={"input": "Test input", "solution": "test"},
         )
-        
+
         run_data = ScaffoldRunData(
             code="def process_input(s): return 'test'",
             execution_log="Mock execution log",
             example=example,
             actual_output="test",
-            score=1.0
+            score=1.0,
         )
-        
-        parent_runs = {
-            "0": [run_data]
-        }
-        
+
+        parent_runs = {"0": [run_data]}
+
         # Mock the scaffold evolution calls
-        with patch("scaffold_learning.core.scaffold_generator.evolve_scaffold") as mock_evolve:
-            mock_evolve.return_value = Mock()  # Mock scaffold result
-            
+        with patch(
+            "scaffold_learning.core.scaffold_code_generation.evolve_scaffold"
+        ) as mock_evolve:
+            # Create a proper mock scaffold result
+            mock_result = Mock()
+            mock_result.code = "def process_input(s): return 'evolved'"
+            mock_result.metadata = Mock()
+            mock_evolve.return_value = mock_result
+
             new_scaffold_ids = scaffold_generator.evolve_scaffolds(1, parent_runs)
-            
+
             assert isinstance(new_scaffold_ids, list)
             assert len(new_scaffold_ids) == len(parent_runs)
             assert all(isinstance(id, str) for id in new_scaffold_ids)
             # Should have format "parent_id-counter"
             assert all("-" in id for id in new_scaffold_ids)
 
-    def test_init_with_strategy_llm(self, mock_config, mock_llm, mock_file_manager, mock_train_sampler):
+    def test_init_with_strategy_llm(
+        self, mock_config, mock_llm, mock_file_manager, mock_train_sampler
+    ):
         """Test initialization with strategy LLM."""
         strategy_llm = Mock(spec=LLMInterface)
         strategy_llm.get_model_info.return_value = "strategy_model"
-        
+
         generator = ScaffoldGenerator(
             config=mock_config,
             scaffolder_llm=mock_llm,
@@ -162,7 +182,7 @@ class TestScaffoldGenerator:
             train_sampler=mock_train_sampler,
             scoring_fn_code="def score(a, b): return 1.0",
         )
-        
+
         assert generator.strategy_llm == strategy_llm
 
     def test_init_baseline_mode(self, mock_file_manager, mock_train_sampler):
@@ -196,7 +216,7 @@ class TestScaffoldGenerator:
             executor_reasoning_effort="minimal",
             scaffolder_reasoning_effort="minimal",
         )
-        
+
         generator = ScaffoldGenerator(
             config=baseline_config,
             scaffolder_llm=None,  # None for baseline mode
@@ -205,11 +225,13 @@ class TestScaffoldGenerator:
             train_sampler=mock_train_sampler,
             scoring_fn_code=None,
         )
-        
+
         assert generator.is_baseline == True
         assert generator.initial_scaffolds == 1
 
-    def test_init_without_scoring_fn_code(self, mock_config, mock_llm, mock_file_manager, mock_train_sampler):
+    def test_init_without_scoring_fn_code(
+        self, mock_config, mock_llm, mock_file_manager, mock_train_sampler
+    ):
         """Test initialization without scoring function code."""
         generator = ScaffoldGenerator(
             config=mock_config,
@@ -219,5 +241,5 @@ class TestScaffoldGenerator:
             train_sampler=mock_train_sampler,
             # scoring_fn_code defaults to None
         )
-        
+
         assert generator.scoring_fn_code is None
