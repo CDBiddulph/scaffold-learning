@@ -237,7 +237,6 @@ class ExperimentRunner:
         iteration: int,
         scaffold_ids: List[str],
         validation_sample: List[DatasetExample],
-        max_workers: Optional[int] = None,
     ) -> Dict[str, List[float]]:
         """Validate a list of scaffolds and return their scores.
 
@@ -245,15 +244,10 @@ class ExperimentRunner:
             iteration: Current iteration number
             scaffold_ids: List of scaffold IDs to validate
             validation_sample: Validation examples to use
-            max_workers: Maximum workers for parallel scaffold execution.
-                If None, uses self.max_execute_workers
 
         Returns:
             Dictionary mapping scaffold_id to list of validation scores
         """
-        if max_workers is None:
-            max_workers = self.config.max_execute_workers
-
         validation_scores = {}
         for scaffold_id in scaffold_ids:
             run_data = self.scaffold_evaluator.evaluate_scaffold(
