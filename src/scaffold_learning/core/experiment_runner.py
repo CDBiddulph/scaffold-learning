@@ -149,21 +149,23 @@ class ExperimentRunner:
 
             if iteration == 0:
                 # Create and validate initial scaffolds
-                validation_scores = self._run_initial_iteration(validation_sample)
+                scaffold_ids = self.scaffold_generator.create_initial_scaffolds()
             else:
                 # Run normal evolution iteration (baseline runs never reach this)
-                validation_scores = self._run_evolution_iteration(
-                    iteration, validation_sample
-                )
+                scaffold_ids = self._run_evolution_iteration(iteration)
+
+            # Get validation scores for the new scaffolds
+            validation_scores = self._validate_scaffolds(
+                0, scaffold_ids, validation_sample
+            )
 
             # Find best scaffold from current iteration scores
-            if validation_scores:
-                iter_best_scaffold_id, iter_best_score = (
-                    self._find_best_scaffold_from_scores(iteration, validation_scores)
-                )
-                if iter_best_score > best_score:
-                    best_score = iter_best_score
-                    best_scaffold_id = iter_best_scaffold_id
+            iter_best_scaffold_id, iter_best_score = (
+                self._find_best_scaffold_from_scores(validation_scores)
+            )
+            if iter_best_score > best_score:
+                best_score = iter_best_score
+                best_scaffold_id = iter_best_scaffold_id
 
             # Save scores and log results
             self._log_iteration_results(iteration, validation_scores)
@@ -186,18 +188,16 @@ class ExperimentRunner:
     def _run_evolution_iteration(
         self,
         iteration: int,
-        validation_sample: List[DatasetExample],
-    ) -> Dict[str, List[float]]:
+    ) -> List[str]:
         """Run one iteration of scaffold evolution.
 
         Args:
             iteration: Current iteration number
-            validation_sample: Validation examples to use for evaluation
 
         Returns:
-            A dictionary mapping scaffold_id to a list of scores
+            List of new scaffold IDs
         """
-        # Select top scaffolds to evolve (using pre-computed scores)
+        # Select top scaffolds to evolve
         top_scaffold_ids = self._select_top_scaffolds()
 
         # Run training examples for top scaffolds
@@ -207,30 +207,7 @@ class ExperimentRunner:
         )
 
         # Evolve selected scaffolds and get new scaffold IDs
-        new_scaffold_ids = self.scaffold_generator.evolve_scaffolds(
-            iteration, top_scaffold_runs
-        )
-
-        validation_scores = self._validate_scaffolds(
-            iteration, new_scaffold_ids, validation_sample
-        )
-
-        return validation_scores
-
-    def _run_initial_iteration(
-        self, validation_sample: List[DatasetExample]
-    ) -> Dict[str, List[float]]:
-        """Run iteration 0: create and validate initial scaffolds.
-
-        Args:
-            validation_sample: Validation examples to use for evaluation
-
-        Returns:
-            A dictionary mapping scaffold_id to a list of scores
-        """
-        scaffold_ids = self.scaffold_generator.create_initial_scaffolds()
-        validation_scores = self._validate_scaffolds(0, scaffold_ids, validation_sample)
-        return validation_scores
+        return self.scaffold_generator.evolve_scaffolds(iteration, top_scaffold_runs)
 
     def _validate_scaffolds(
         self,
@@ -294,7 +271,6 @@ class ExperimentRunner:
 
     def _find_best_scaffold_from_scores(
         self,
-        iteration: int,
         scores: Dict[str, List[float]],
     ) -> Tuple[Optional[str], float]:
         """Find the best scaffold from current iteration scores.
@@ -355,7 +331,6 @@ class ExperimentRunner:
                 "train",
             )
             training_runs[scaffold_id] = run_data
-
         return training_runs
 
     def _run_test_evaluation(self, best_scaffold_id: str) -> float:
