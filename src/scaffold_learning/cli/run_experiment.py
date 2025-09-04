@@ -22,7 +22,7 @@ from scaffold_learning.core.docker_utils import build_docker_image
 
 
 # Get absolute path to config directory
-_config_path = Path(__file__).parent.parent.parent.parent / "hydra-configs"
+_config_path = Path(__file__).parent.parent / "hydra-configs"
 
 
 def _get_scaffolder_llm(config: DictConfig) -> Optional[LLMInterface]:
