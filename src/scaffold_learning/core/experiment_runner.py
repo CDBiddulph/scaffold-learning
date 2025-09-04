@@ -1,17 +1,12 @@
 import numpy as np
 import logging
-import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional, Callable, Tuple, Any, Union
-from collections import defaultdict
+from typing import List, Dict, Optional, Callable, Tuple, Any
 import concurrent.futures
-import io
-import contextlib
 from scaffold_learning.core.data_structures import (
     DatasetExample,
     ScaffoldRunData,
-    ScaffoldExecutionTask,
 )
 from scaffold_learning.core.data_structures import ScaffolderPromptConfig
 from scaffold_learning.core.strategy_generation import generate_strategies
@@ -22,10 +17,7 @@ from scaffold_learning.core.scaffold_generation import (
     evolve_scaffold,
     make_prompt_only_scaffold,
 )
-from scaffold_learning.core.scaffold_execution import (
-    execute_scaffolds,
-    ScaffoldExecutionResult,
-)
+from scaffold_learning.core.scaffold_evaluator import ScaffoldEvaluator
 from scaffold_learning.core.dataset_utils import load_datasets, ExampleSampler
 from scaffold_learning.core.hydra_config import ExperimentConfig
 
@@ -113,6 +105,15 @@ class ExperimentRunner:
             "scaffold_timeout": config.scaffold_timeout,
         }
         self.file_manager.save_experiment_metadata(metadata)
+
+        # Initialize scaffold evaluator
+        self.scaffold_evaluator = ScaffoldEvaluator(
+            scoring_fn=scoring_fn,
+            file_manager=self.file_manager,
+            executor_model=config.executor,
+            scaffold_timeout=config.scaffold_timeout,
+            max_execute_workers=config.max_execute_workers,
+        )
 
         self.logger.info(f"Initialized experiment: {config.experiment_name}")
         self.logger.info(f"Random training seed: {config.train_seed}")
@@ -253,13 +254,13 @@ class ExperimentRunner:
 
         validation_scores = {}
         for scaffold_id in scaffold_ids:
-            scores = self._run_scaffold_on_examples(
+            run_data = self.scaffold_evaluator.evaluate_scaffold(
                 iteration,
                 scaffold_id,
                 validation_sample,
                 "valid",
-                max_workers=max_workers,
             )
+            scores = [rd.score for rd in run_data]
             validation_scores[scaffold_id] = scores
         return validation_scores
 
@@ -570,211 +571,6 @@ class ExperimentRunner:
 
         return scaffold_ids
 
-    def _log_scaffold_scores(
-        self, scaffold_id: str, scores: List[float], log_type: str
-    ) -> None:
-        """Log scaffold scores with proper formatting."""
-        log_type_str = "validation" if log_type == "valid" else "training"
-        scores_str = ", ".join(f"{s:.3f}" for s in scores)
-        if len(scores) > 1:
-            maybe_s, average_str = "s", f" (avg {np.mean(scores):.3f})"
-        else:
-            maybe_s, average_str = "", ""
-        self.logger.info(
-            f"Scaffold {scaffold_id} {log_type_str} score{maybe_s}: {scores_str}{average_str}"
-        )
-
-    def _prepare_execution_tasks(
-        self,
-        iteration: Union[int, str],
-        scaffold_id: str,
-        examples: List[DatasetExample],
-        log_type: str,
-    ) -> List[ScaffoldExecutionTask]:
-        """Create ScaffoldExecutionTask objects for a list of examples.
-
-        Args:
-            iteration: Current iteration number or "test" for test runs
-            scaffold_id: ID of scaffold to run
-            examples: Examples to test the scaffold on
-            log_type: Type of log ("train", "valid", or "test")
-
-        Returns:
-            List of ScaffoldExecutionTask objects
-        """
-        tasks = []
-        for example in examples:
-            task = ScaffoldExecutionTask(
-                scaffold_dir=str(self.file_manager.get_scaffold_dir(scaffold_id)),
-                log_file_path=str(
-                    self.file_manager.get_new_execution_log_path(
-                        iteration, scaffold_id, log_type
-                    )
-                ),
-                input_string=example.input,
-                model_spec=self.config.executor,
-                timeout=self.config.scaffold_timeout,
-                console_output=False,
-                reasoning_effort=self.config.executor_reasoning_effort,
-            )
-            tasks.append(task)
-        return tasks
-
-    @contextlib.contextmanager
-    def _capture_logging(self, output_stream):
-        """Temporarily capture all logging to the given stream."""
-        log_handler = logging.StreamHandler(output_stream)
-        log_handler.setLevel(logging.INFO)
-        root_logger = logging.getLogger()
-        original_handlers = root_logger.handlers[:]
-        original_level = root_logger.level
-
-        # Remove all existing handlers and add only our capture handler
-        for handler in original_handlers:
-            root_logger.removeHandler(handler)
-        root_logger.addHandler(log_handler)
-        root_logger.setLevel(logging.INFO)
-
-        try:
-            yield
-        finally:
-            # Restore original handlers and level
-            root_logger.removeHandler(log_handler)
-            for handler in original_handlers:
-                root_logger.addHandler(handler)
-            root_logger.setLevel(original_level)
-
-    def _write_score_to_log(
-        self, log_file_path: str, score_output: str, score: float
-    ) -> None:
-        """Write score to the log file."""
-        # TODO: consider sharing this code with make_and_run.py.
-        with open(log_file_path, "a") as f:
-            f.write("\n=== SCORE ===\n")
-            if score_output:
-                f.write(score_output)
-                if not score_output.endswith("\n"):
-                    f.write("\n")
-            f.write(f"Final score: {score}\n")
-
-    def _process_execution_results(
-        self,
-        scaffold_id: str,
-        examples: List[DatasetExample],
-        execution_results: List[ScaffoldExecutionResult],
-        log_file_paths: List[str],
-        run_data_list: Optional[List[ScaffoldRunData]] = None,
-        scaffold_code: Optional[str] = None,
-    ) -> List[float]:
-        """Score execution results and optionally create ScaffoldRunData.
-
-        Args:
-            scaffold_id: ID of scaffold that was executed
-            examples: Examples that were tested
-            execution_results: Results from scaffold execution
-            log_file_paths: List of log file paths to append scoring info to
-            run_data_list: Optional list to append ScaffoldRunData to
-            scaffold_code: Required if run_data_list is provided
-
-        Returns:
-            List of scores in order of examples
-        """
-        scores = []
-        for example, result, log_file_path in zip(
-            examples, execution_results, log_file_paths, strict=True
-        ):
-            # Capture scoring output
-            score_output = io.StringIO()
-
-            # Calculate score with output capture
-            if result.error_message is None:
-                with self._capture_logging(score_output):
-                    score = self.scoring_fn(result.output, example.scoring_data)
-            else:
-                logging.warning(
-                    f"Scaffold {scaffold_id} failed to execute: {result.error_message}"
-                )
-                score = 0.0  # Failed execution gets 0 score
-
-            scores.append(score)
-
-            self._write_score_to_log(log_file_path, score_output.getvalue(), score)
-
-            # For training, create ScaffoldRunData
-            if run_data_list is not None:
-                if scaffold_code is None:
-                    raise ValueError("Scaffold code is required for ScaffoldRunData")
-                run_data_list.append(
-                    ScaffoldRunData(
-                        code=scaffold_code,
-                        execution_log=result.stderr,
-                        example=example,
-                        actual_output=result.output,
-                        score=score,
-                    )
-                )
-
-        return scores
-
-    def _run_scaffold_on_examples(
-        self,
-        iteration: Union[int, str],
-        scaffold_id: str,
-        examples: List[DatasetExample],
-        log_type: str,
-        run_data_list: Optional[List[ScaffoldRunData]] = None,
-        scaffold_code: Optional[str] = None,
-        max_workers: int = 1,
-    ) -> List[float]:
-        """Run a scaffold on examples and return scores and run data.
-
-        Args:
-            iteration: Current iteration number or "test" for test runs
-            scaffold_id: ID of scaffold to run
-            examples: Examples to test the scaffold on
-            log_type: Type of log ("train", "valid", or "test")
-            run_data_list: List of ScaffoldRunData to append to. Requires scaffold_code.
-            scaffold_code: Scaffold code to use for ScaffoldRunData.
-            max_workers: Maximum workers for parallel execution of examples
-
-        Returns:
-            A list of scores, in order of examples
-        """
-        # Prepare execution tasks
-        tasks = self._prepare_execution_tasks(
-            iteration, scaffold_id, examples, log_type
-        )
-
-        # Execute all tasks
-        execution_results = execute_scaffolds(tasks, max_workers=max_workers)
-
-        # Extract log file paths from tasks for scoring append
-        log_file_paths = [task.log_file_path for task in tasks]
-
-        # Process results and calculate scores
-        scores = self._process_execution_results(
-            scaffold_id,
-            examples,
-            execution_results,
-            log_file_paths,
-            run_data_list,
-            scaffold_code,
-        )
-
-        # Log scores
-        self._log_scaffold_scores(scaffold_id, scores, log_type)
-
-        # Save scores to scoring files (test scores are handled by _save_detailed_results)
-        if log_type != "test":
-            self.file_manager.save_scores(iteration, scaffold_id, scores, log_type)
-
-        # Create and save detailed results.json
-        self._save_detailed_results(
-            iteration, scaffold_id, log_type, examples, execution_results, scores, tasks
-        )
-
-        return scores
-
     def _get_training_examples(
         self, scaffold_ids: List[str]
     ) -> Dict[str, List[DatasetExample]]:
@@ -801,110 +597,17 @@ class ExperimentRunner:
             Dictionary mapping scaffold_id to list of ScaffoldRunData
         """
         examples_by_scaffold = self._get_training_examples(scaffold_ids)
-        training_runs = defaultdict(list)
+        training_runs = {}
         for scaffold_id, examples in examples_by_scaffold.items():
-            # Load scaffold to get code for ScaffoldRunData
-            scaffold_result = self.file_manager.load_scaffold(scaffold_id)
-            self._run_scaffold_on_examples(
+            run_data = self.scaffold_evaluator.evaluate_scaffold(
                 iteration,
                 scaffold_id,
                 examples,
                 "train",
-                scaffold_code=scaffold_result.code,
-                run_data_list=training_runs[scaffold_id],
-                max_workers=self.config.max_execute_workers,
             )
+            training_runs[scaffold_id] = run_data
 
         return training_runs
-
-    def _save_detailed_results(
-        self,
-        iteration: Union[int, str],
-        scaffold_id: str,
-        log_type: str,
-        examples: List[DatasetExample],
-        execution_results: List[ScaffoldExecutionResult],
-        scores: List[float],
-        tasks: List[ScaffoldExecutionTask],
-    ) -> None:
-        """Save detailed results.json file for a scaffold run.
-
-        Args:
-            iteration: Current iteration number or "test" for test runs
-            scaffold_id: Scaffold identifier
-            log_type: Type of run ("train", "valid", or "test")
-            examples: Examples that were tested
-            execution_results: Results from scaffold execution
-            scores: Calculated scores
-            tasks: Original execution tasks
-        """
-        # Create results directory
-        logs_dir = self.file_manager._get_docker_logs_dir(iteration, scaffold_id)
-        results_dir = logs_dir
-        results_dir.mkdir(exist_ok=True)
-
-        # Build results structure similar to make_and_run.py
-        results = {
-            "scaffold_id": scaffold_id,
-            "iteration": iteration,
-            "log_type": log_type,
-            "executor_model": self.config.executor,
-            "timestamp": datetime.now().isoformat(),
-            "mode": "evaluation",
-            "num_examples": len(examples),
-            "scores": scores,
-            "mean_score": float(np.mean(scores)),
-            "std_score": float(np.std(scores)),
-            "execution_times": [r.execution_time for r in execution_results],
-            "mean_execution_time": float(
-                np.mean([r.execution_time for r in execution_results])
-            ),
-            "outputs": [],
-        }
-
-        # Add individual outputs
-        for example, result, score in zip(examples, execution_results, scores):
-            output_info = {
-                "example_id": example.id,
-                "score": score,
-                "output": result.output,
-                "error": result.error_message,
-                "execution_time": result.execution_time,
-            }
-            results["outputs"].append(output_info)
-
-        # Save results.json with run type prefix
-        results_path = results_dir / f"{log_type}_results.json"
-        with open(results_path, "w") as f:
-            json.dump(results, f, indent=2)
-
-        # For test runs, also save a summary to scoring/test.json
-        if log_type == "test":
-            self._save_test_summary_to_scoring(results)
-
-    def _save_test_summary_to_scoring(self, detailed_results: Dict[str, Any]) -> None:
-        """Save a test summary to scoring/test.json from detailed results.
-
-        Args:
-            detailed_results: The full results dict from _save_detailed_results
-        """
-        # Create test summary by extracting subset of fields
-        test_summary = {
-            "scaffold_id": detailed_results["scaffold_id"],
-            "mode": "test_evaluation",
-            "num_examples": detailed_results["num_examples"],
-            "scores": detailed_results["scores"],
-            "mean_score": detailed_results["mean_score"],
-            "std_score": detailed_results["std_score"],
-            "timestamp": detailed_results["timestamp"],
-        }
-
-        # Save to scoring/test.json
-        scoring_dir = self.file_manager.experiment_dir / "scoring"
-        scoring_dir.mkdir(parents=True, exist_ok=True)
-        test_file = scoring_dir / "test.json"
-        with open(test_file, "w") as f:
-            json.dump(test_summary, f, indent=2)
 
     def _run_test_evaluation(self, best_scaffold_id: str) -> float:
         """Run test evaluation on the best scaffold.
@@ -917,6 +620,7 @@ class ExperimentRunner:
         """
 
         # Load test data
+        # TODO: do we need this? It doesn't seem to be used.
         try:
             data_dir = Path(self.config.data_dir)
             datasets = load_datasets(data_dir, ["test"])
@@ -929,14 +633,14 @@ class ExperimentRunner:
 
         self.logger.info(f"Evaluating {len(test_sample)} test examples...")
 
-        # Run scaffold on test examples - use regular method with test iteration marker
-        scores = self._run_scaffold_on_examples(
+        # Run scaffold on test examples - use scaffold evaluator
+        run_data = self.scaffold_evaluator.evaluate_scaffold(
             iteration="test",  # Special marker for test runs
             scaffold_id=best_scaffold_id,
             examples=test_sample,
             log_type="test",
-            max_workers=self.config.max_execute_workers,
         )
+        scores = [rd.score for rd in run_data]
 
         # Log results
         mean_score = float(np.mean(scores))
